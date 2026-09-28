@@ -18,25 +18,30 @@ bundle was built and verified against the pinned public key (31 payload files;
 not applicable to the already-written card). Linux updater suite: **8 passed**,
 including pip installation in a disposable real venv, a post-rename generated
 console-script invocation, signature/tamper checks and atomic rollback. The
-current full Debian backend suite is **942 passed** (11 existing warnings);
-Windows focused suite: **3 passed / 4 Linux-only skipped**. Frontend remains
-**112 passed** and TypeScript/production build passed
-(`index-DgQv9Dlb.js`, `index-CjCfDND2.css`).
+complete backend suite is **942 passed on Linux in hosted CI** and **912
+passed / 30 Linux-only skipped on Windows** (one existing Starlette/httpx
+warning). The fresh Windows run took 206 seconds. Frontend: **112 passed**;
+TypeScript/production build passed (`index-DgQv9Dlb.js`,
+`index-CjCfDND2.css`).
 
 The source, documentation, and CI workflow are published on the authorized
 feature branch
 [`codex/luma-updater-ci-20260928`](https://github.com/BrianBGoldshtein/LumaSmartHub/tree/codex/luma-updater-ci-20260928)
-at commit `a145048`. GitHub Actions has been activated on that branch. The
-hosted run is green: complete Linux backend suite, checksum-pinned asset
-preparation, frontend tests/build, and image-manifest tests all passed. It also
-confirms **942 backend tests** on Ubuntu. The focused Linux updater suite passes
+at commit `a3afdad`. GitHub Actions run
+[36475981758](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36475981758)
+is green: complete Linux backend suite, checksum-pinned asset preparation,
+frontend tests/build, and image-manifest tests all passed. It confirms **942
+backend tests** on Ubuntu. The focused Linux updater suite passes
 **8/8**, including a real venv relocation/entrypoint check. Neither CI nor the
 repository contains the update-signing private key.
 
-**Current build:** a fresh updater-enabled Pi 4 image is building in isolated
-Linux staging, source fingerprint `2fa350198a6280c8b8f3656bcfac1f59ec6b20595fca31f1fcc55f102bea9132`.
-Finish package generation, raw/filesystem audit and offline boot smoke before
-calling it a candidate. Do not flash or overwrite the owner's existing SD.
+**Current build:** corrected r4 Pi 4 image build is active in isolated Linux
+staging `/home/luma-build/luma-final-20260928-r4`, source fingerprint
+`770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921`.
+The rejected r2 candidate omitted the approved public recovery SSH key and
+must not be flashed. Finish r4 package generation, raw/filesystem audit and
+offline boot/WebSocket smoke before calling it a candidate. Do not flash or
+overwrite the owner's existing SD.
 Updater deployment itself remains untested on a physical Pi. Narrow/portrait/
 touch, actual Pi/phone/appliance/campus network tests remain owner-gated.
 

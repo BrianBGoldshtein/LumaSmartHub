@@ -18,15 +18,18 @@ packaging smoke test, not applied to any Pi. Linux focused suite **8 passed**,
 including real pip wheel install, copied Debian venv, repaired entry-point
 execution and rollback; Windows **3 passed / 3 Linux-only skipped**. Frontend
 **112 passed**, TypeScript/Vite build passed. The complete current-source Linux
-suite is **942 passed** (11 existing warnings). Added repository-root GitHub
+suite is **942 passed** in hosted CI; the fresh Windows run is **912 passed,
+30 Linux-only skipped** (one existing warning). Added repository-root GitHub
 Actions CI for Linux backend, frontend and image-manifest tests; published on
 `codex/luma-updater-ci-20260928`, with the full hosted workflow green at commit
-`a145048`. CI prepares checksum-pinned public assets but has no signing key.
-The fresh updater-enabled Pi image is now building from source fingerprint
-`2fa350198a6280c8b8f3656bcfac1f59ec6b20595fca31f1fcc55f102bea9132` in
-isolated Linux staging. Finish static/raw audit and offline-boot smoke before
-calling it a candidate. Existing card preserved; hardware acceptance/flashing
-remain owner-prompt gated. Full updater boundaries and recovery are in
+`a3afdad` (run 36475981758). CI prepares checksum-pinned public assets but has
+no signing key. The corrected r4 updater-enabled Pi image is building in
+isolated Linux staging with source fingerprint
+`770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921`; r2 was
+rejected because the approved SSH public key was absent. Finish raw/static
+audit and offline-boot/WebSocket smoke before calling r4 a candidate. Existing
+card preserved; hardware acceptance/flashing remain owner-prompt gated. Full
+updater boundaries and recovery are in
 `docs/UPDATE_DEPLOYMENT.md`.
 
 ## September 28 — current-source cross-platform test recheck

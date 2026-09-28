@@ -1,5 +1,61 @@
 # Requirements and remaining delivery work
 
+## Current source and delivery state — September 28, 2026
+
+The complete selected feature set is present in the current source: guided
+setup, native offline voice questions, calendar-backed tasks, timers,
+leave-soon reminders, weather nudges, Sleep/night display and wake ramps,
+countdowns, transit, room devices/scenes, settings-only encrypted USB
+backup/restore, and the signed app-only updater. This statement means source
+implementation, not a blanket qualification: room-device UI/package review
+and the backup broker's final-image checks are still open. Feature 6 remains
+explicitly excluded. Tetris/game persistence and frozen timing are unchanged.
+
+Software evidence currently recorded: **942 backend tests passed on Linux
+in hosted CI; 912 passed / 30 Linux-only skipped on Windows; 112 frontend
+tests passed; TypeScript/Vite build passed.** The current Windows results are
+from a fresh complete run against this working copy. CI for authorized
+feature-branch commit `a3afdad` is green (run 36475981758). No private signing
+or SSH key is in GitHub or source.
+
+A corrected r4 Raspberry Pi 4 image is being built from source fingerprint
+`770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921` after a
+static image audit caught that the rejected r2 candidate lacked the approved
+public recovery SSH key. r2 must not be flashed. The r4 build is not complete
+until raw-image/file audits and offline ARM64/API/WebSocket checks pass; the
+candidate is not yet ready for reflash. No physical flash or hardware test is
+being performed.
+
+### Remaining gates
+
+- Finish and record room-device/scene UI checks for errors, reconnects,
+  long names, all three themes, narrow/portrait layouts, keyboard and touch;
+  then complete Linux/package/real-WebSocket checks for those paths.
+- Qualify the settings-only backup broker on the exact image: systemd socket
+  activation, installed service UID/peer authorization, packaged API round
+  trip, and archive restore/mute/account-preservation behavior. Synthetic
+  temporary-media tests have passed; this does not establish real USB-device
+  compatibility.
+- Complete r4 static/raw-file audit, compressed-image SHA/XZ verification,
+  offline ARM64 boot/API/database and denied-gateway smoke, real packaged
+  WebSocket push/disconnect, and update the immutable candidate/checksum
+  handoff. Never overwrite or flash the owner's card without explicit prompt.
+- Hardware remains untested: Pi/display/touch/DDC and power behavior,
+  ReSpeaker/AEC/voice range, iPhone/ANCS, Stanford Visitor terms and eduroam,
+  authorized Google/VeSync/511 accounts, Woozoo IR independence, USB media,
+  2-GB performance/thermal and real power-cut recovery.
+- Owner setup inputs are still needed at commissioning: calendar selections
+  and optional Google write consent, transit token/stops/directions, VeSync
+  enrollment/model discovery, exact Woozoo labels/remotes, scene choices and
+  removable-media/passphrase choice. Enter secrets only into the on-device
+  setup/provider, never into chat or GitHub.
+
+See [EXPANSION_PLAN.md](EXPANSION_PLAN.md) for the source-versus-acceptance
+matrix and the per-feature acceptance contracts. Historical entries below
+are chronology and may describe earlier source or image states; this section
+and the newest dated [CURRENT_STATUS.md](../CURRENT_STATUS.md) checkpoint are
+authoritative.
+
 Native free voice questions are implemented in source; see [voice library](VOICE_LIBRARY.md).516backend/85frontend tests pass; TypeScript/build pass. Real microphone/speaker qualification and inclusion in the final image remain required.
 
 ## September 26 source-only addition (not in current image)

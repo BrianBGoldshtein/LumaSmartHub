@@ -1,6 +1,19 @@
 # Luma expansion and guided setup plan
 
-Updated September 26, 2026. This is the durable implementation plan, not a claim that the expansion is already shipped. The owner selected features **1, 2, 3, 4, 5, 7, 8, 9 and 10**; feature 6 (meeting/focus-mode integration) is excluded. Guided onboarding is now implemented in source for existing capabilities. Expansion-specific setup cards arrive with their working features, not as nonfunctional switches.
+Updated September 28, 2026. This is the durable implementation plan and current source-status index; it is not a claim of physical-device acceptance. The owner selected features **1, 2, 3, 4, 5, 7, 8, 9 and 10**; feature 6 (meeting/focus-mode integration) is excluded. Guided onboarding and the optional setup cards are implemented in source.
+
+## Current acceptance ledger
+
+| Scope | Source state | Software evidence | Still outstanding |
+| --- | --- | --- | --- |
+| Guided onboarding, core hub, native voice questions, calendar tasks, timer, leave-soon, weather hints, night clock/wake, countdowns and transit | Implemented and integrated | 942 Linux backend tests green in hosted CI; Windows 912 passed / 30 Linux-only skipped; frontend 112 passed and production build passed | Final-image inclusion/audit and actual Pi/account/provider checks |
+| Purifier, two independently identified fans, local/automatic scenes, voice scene actions and separately consented iPhone scene allowlist | Implemented in source; deliberately empty/off until owner configures them | Mocked adapter/runtime/API/scene tests, synthetic HTTP/WebSocket checks, and partial rendered browser checks; see [ROOM_DEVICES.md](ROOM_DEVICES.md) and [SCENES.md](SCENES.md) | Remaining all-theme/error/reconnect/touch review; packaged service/trigger validation; real VeSync/IR/phone/network acceptance |
+| Encrypted settings-only USB backup/restore | Source flow integrated | Encryption/schema/security tests, temporary removable-media inventory and real temporary Unix-socket/API round trip; see [PORTABLE_BACKUPS.md](PORTABLE_BACKUPS.md) | Final image broker/systemd/UID qualification and actual USB/export/restore acceptance |
+| Signed in-place application updater | Implemented in source and CI; this is app-only, not an OS updater | Linux real-venv/signature/tamper/rollback tests and green hosted workflow; see [UPDATE_DEPLOYMENT.md](UPDATE_DEPLOYMENT.md) | Deployment/recovery check on the eventual Pi |
+| Fresh Pi image | Corrected r4 image build currently running; r2 is rejected because its SSH recovery key was absent | CI for feature-branch commit `a3afdad` is green; image checks start after build completion | Raw partition/static file audit, XZ/checksum/source manifest, offline ARM64 boot/API/real WebSocket checks, then same-folder reflash handoff |
+| Physical acceptance | Not tested; hardware tests await the owner's prompt | None claimed | Display/touch/DDC, ReSpeaker/audio/wake range, iPhone/ANCS, campus Wi-Fi/portal/eduroam, power-loss, 2-GB performance/thermal, actual appliances and USB |
+
+Do not treat an onboarding “configured” marker, synthetic test or successful image build as a hardware/provider pass. Preserve private keys and credentials outside source, image and CI. Do not flash until the owner explicitly asks to begin hardware testing.
 
 ## Non-negotiable constraints
 
@@ -63,7 +76,7 @@ Fonts, layout, margins, border treatment and color tokens stay consistent within
 
 ## 1. Focus timer
 
-**September 26 implementation checkpoint:** timer runtime, durable state, themed controls, local voice/Shortcut actions, presets in optional setup and at-most-once sound bridge are implemented in source. See [FOCUS_TIMER.md](FOCUS_TIMER.md). Night-clock suppression will be connected when display modes are implemented. Feature 3 is also implemented in source; remaining numbered features are planned. New image packaging and physical checks remain outstanding.
+**Implemented in source:** timer runtime, durable state, themed controls, local voice/Shortcut actions, presets in optional setup, at-most-once sound bridge, and suppression during night display modes. See [FOCUS_TIMER.md](FOCUS_TIMER.md). Feature 3 is implemented as described below. New image packaging and physical checks remain outstanding.
 
 One active timer, Focus 25 / Break 5 presets; touch duration 1–240 minutes. Starting over requires confirmation. Voice durations: 5/10/15/20/25/30/45/60 minutes, plus pause/resume/cancel/show. Freeform labels are touch-only. Ordinary cycling continues. On completion show one island and one local chime; during night mode it is silent and dim.
 
@@ -119,11 +132,11 @@ Clearly distinguish predicted, scheduled and stale. Remove expired departures; a
 
 ## 9. Room appliances and scenes
 
-**Purifier, fan setup, local/calendar/presence scenes and a separately consented remote-scene allowlist exist in source; feature9 remains incomplete and unqualified.** Pinned pyvesync3.4.2 adapter, durable stores, conservative purifier polling, USB/LIRC broker, owner-local bounded APIs, themed optional Extras setup/control, non-secret onboarding review and native local voice scene actions exist. “Run … scene” and “cancel scene” use the same owner/device/clock guards; “Good morning” remains the briefing. Remote appliance control stays off unless the owner locally grants exact saved scenes/actions; any edit or device relink invalidates review. Remaining all-theme/keyboard/error UI checks, packaged trigger/integration qualification, Linux/exact-image/real-WS gates and owner hardware/provider acceptance are detailed in [ROOM_DEVICES.md](ROOM_DEVICES.md) and [SCENES.md](SCENES.md). No real provider/account/device acceptance inferred.
+**Source implementation is integrated, but feature 9 is not fully software-qualified or hardware-qualified.** The pinned pyvesync3.4.2 adapter, durable stores, conservative purifier polling, USB/LIRC broker, owner-local bounded APIs, themed setup/control, non-secret onboarding review, local voice scene actions and separately consented remote-scene allowlist exist. “Run … scene” and “cancel scene” use the same owner/device/clock guards; “Good morning” remains the briefing. Remote appliance control stays off unless the owner locally grants exact saved scenes/actions; any edit or device relink invalidates review. Remaining all-theme/keyboard/error UI checks, packaged trigger/integration qualification, Linux/exact-image/real-WS gates and owner hardware/provider acceptance are detailed in [ROOM_DEVICES.md](ROOM_DEVICES.md) and [SCENES.md](SCENES.md). No real provider/account/device acceptance inferred.
 
 ### Levoit
 
-Owner clarified **Core 300S / 300S-P**, not yet set up in VeSync. Enroll in the vendor app first, on a permitted network. Use a pinned direct pyvesync adapter rather than run Home Assistant on the Pi. Cloud-dependent, unofficial library: handle expiry and breaking changes explicitly; prefer persisted sessions over storing a password. Confirm precise API/library version before implementation.
+Owner clarified **Core 300S / 300S-P**, not yet set up in VeSync. Enroll in the vendor app first, on a permitted network. The source uses a pinned direct pyvesync adapter rather than running Home Assistant on the Pi. This remains a cloud-dependent, unofficial library: handle expiry and breaking changes explicitly; prefer persisted sessions over storing a password. The exact returned API model must still match discovery.
 
 Select the specific purifier; expose only discovered capabilities (power, speed, supported sleep/auto/display options and reported air-quality/filter values). Poll conservatively with backoff. Distinguish command acceptance from reported device state. No queued offline commands that execute hours later. Network compatibility is a prerequisite, not an assumption or permission to bypass campus policy. References: [pyvesync](https://github.com/webdjoe/pyvesync), [VeSync integration capabilities](https://www.home-assistant.io/integrations/vesync), [Stanford student networking](https://uit.stanford.edu/students).
 
@@ -151,12 +164,10 @@ Import authenticates and validates before preview/apply. Apply transactionally; 
 
 Owner's final-handoff addition: after development and software qualification are complete, deliver a clear hardware-to-first-boot guide based on the finalized parts. Cover powered-off wiring, screen/touch/microphone/speaker connections and power requirements, connecting a microSD reader to this Windows laptop, identifying and confirming the exact removable card before flashing the final verified image (not ordinary file copying), safe eject/first boot, campus network setup, and connecting this laptop to the Pi for key-only SSH-assisted provisioning and diagnostics. Clearly separate software-qualified results from owner-authorized physical checks. Include recovery and rollback instructions; never overwrite a card or change hardware before explicit owner readiness. Verify exact wiring against the final hardware revision/manuals before publishing it. This guide remains a required final deliverable, not fulfilled by existing interim notes.
 
-1. Guided setup foundation (source implemented now), shared capability/status schema, migrations and theme components.
-2. Local features: timers, weather nudges, night clock and exact wake schedule, manual countdowns.
-3. Calendar-derived features and transit with quota/offline/privacy tests.
-4. Purifier adapter, safe fan capability model and disabled-by-default scenes; physical IR/network tests deferred.
-5. Settings-only USB broker, encrypted export/restore and negative-security tests.
-6. All-theme/native landscape and portrait QA; long titles, keyboard entry, offline errors, overlays, sleep edges and restoration tests. Verify resource use on the physical Pi only when requested.
-7. Build a **new immutable** Pi image from the final source, repeat packaging/static checks and ARM64 smoke tests, then update its checksum/qualification record. Existing image candidates remain untouched.
+1. Source implementation of onboarding, local features, calendar-derived features and transit is complete; keep their individual contracts and regression tests green.
+2. Finish outstanding room-device/scene theme, error, reconnect, keyboard and touch software review; validate packaged services and the separate iPhone allowlist. Physical IR, VeSync and real phone tests wait for owner setup and the hardware prompt.
+3. Finish final-image qualification for the source-only settings backup path (systemd socket activation, installed `luma` UID and broker/API round trip), and for the real packaged HTTP/WebSocket service.
+4. Complete the corrected fresh-image build and immutable checks: source fingerprint, checksum/XZ, raw partition, exact staged-file audit, ARM64 offline boot, API/database and restricted-gateway denial, and WebSocket delivery/disconnect. Preserve all earlier artifacts, including rejected r2.
+5. Publish the verified candidate and reflash/recovery instructions without writing a card. Perform physical display/audio/network/iPhone/device/USB/power/performance tests only after the owner explicitly prompts.
 
 Remaining owner inputs are configuration, not reasons to invent defaults: exact Woozoo labels, permitted purifier network and VeSync enrollment, transit favorites/token, selected calendars and travel buffers, dates, scene actions and backup passphrase. Enter credentials only on the device or official provider, never in chat.

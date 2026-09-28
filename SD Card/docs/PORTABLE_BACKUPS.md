@@ -61,8 +61,8 @@ USB export.
   does not start systemd or claim the packaged `luma` UID. The real
   `SO_PEERCRED` value is read, but the isolated test maps the expected service
   name to its current test UID because WSL has no appliance `luma` account.
-- Latest complete current-source backend qualification: **963 passed on Ubuntu
-  WSL**; **907 passed, 25 Linux-only skipped on Windows**. Frontend suite:
+- Latest complete current-source backend qualification: **942 passed on Linux
+  in hosted CI**; **912 passed, 30 Linux-only skipped on Windows**. Frontend suite:
   **112 passed**; TypeScript and production build passed. Linux-only inventory,
   media, socket and integration cases ran in WSL. These are still
   software/synthetic checks; no real USB device, Pi, or final image was

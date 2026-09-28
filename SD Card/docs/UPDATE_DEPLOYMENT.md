@@ -89,7 +89,12 @@ remain owner-gated.
 The repository-root `.github/workflows/luma-ci.yml` runs the complete Linux
 backend suite (including Linux-only tests), frontend tests, TypeScript/production
 build and image-manifest tests on pushes and pull requests. CI receives no
-signing secret and produces no trusted update. The repository has not yet been
-connected to a GitHub remote or given an initial commit, so the workflow is
-prepared locally but is not active on GitHub. Until that is owner-configured,
-the same Linux test/build gates are run in the configured Debian build machine.
+signing secret and produces no trusted update. It regenerates required public
+assets from checksum-pinned sources before running tests; generated assets and
+the image itself are not committed. The workflow is active on the authorized
+feature branch. Its first hosted run exposed a Linux test-fixture mismatch
+between setup-python and the OS-managed interpreter used by the Pi; the fix is
+in the branch. The hosted workflow now passes end-to-end, including the complete
+backend suite, frontend tests/build, and image-manifest tests. The focused Linux
+updater suite also passes 8/8. The configured Debian build machine remains an
+independent full-suite gate.

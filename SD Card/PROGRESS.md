@@ -17,13 +17,17 @@ signed test bundle (31 payload files) verified successfully; it was an app-only
 packaging smoke test, not applied to any Pi. Linux focused suite **8 passed**,
 including real pip wheel install, copied Debian venv, repaired entry-point
 execution and rollback; Windows **3 passed / 3 Linux-only skipped**. Frontend
-**112 passed**, TypeScript/Vite build passed. The immediately preceding full
-Debian suite was 940 passed but predates the final hardening; repeat it before
-the new image. Added repository-root GitHub Actions CI for Linux backend,
-frontend and image-manifest tests. It is prepared but inactive because this
-repo has no remote/initial commit. Full boundaries, owner workflow and recovery
-instructions are in `docs/UPDATE_DEPLOYMENT.md`. Existing card preserved;
-hardware acceptance and flashing remain owner-prompt gated.
+**112 passed**, TypeScript/Vite build passed. The complete current-source Linux
+suite is **942 passed** (11 existing warnings). Added repository-root GitHub
+Actions CI for Linux backend, frontend and image-manifest tests; published on
+`codex/luma-updater-ci-20260928`, with the full hosted workflow green at commit
+`a145048`. CI prepares checksum-pinned public assets but has no signing key.
+The fresh updater-enabled Pi image is now building from source fingerprint
+`2fa350198a6280c8b8f3656bcfac1f59ec6b20595fca31f1fcc55f102bea9132` in
+isolated Linux staging. Finish static/raw audit and offline-boot smoke before
+calling it a candidate. Existing card preserved; hardware acceptance/flashing
+remain owner-prompt gated. Full updater boundaries and recovery are in
+`docs/UPDATE_DEPLOYMENT.md`.
 
 ## September 28 — current-source cross-platform test recheck
 

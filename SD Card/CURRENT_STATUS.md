@@ -17,17 +17,26 @@ switch, health-checks and rolls back on failure. A real signed 0.2.0 test
 bundle was built and verified against the pinned public key (31 payload files;
 not applicable to the already-written card). Linux updater suite: **8 passed**,
 including pip installation in a disposable real venv, a post-rename generated
-console-script invocation, signature/tamper checks and atomic rollback. An
-earlier full Debian suite was **940 passed** before the last updater hardening;
-run the full suite again before imaging. Windows focused suite: **3 passed / 3
-Linux-only skipped**. The CI workflow is prepared at repository-root
-`.github/workflows/luma-ci.yml`, but cannot run on GitHub yet because this
-workspace has no remote or initial commit. Frontend remains **112 passed** and
-TypeScript/production build passed (`index-DgQv9Dlb.js`, `index-CjCfDND2.css`).
+console-script invocation, signature/tamper checks and atomic rollback. The
+current full Debian backend suite is **942 passed** (11 existing warnings);
+Windows focused suite: **3 passed / 4 Linux-only skipped**. Frontend remains
+**112 passed** and TypeScript/production build passed
+(`index-DgQv9Dlb.js`, `index-CjCfDND2.css`).
 
-**Next:** repeat full current-source Linux suite and builder/image-checker tests;
-build an updater-enabled fresh candidate in a new staging directory, qualify
-its source/partition and offline boot; do not flash the owner's existing SD.
+The source, documentation, and CI workflow are published on the authorized
+feature branch
+[`codex/luma-updater-ci-20260928`](https://github.com/BrianBGoldshtein/LumaSmartHub/tree/codex/luma-updater-ci-20260928)
+at commit `a145048`. GitHub Actions has been activated on that branch. The
+hosted run is green: complete Linux backend suite, checksum-pinned asset
+preparation, frontend tests/build, and image-manifest tests all passed. It also
+confirms **942 backend tests** on Ubuntu. The focused Linux updater suite passes
+**8/8**, including a real venv relocation/entrypoint check. Neither CI nor the
+repository contains the update-signing private key.
+
+**Current build:** a fresh updater-enabled Pi 4 image is building in isolated
+Linux staging, source fingerprint `2fa350198a6280c8b8f3656bcfac1f59ec6b20595fca31f1fcc55f102bea9132`.
+Finish package generation, raw/filesystem audit and offline boot smoke before
+calling it a candidate. Do not flash or overwrite the owner's existing SD.
 Updater deployment itself remains untested on a physical Pi. Narrow/portrait/
 touch, actual Pi/phone/appliance/campus network tests remain owner-gated.
 

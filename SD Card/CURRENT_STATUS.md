@@ -27,8 +27,8 @@ TypeScript/production build passed (`index-DgQv9Dlb.js`,
 The source, documentation, and CI workflow are published on the authorized
 feature branch
 [`codex/luma-updater-ci-20260928`](https://github.com/BrianBGoldshtein/LumaSmartHub/tree/codex/luma-updater-ci-20260928)
-at commit `a3afdad`. GitHub Actions run
-[36475981758](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36475981758)
+at commit `c613252`. GitHub Actions run
+[36488243784](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36488243784)
 is green: complete Linux backend suite, checksum-pinned asset preparation,
 frontend tests/build, and image-manifest tests all passed. It confirms **942
 backend tests** on Ubuntu. The focused Linux updater suite passes

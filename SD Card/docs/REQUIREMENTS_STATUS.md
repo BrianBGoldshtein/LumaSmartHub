@@ -15,7 +15,7 @@ Software evidence currently recorded: **942 backend tests passed on Linux
 in hosted CI; 912 passed / 30 Linux-only skipped on Windows; 112 frontend
 tests passed; TypeScript/Vite build passed.** The current Windows results are
 from a fresh complete run against this working copy. CI for authorized
-feature-branch commit `a3afdad` is green (run 36475981758). No private signing
+feature-branch commit `c613252` is green (run 36488243784). No private signing
 or SSH key is in GitHub or source.
 
 A corrected r4 Raspberry Pi 4 image is being built from source fingerprint

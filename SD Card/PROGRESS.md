@@ -22,7 +22,7 @@ suite is **942 passed** in hosted CI; the fresh Windows run is **912 passed,
 30 Linux-only skipped** (one existing warning). Added repository-root GitHub
 Actions CI for Linux backend, frontend and image-manifest tests; published on
 `codex/luma-updater-ci-20260928`, with the full hosted workflow green at commit
-`a3afdad` (run 36475981758). CI prepares checksum-pinned public assets but has
+`c613252` (run 36488243784). CI prepares checksum-pinned public assets but has
 no signing key. The corrected r4 updater-enabled Pi image is building in
 isolated Linux staging with source fingerprint
 `770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921`; r2 was

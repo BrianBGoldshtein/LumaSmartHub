@@ -1,0 +1,11 @@
+[Unit]
+Description=Create unique SSH host keys on first boot
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

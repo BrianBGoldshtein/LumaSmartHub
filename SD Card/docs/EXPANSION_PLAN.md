@@ -1,0 +1,162 @@
+# Luma expansion and guided setup plan
+
+Updated September 26, 2026. This is the durable implementation plan, not a claim that the expansion is already shipped. The owner selected features **1, 2, 3, 4, 5, 7, 8, 9 and 10**; feature 6 (meeting/focus-mode integration) is excluded. Guided onboarding is now implemented in source for existing capabilities. Expansion-specific setup cards arrive with their working features, not as nonfunctional switches.
+
+## Non-negotiable constraints
+
+- Owner addition implemented in source: free native [voice question library](VOICE_LIBRARY.md) for weather, next/today/tomorrow calendar, ongoing events, outstanding/due tasks, timer status, time/date and help. No AI tokens/cloud fallback; preserve privacy and existing offline speech stack. Included in final-image scope alongside selected numbered features.
+
+- Raspberry Pi 4 / existing memory and hardware budget; keep FastAPI, React, SQLite and one kiosk browser. No additional Home Assistant server, MQTT stack or cloud language model required.
+- Hardware is not assembled. Do not flash, purchase equipment, enroll accounts or claim device acceptance until the owner asks. Configuration and software tests are separate from physical qualification.
+- Preserve saved games, scores, settings, account tokens, privacy and microphone-off choices. **Tetris timing is frozen.** Do not retune it during this work.
+- Local Hey Luma is default-on for new installs; optional phrase checks assess recognition/levels, not personalized voice-model training. Audio remains local/in-memory. Siri stays on the iPhone; Shortcuts are supported commands, not Siri-exclusive Bluetooth audio routing.
+- Stanford Visitor requires owner acceptance of portal terms; eduroam uses the Stanford SUNet certificate profile. Never bypass certificate checks or automatically accept terms. Do not assume campus peer-to-peer or IoT connectivity works.
+- Phone/PIN presence gates private information. Tailscale transport, a remote command, restored settings or a completed setup step never count as physical presence.
+
+## 0. Guided first-run setup — implemented foundation
+
+### Flow and visual contract
+
+Four stages: **Welcome → Essentials → Make it yours → Ready**.
+
+1. Welcome: live theme choice, clear local/privacy explanation, current Hey Luma state and immediate microphone-off control.
+2. Essentials: network (including offline continuation), location/timezone/display/speaker, optional fallback PIN. Each is its own page; save changed fields before continuing.
+3. Optional connections: Google Calendar, nearby iPhone, local voice check, private Siri Shortcut transport. Each has Continue, Set up later, and Finish the rest later. Pairing/calibration must finish or be cancelled before advancing.
+4. Review: actual saved configuration status, deferred steps and revisit controls. Finishing only dismisses onboarding; it does not manufacture provider health or hardware-test passes.
+
+Reuse existing setup panels and real APIs rather than duplicate account/network logic. Keep large titles, readable short instructions, minimum 48px wizard actions, consistent theme tokens and the existing Google calendar colors. Hearth uses its serif headings, Glass its existing clean typography, Neon Grid its pixel typography and integer spacing. Setup scrolls vertically for touch entry; the normal kiosk does not. No new gameplay styling or timing changes.
+
+### Persistence, privacy and recovery
+
+- Local-only `GET/POST /api/v1/onboarding`; versioned SQLite cache record contains only a whitelisted current step and `reviewed`/`later` statuses. It stores no form drafts, passwords, PINs or account data. Existing providers own successful credential persistence.
+- Save after each navigation transition; restore after restart. Reopening does not erase configuration. Existing completed installations are not forced through setup again; All settings exposes guided setup.
+- Changed location/PIN/calendar fields warn before leaving, including on-screen keyboard edits. Explicit save clears the warning. Browser reload/exit warns about unsaved edits; secrets remain memory-only until submitted to their dedicated secure local endpoint.
+- Errors remain on the current step, with retry or offline/defer choices. Only explicitly finishing Review sets `onboarding_completed`. Skipping voice calibration does not mute an enabled microphone; mute is a separate, explicit action.
+- Google consent returns through the existing callback page, then **Continue guided setup** restores the saved step. Portal terms and account consent belong to the owner. Do not put tokens in URL parameters or progress records.
+- Demo is isolated: preview navigation uses a separate localStorage key and no real configuration writes. It says sample preview rather than connected/verified. Real progress uses SQLite, not browser storage.
+
+### Extension contract for all future features
+
+After the essentials, add a single **Choose your extras** screen with short, optional categories: Daily rhythm; Dates & travel; Room devices; Recovery. Do not lengthen the mandatory flow as features grow. The owner selects categories, then sees one configuration task at a time. Keep **Set up later** throughout. Existing users get a dismissible **New features available** entry in settings, never a forced first-boot replay.
+
+Each feature declares: stable ID/schema version; availability/capabilities; prerequisites; local vs cloud disclosure; public/private default; durable non-secret settings; validation; setup status; optional connection check; retry/defer and disconnect route. Statuses distinguish **Not set up / Saved for later / Configured / Connection checked / Needs attention / Unavailable on this device**. Avoid a single misleading green tick.
+
+- Daily rhythm: timer defaults → leave-soon calendar/buffers → weather-nudge thresholds → night clock/brightness → exact morning ramp behavior. Preview day/night without silently changing real display power.
+- Dates & travel: manual countdowns first; Google-linked dates only when connected; transit token entered locally, then agency/stop/direction picker and optional live-data check. Missing feeds get honest fallback copy.
+- Room devices: explain campus network prerequisite → VeSync enrollment → discover/select Core 300S → supported controls → separately identify both Woozoos → guided one-device-at-a-time IR checks → name devices → build scenes → review triggers. No scene is enabled by pairing alone.
+- Recovery: explain settings-only scope → choose a verified removable USB → set an export passphrase in memory → review exclusions → export/verify/eject. Backups never require surrendering accounts or contain raw database exports.
+- Final review: which information is public, which account connections work, which features are deferred, which scenes are **disabled**, and which tests await hardware. Start the dashboard even when every optional feature is skipped.
+
+Acceptance: fresh/offline boot, restart every step, return from OAuth/portal, invalid input, provider failures, secret-free progress, saved mute, keyboard-only/touch flow, portrait/landscape and all three themes; deferred hardware checks remain explicit. Save progress at transitions, not every keystroke.
+
+## Shared runtime and UI architecture
+
+### Core to-do calendar refinement — September 26, implemented in source
+
+Owner confirmed that tasks are titles of all-day, possibly multi-day events in one specified Google calendar; every task occupying today must appear. The last visible Google day is due (API exclusive end minus one day). Default color is outstanding; **only the chosen completed color**, not every custom color, is done. Keep checked/dimmed completed tasks visible through their date range. Hub completion/reopening performs conditional color-only Google patches; manual recoloring syncs back. All tasks remain reachable with large-type pagination. Setup includes a live event-palette picker and explicit optional write-consent upgrade; privacy/local-only/ETag/offline guards apply. See [TODO_CALENDAR.md](TODO_CALENDAR.md). No real-account or hardware acceptance claimed, and historical image unchanged.
+
+Backend owns timers, reminders, sleep/ramp decisions and integrations; frontend renders timestamps against a clock anchor. Persist meaningful transitions, not each second or animation frame. Use bounded provider timeouts, isolated workers, quotas and backoff. Extend snapshots with timer, departure, nudge, display-mode, countdown, transit and appliance capability state.
+
+Reuse one notification/island design. Priority: active touch controls → timer completion → leave-soon → phone notification → routine status. Do not stack floating widgets. Timer readouts appear on information pages; ambient games stay immersive, except an actual completion may briefly interrupt without resetting game state. Add Transit and Countdowns pages only when configured and populated. Preserve existing cycle durations by default.
+
+Fonts, layout, margins, border treatment and color tokens stay consistent within each theme. Arcade aligns to the master pixel grid. Large numbers and minimal labels; calendar event colors remain provider-authentic. Private pages are redacted on lost presence/control connection. Bound voice/remote commands to named actions and allowlisted device IDs, never arbitrary code, raw IR, credentials or backup paths.
+
+## 1. Focus timer
+
+**September 26 implementation checkpoint:** timer runtime, durable state, themed controls, local voice/Shortcut actions, presets in optional setup and at-most-once sound bridge are implemented in source. See [FOCUS_TIMER.md](FOCUS_TIMER.md). Night-clock suppression will be connected when display modes are implemented. Feature 3 is also implemented in source; remaining numbered features are planned. New image packaging and physical checks remain outstanding.
+
+One active timer, Focus 25 / Break 5 presets; touch duration 1–240 minutes. Starting over requires confirmation. Voice durations: 5/10/15/20/25/30/45/60 minutes, plus pause/resume/cancel/show. Freeform labels are touch-only. Ordinary cycling continues. On completion show one island and one local chime; during night mode it is silent and dim.
+
+Use monotonic time while running and a persisted UTC deadline for restart. Do not replay a late chime after reboot. With an untrusted system clock, pause recovery until time is verified. Test pause/resume, power loss, clock jumps, completion deduplication and replacement confirmation.
+
+## 2. Leave-soon reminders
+
+**Source implemented:** opt-in calendar/buffer setup, private themed notice and per-occurrence edit/snooze/dismiss controls, restart-safe bounded records, freshness/privacy guards and existing-poller integration. See [DEPARTURES.md](DEPARTURES.md). No new permissions, Google writes or travel-time claims. New image and eventual physical acceptance remain outstanding.
+
+Opt-in calendars; departure time = event start minus preparation minus travel. Defaults: 5-minute preparation and 10-minute travel, editable per occurrence. No implicit GPS or route-time claim. Exclude cancelled, declined, all-day, Sleep Time, already-started and virtual-only events unless explicitly included. Retain only minimal virtual/declined booleans needed from Google, not an attendee dossier.
+
+Show from 15 minutes before departure until event start; minimal “Leave in…” / “Time to leave.” Five-minute snooze or dismiss applies to that occurrence. Refreshes honor reschedules/cancellations; earliest qualifying overlapping reminder wins. Private and visual-only by default; remote connectivity cannot reveal it.
+
+## 3. Weather nudges
+
+**Source implemented:** opt-in hint preferences, threshold validation, nullable forecast extensions, DST-safe provider timestamps, pure prioritized rules, themed inline display and optional one-task setup. See [WEATHER_NUDGES.md](WEATHER_NUDGES.md). No additional polling or per-tick writes. A saved preference is not a successful connection test. Old image unchanged.
+
+Extend the existing Open-Meteo 15-minute fetch with hourly apparent temperature, precipitation amount/probability and gusts. Initial editable rules: rain probability ≥50% in the next six hours; gusts ≥25mph; apparent high ≥90°F or low ≤45°F. Prefer rain, then wind, then temperature, with stable wording and one qualified nudge at a time.
+
+Place within Home/Weather, not another floating notification. Missing or stale data means no claim, never “all clear.” This is convenience guidance, not emergency or medical advice. Reuse cached forecasts and do not add a separate frequent network poll.
+
+## 4. Dim night clock
+
+**Implemented in source; image and physical qualification pending:** timing/recovery, verified DDC handoff, service/API/desktop bridge, clock-only themed UI and Night & wake Extras/review. The software headless compositor probe and isolated real HTTP/WebSocket browser wake checks passed; these do not qualify the Pi's physical output. See [NIGHT_DISPLAY_IMPLEMENTATION.md](NIGHT_DISPLAY_IMPLEMENTATION.md) for evidence and remaining gates.
+
+Explicit display modes: day / night-clock / off / waking. During effective Sleep Time show large hours/minutes only, black background, subdued theme text, no seconds, calendar or animated cycling. Initial night brightness 5%, adjustable separately from daytime brightness. Good night enters night-clock; explicit screen-off remains available.
+
+Overlapping sleep events form one effective sleep interval. Never brighten before its end automatically. Preserve darkness/private startup during reboot/reconnect; no sudden private-content flash. Describe software dimming honestly if physical panel brightness is unsupported.
+
+## 5. Gentle wake
+
+Owner decisions: **Good morning explicitly overrides sleep early and ramps over 20 seconds. Scheduled waking starts at the actual end of Sleep Time and takes five minutes; never before.** An explicit command during a ramp starts a 20-second ramp from current brightness; repeated commands must not keep extending it. Good night or off cancels it; manual brightness cancels automatic ramp control.
+
+Scheduled wake is silent. Explicit morning may give one privacy-safe local briefing. Serialize and bound physical DDC updates; use compositor dimming between supported hardware updates, not DDC at animation-frame rate. Test boundaries, DST, overlaps, cancellations and reboot recovery separately from physical panel acceptance.
+
+## 7. Important-date countdowns
+
+**Source and local software integration qualified.** Durable dates, private/public snapshots, exact Google pin refresh, slide/picker/Extras/voice and real browser/HTTP/WebSocket persistence/privacy checks are complete. Read [COUNTDOWNS.md](COUNTDOWNS.md) for evidence. Final-image and real account/device acceptance remain outstanding.
+
+Up to 12 pinned items: manual date/optional time or specific Google event. Manual annual February 29 uses February 28 in non-leap years. Show days / Tomorrow / Today; timed items use hours during the last day. Maximum three entries per view, paginated with consistent large type.
+
+Google colors and event changes remain intact; stale/deleted links show an honest state. Use on-demand future selection and separate pinned-reference refresh, not bulk year-long calendar synchronization. Private by default, public per item only after opt-in. Voice shows countdowns; touch edits them.
+
+## 8. Transit
+
+Source and local software integration are qualified: backend, themed slide/setup, native voice, cycling, onboarding review, real browser/HTTP/WebSocket persistence/privacy/disconnect and error recovery. Read `TRANSIT.md` for contracts/evidence. Real provider access requires owner setup; final-image and physical acceptance remain outstanding.
+
+Prioritize Stanford Marguerite and Caltrain; also support available BART, VTA and SamTrans data. Up to six favorite stop/direction groups, three departures per view, large minutes and route badges. Private by default; explicit public opt-in per favorite.
+
+Plan against 511 Transit JSON StopMonitoring/ScheduledStop feeds using an owner-entered token. Enforce a global rolling budget of 55 requests/hour including retries, tests and manual refreshes (under the usual 60/hour allocation; verify actual token terms at integration). Share agency responses where possible; favor the visible Stanford/Caltrain group, rotate the others, cache metadata and pause routine night polling. Discover supported agency IDs from provider metadata.
+
+Clearly distinguish predicted, scheduled and stale. Remove expired departures; after five minutes stale, fall back to still-valid schedules or Unavailable. Marguerite live-feed availability is a capability gate: use available schedules and an official live-map handoff if required, never scraping or fabricated live ETAs. Voice: show transit / next departure. References: [511 transit data](https://511.org/open-data/transit), [Stanford live map](https://transportation.stanford.edu/getting-stanford/marguerite/marguerite-live-map).
+
+## 9. Room appliances and scenes
+
+**Purifier, fan setup, local/calendar/presence scenes and a separately consented remote-scene allowlist exist in source; feature9 remains incomplete and unqualified.** Pinned pyvesync3.4.2 adapter, durable stores, conservative purifier polling, USB/LIRC broker, owner-local bounded APIs, themed optional Extras setup/control, non-secret onboarding review and native local voice scene actions exist. “Run … scene” and “cancel scene” use the same owner/device/clock guards; “Good morning” remains the briefing. Remote appliance control stays off unless the owner locally grants exact saved scenes/actions; any edit or device relink invalidates review. Remaining all-theme/keyboard/error UI checks, packaged trigger/integration qualification, Linux/exact-image/real-WS gates and owner hardware/provider acceptance are detailed in [ROOM_DEVICES.md](ROOM_DEVICES.md) and [SCENES.md](SCENES.md). No real provider/account/device acceptance inferred.
+
+### Levoit
+
+Owner clarified **Core 300S / 300S-P**, not yet set up in VeSync. Enroll in the vendor app first, on a permitted network. Use a pinned direct pyvesync adapter rather than run Home Assistant on the Pi. Cloud-dependent, unofficial library: handle expiry and breaking changes explicitly; prefer persisted sessions over storing a password. Confirm precise API/library version before implementation.
+
+Select the specific purifier; expose only discovered capabilities (power, speed, supported sleep/auto/display options and reported air-quality/filter values). Poll conservatively with backoff. Distinguish command acceptance from reported device state. No queued offline commands that execute hours later. Network compatibility is a prerequisite, not an assumption or permission to bypass campus policy. References: [pyvesync](https://github.com/webdjoe/pyvesync), [VeSync integration capabilities](https://www.home-assistant.io/integrations/vesync), [Stanford student networking](https://uit.stanford.edu/students).
+
+### Two independent Woozoos
+
+Both have hand remotes; exact labels/models still required. Separate remotes do not prove unique IR addresses. Plan USB/LIRC to avoid ReSpeaker GPIO conflicts, first proving independent reception. If necessary use separately addressable directed/shielded emitter zones, as approved for planning. No equipment purchase before model/protocol and installation review.
+
+Learn a single requested button in a bounded session; no continuous recording or arbitrary shell commands. Test Fan 1 while observing Fan 2, then reverse. IR has no acknowledgement: report **Command sent · state unconfirmed**. Never issue “off” using a blind power toggle. Unknown/toggle-only commands require manual confirmation and are ineligible for autonomous scenes; do not retry uncertain IR toggles. [LIRC USB transmitter documentation](https://www.lirc.org/html/irtoy.html) is a candidate interface reference, not a confirmed shopping list.
+
+### Scenes
+
+Morning, Night, Arrive and Away editors start empty and disabled. Owner chooses actions and enables triggers explicitly. Distinguish a manual command from optional calendar-triggered scenes. Presence debounce: arrival 30 seconds authenticated nearby; departure three minutes; five-minute cooldown. Boot, token refresh, PIN unlock and Tailscale alone never trigger arrival. Manual device control suppresses that device's scene changes for one hour. Never replay missed scene runs; show partial failures. Remote appliance control is a separate opt-in with an allowlist.
+
+## 10. Settings-only USB backup and restore
+
+Local guided flow: select verified removable USB → scope review → passphrase twice → export → read-back verify → eject. Export only allowlisted appearance/location/timezone/cycles/night settings, presets, local dates, reminder preferences, transit favorites, non-secret scene definitions and validated game checkpoints. Do not export raw SQLite or Chromium profiles. The encrypted serializer, transactional settings-only database apply, USB identity inventory, peer-checked root broker/socket, owner-gated API, expiring preview/apply workflow, browser-local game-checkpoint bridge and themed UI are implemented in source; see [PORTABLE_BACKUPS.md](PORTABLE_BACKUPS.md). Packaged-runtime/image qualification and actual removable-media/device acceptance remain outstanding.
+
+Exclude OAuth/VeSync/511/Luma tokens, Wi-Fi credentials, Bluetooth bonds, Tailscale/SSH material, PIN verifiers, client JSON/account metadata, cached private calendar/notification data and audio. Google-linked items restore unlinked; device actions restore disabled pending rediscovery. Keep existing private same-card recovery backups clearly separate from this portable format.
+
+Use versioned authenticated encryption with bounded schema/size checks; passphrase stays in memory. Broker validates actual removable transport and excludes system/boot disks; no arbitrary destination path or formatting. Write a new temporary file, flush, verify and atomically rename without replacing the last good export. Handle removal/full media/failed eject honestly.
+
+Import authenticates and validates before preview/apply. Apply transactionally; preserve current accounts and the most restrictive mic-mute state, never restore presence or fire automations. Optional local reminder after 30 days; no automatic USB writes. Test tampering, wrong passphrase, schema mismatch, interrupted writes and sentinel-secret absence.
+
+## Delivery sequence and acceptance
+
+Owner's final-handoff addition: after development and software qualification are complete, deliver a clear hardware-to-first-boot guide based on the finalized parts. Cover powered-off wiring, screen/touch/microphone/speaker connections and power requirements, connecting a microSD reader to this Windows laptop, identifying and confirming the exact removable card before flashing the final verified image (not ordinary file copying), safe eject/first boot, campus network setup, and connecting this laptop to the Pi for key-only SSH-assisted provisioning and diagnostics. Clearly separate software-qualified results from owner-authorized physical checks. Include recovery and rollback instructions; never overwrite a card or change hardware before explicit owner readiness. Verify exact wiring against the final hardware revision/manuals before publishing it. This guide remains a required final deliverable, not fulfilled by existing interim notes.
+
+1. Guided setup foundation (source implemented now), shared capability/status schema, migrations and theme components.
+2. Local features: timers, weather nudges, night clock and exact wake schedule, manual countdowns.
+3. Calendar-derived features and transit with quota/offline/privacy tests.
+4. Purifier adapter, safe fan capability model and disabled-by-default scenes; physical IR/network tests deferred.
+5. Settings-only USB broker, encrypted export/restore and negative-security tests.
+6. All-theme/native landscape and portrait QA; long titles, keyboard entry, offline errors, overlays, sleep edges and restoration tests. Verify resource use on the physical Pi only when requested.
+7. Build a **new immutable** Pi image from the final source, repeat packaging/static checks and ARM64 smoke tests, then update its checksum/qualification record. Existing image candidates remain untouched.
+
+Remaining owner inputs are configuration, not reasons to invent defaults: exact Woozoo labels, permitted purifier network and VeSync enrollment, transit favorites/token, selected calendars and travel buffers, dates, scene actions and backup passphrase. Enter credentials only on the device or official provider, never in chat.

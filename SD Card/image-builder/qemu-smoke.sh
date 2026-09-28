@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Diagnostic only: QEMU lacks the Pi bootloader and several real peripherals.
+# Never use this copied DTB or overlay as a shipping image or hardware boot proof.
+set -euo pipefail
+IMAGE_DIR=$(realpath "${1:?Path to completed image-luma-pi4 directory}")
+[[ -f "${IMAGE_DIR}/luma-pi4.img" && -f "${IMAGE_DIR}/boot.vfat" ]] || exit 1
+[[ ${2:-} == '' || ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]] || { echo 'Optional second argument: --api-check, --gateway-check or --tailscale-check' >&2; exit 1; }
+[[ $# -le 3 && ( ${3:-} == '' || ${3:-} == --diagnostics ) ]] || { echo 'Optional third argument: --diagnostics (fresh, unprovisioned images only)' >&2; exit 1; }
+SMOKE_SECONDS=180
+KERNEL_ARGS='console=ttyAMA1,115200 root=/dev/disk/by-slot/system fsck.repair=yes rootwait systemd.show_status=yes'
+if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]]; then
+  # systemd.run normally replaces default.target. Keep the appliance's graphical
+  # boot and add the generated diagnostic unit alongside it, only in this VM.
+  # Output is health/version/database only; never dump settings or credentials.
+  KERNEL_ARGS+=' systemd.unit=graphical.target systemd.wants=kernel-command-line.service systemd.run_success_action=none systemd.run_failure_action=none'
+  if [[ ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]]; then
+    # Start the otherwise-disabled unit only in this disposable VM. No token,
+    # state mutation, or host network forwarding: an empty POST must get 401.
+    KERNEL_ARGS+=' systemd.wants=luma-shortcut-gateway.service'
+    KERNEL_ARGS+=' systemd.run="/usr/bin/curl --fail --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 2 http://127.0.0.1:8742/api/v1/health --next --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 2 --request POST http://127.0.0.1:8743/command"'
+    if [[ ${2:-} == --tailscale-check ]]; then
+      # Disposable offline VM only: start daemon without up/login, exercising
+      # its real firewall, TUN and local broker; do not read/generated identities.
+      KERNEL_ARGS=${KERNEL_ARGS%\"}
+      KERNEL_ARGS+=' --next --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 30 --header Content-Type:application/json --data-binary @/opt/luma/qualification/tailscale-status.json http://127.0.0.1:8742/api/v1/tailscale"'
+      KERNEL_ARGS+=' systemd.wants=luma-tailscaled.service'
+    fi
+  else
+    KERNEL_ARGS+=' systemd.run="/usr/bin/curl --fail --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 2 http://127.0.0.1:8742/api/v1/health"'
+  fi
+fi
+if [[ ${3:-} == --diagnostics ]]; then
+  # Keep the failed normal run. This longer diagnostic is not a normal-boot
+  # timing pass; console journal output is only appropriate for fresh images.
+  SMOKE_SECONDS=360
+  KERNEL_ARGS+=' systemd.journald.forward_to_console=1'
+  KERNEL_ARGS=${KERNEL_ARGS//--retry 60/--retry 150}
+fi
+SMOKE_ROOT=$(mktemp -d /tmp/luma-qemu.XXXXXXXX)
+for asset in kernel8.img initramfs8 bcm2711-rpi-4-b.dtb; do
+  mcopy -i "${IMAGE_DIR}/boot.vfat" "::${asset}" "${SMOKE_ROOT}/${asset}"
+done
+# QEMU attaches the SD image to mmcnr, unlike the physical Pi's emmc2 path.
+# Model firmware metadata only in this disposable copy, so official slot rules
+# can resolve the root device without changing the image's cmdline or fstab.
+fdtput -t s "${SMOKE_ROOT}/bcm2711-rpi-4-b.dtb" /aliases mmc0 /soc/mmcnr@7e300000
+fdtput -t s "${SMOKE_ROOT}/bcm2711-rpi-4-b.dtb" /aliases mmc1 /emmc2bus/mmc@7e340000
+fdtput -c "${SMOKE_ROOT}/bcm2711-rpi-4-b.dtb" /chosen/bootloader
+fdtput -t u "${SMOKE_ROOT}/bcm2711-rpi-4-b.dtb" /chosen/bootloader boot-mode 1
+fdtput -t u "${SMOKE_ROOT}/bcm2711-rpi-4-b.dtb" /chosen/bootloader partition 1
+qemu-img create -f qcow2 -F raw -b "${IMAGE_DIR}/luma-pi4.img" "${SMOKE_ROOT}/overlay.qcow2" 16G
+printf 'Diagnostic directory: %s\n' "${SMOKE_ROOT}"
+printf 'Bounded emulator duration: %s seconds; diagnostic journal: %s\n' "${SMOKE_SECONDS}" "${3:-off}"
+set +e
+timeout --signal=TERM "${SMOKE_SECONDS}" qemu-system-aarch64 -M raspi4b -m 2G -smp 4 \
+  -kernel "${SMOKE_ROOT}/kernel8.img" -initrd "${SMOKE_ROOT}/initramfs8" \
+  -dtb "${SMOKE_ROOT}/bcm2711-rpi-4-b.dtb" \
+  -drive "file=${SMOKE_ROOT}/overlay.qcow2,if=sd,format=qcow2" \
+  -append "${KERNEL_ARGS}" \
+  -display none -serial "file:${SMOKE_ROOT}/serial.log" -monitor none -nic none -no-reboot
+QEMU_STATUS=$?
+set -e
+printf 'Emulator status: %s; inspect %s/serial.log (timeout is not a boot-pass assertion)\n' "${QEMU_STATUS}" "${SMOKE_ROOT}"
+if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]]; then
+  if grep -Fq '"status":"ok","database":"ok"' "${SMOKE_ROOT}/serial.log"; then
+    echo 'API health and database integrity responded in emulation; hardware remains unqualified.'
+  else
+    echo 'No successful API health response captured.' >&2
+    exit 1
+  fi
+fi
+if [[ ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]]; then
+  if grep -Fq '{"detail":"Command authentication required."}' "${SMOKE_ROOT}/serial.log"; then
+    echo 'Dormant gateway started in the disposable VM and rejected the unauthenticated command.'
+  else
+    echo 'No gateway authentication rejection captured; inspect its startup log.' >&2
+    exit 1
+  fi
+fi
+if [[ ${2:-} == --tailscale-check ]]; then
+  if grep -Fq '"state":"NeedsLogin","command_url":null' "${SMOKE_ROOT}/serial.log"; then
+    echo 'Offline Tailscale daemon/firewall and UID-checked setup broker responded; no account enrolled.'
+  else
+    echo 'No successful offline Tailscale setup response; inspect the fresh VM log.' >&2
+    exit 1
+  fi
+fi

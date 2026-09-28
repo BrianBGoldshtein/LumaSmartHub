@@ -1,0 +1,25 @@
+device:
+  layer: rpi4
+  hostname: luma
+  user1: luma
+  user1sudo: none
+
+image:
+  layer: image-rpios
+  name: luma-pi4
+  boot_part_size: 512M
+  root_part_size: 8G
+
+layer:
+  base: luma-base
+
+# Confirmed installation location: Stanford, California, United States.
+# Change to the actual installation country before deploying elsewhere.
+ieee80211:
+  regdom: US
+
+locale:
+  default: en_US.UTF-8
+  keyboard_keymap: us
+  keyboard_layout: English (US)
+  timezone: America/Los_Angeles

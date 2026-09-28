@@ -1,0 +1,328 @@
+from __future__ import annotations
+
+import asyncio
+import os
+from pathlib import Path
+from zoneinfo import ZoneInfo
+from collections import deque
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from .calendar_logic import active_sleep_end, ongoing_events, todo_events, todo_view, visible_events
+from .commands import CommandRouter
+from .models import (
+    CalendarEvent,
+    Command,
+    CommandResult,
+    DisplayPower,
+    PhoneNotification,
+    PrivacyLevel,
+    RuntimeState,
+    WeatherSnapshot,
+)
+from .serde import (
+    calendar_event_from_dict,
+    notification_from_dict,
+    runtime_state_from_dict,
+    settings_from_dict,
+    to_primitive,
+    weather_from_dict,
+)
+from .state_machine import StateMachine
+from .storage import Storage
+from .focus_timer import FocusTimer, TIMER_COMMANDS
+from .weather_nudges import weather_nudge
+from .departures import Departures
+from .display_cycle import DisplayCycle
+from .display_handoff import DisplayHandoff
+from .countdowns import Countdowns
+from .transit import Transit
+from .agenda import day_agenda
+from .room import Room
+from .fans import Fans
+from .scenes import Scenes
+
+
+def display_clock_trusted():
+    # Windows is a development preview host, not the delivered Pi. Linux uses
+    # a boot-local timesyncd marker, never a persistent "clock was OK" flag.
+    return os.name == 'nt' or Path('/run/systemd/timesync/synchronized').is_file()
+
+
+class LumaService:
+    """Owns mutable appliance state and produces privacy-safe UI snapshots."""
+
+    def __init__(self, storage: Storage, *, clock_trusted=display_clock_trusted):
+        self.storage = storage
+        settings = storage.load_settings()
+        raw_runtime = storage.get_cache("runtime", "state")
+        runtime = runtime_state_from_dict(raw_runtime) if raw_runtime else RuntimeState()
+        self.machine = StateMachine(settings, runtime)
+        self.router = CommandRouter(storage, self.machine)
+        self.timer = FocusTimer(storage)
+        self.departures = Departures(storage)
+        self.countdowns = Countdowns(storage)
+        self.transit = Transit(storage)
+        self.room = Room(storage)
+        self.fans = Fans(storage)
+        self.scenes = Scenes(storage)
+        self.display = DisplayCycle(storage)
+        self.display_handoff = DisplayHandoff()
+        self.display_state = None
+        self._display_tick_sample = None
+        self.display_clock_trusted = clock_trusted
+        self.display_bridge_generation = None
+        self.events = self._load_events()
+        self.weather = self._load_weather()
+        self.todo_write_authorized = False
+        self.calendar_synced_at: datetime | None = None
+        self.calendar_sync_error = False
+        self.notifications = self._load_notifications()
+        self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
+        self._sync_sleep(datetime.now(UTC))
+
+    @property
+    def settings(self):
+        return self.machine.settings
+
+    @property
+    def state(self):
+        return self.machine.state
+
+    def _load_events(self) -> list[CalendarEvent]:
+        return [
+            calendar_event_from_dict(item)
+            for item in (self.storage.get_cache("calendar", "events") or [])
+        ]
+
+    def _load_weather(self) -> WeatherSnapshot | None:
+        payload = self.storage.get_cache("weather", "forecast")
+        return weather_from_dict(payload) if payload else None
+
+    def _load_notifications(self) -> deque[PhoneNotification]:
+        # ANCS identifiers and content are valid only for the current connection.
+        self.storage.set_cache("phone", "notifications", [])
+        return deque(maxlen=20)
+
+    def _sync_sleep(self, now: datetime) -> None:
+        previous = to_primitive(self.state)
+        sleep_end = active_sleep_end(
+            self.events,
+            calendar_ids=set(self.settings.sleep_calendar_ids),
+            title=self.settings.sleep_event_title,
+            now=now,
+        )
+        self.machine.set_scheduled_sleep(sleep_end, now)
+        self._sync_display(now)
+        current = to_primitive(self.state)
+        # Tick timestamps are volatile. Only meaningful changes should wear the SD.
+        previous.pop("updated_at", None)
+        current.pop("updated_at", None)
+        if previous != current:
+            self._persist_runtime()
+
+    def _sync_display(self, now):
+        if not self.settings.onboarding_completed:
+            # Commissioning must remain usable offline so Wi-Fi can be set up.
+            self.display_state = None
+            return
+        temporary = self.state.temporary_wake_until and self.state.temporary_wake_until > now
+        morning = self.state.morning_override_until and self.state.morning_override_until > now
+        ends = [end for end in (self.state.forced_sleep_until, None if morning else self.state.scheduled_sleep_end)
+                if end and end > now]
+        effective_end = max(ends) if ends and not temporary else None
+        try:
+            trusted = self.display_clock_trusted()
+        except OSError:
+            trusted = False
+        state = self.display.sync(now, sleep_end=effective_end, brightness=self.settings.brightness,
+                                  night_brightness=self.settings.night_brightness,
+                                  night_clock=self.settings.night_clock_enabled, trusted=trusted)
+        power = state['mode'] != 'off'
+        target = int(state['night_brightness'] if state['mode']=='night-clock' else state['day_brightness'])
+        state['handoff'] = self.display_handoff.prepare(power=power, brightness=target)
+        self.display_state = state
+        self.state.display_power = DisplayPower.ON if power else DisplayPower.OFF
+
+    def tick(self, now: datetime | None = None) -> None:
+        self._sync_sleep(now or datetime.now(UTC))
+        self.publish("clock.tick")
+
+    def timer_quiet(self):
+        return self.state.display_power == 'off' or self.settings.volume == 0 or bool(self.display_state and self.display_state['quiet'])
+
+    def timer_tick(self, now=None, *, trusted=None):
+        self._sync_sleep(now or datetime.now(UTC))
+        # HTTP/bridge reads also advance the cycle. Compare with the previous
+        # broadcast sample, not the last read, or a polling client can consume
+        # the waking→day transition before the kiosk ever hears about it.
+        if self.display_state != self._display_tick_sample:
+            self._display_tick_sample = self.display_state
+            self.publish('display.updated')
+        if self.timer.tick(now, trusted=trusted, quiet=self.timer_quiet()):
+            self.publish('timer.updated')
+
+    def _persist_runtime(self) -> None:
+        self.storage.set_cache("runtime", "state", self.state)
+
+    def replace_events(self, events: list[CalendarEvent], now: datetime | None = None) -> None:
+        self.events = events
+        self.storage.set_cache("calendar", "events", events)
+        self._sync_sleep(now or datetime.now(UTC))
+        self.publish("calendar.updated")
+
+    def replace_weather(self, weather: WeatherSnapshot) -> None:
+        self.weather = weather
+        self.storage.set_cache("weather", "forecast", weather)
+        self.publish("weather.updated")
+
+    def update_settings(self, updates: dict[str, Any], now: datetime | None = None) -> None:
+        payload = to_primitive(self.settings)
+        payload.update(updates)
+        candidate = settings_from_dict(payload)
+        self.storage.save_settings(candidate)
+        self.machine.settings = candidate
+        if 'brightness' in updates:
+            self.display.manual_brightness(now or datetime.now(UTC), candidate.brightness)
+        self._sync_sleep(now or datetime.now(UTC))
+        self.publish("settings.updated")
+
+    def receive_notification(self, notification: PhoneNotification) -> bool:
+        if notification.app_id not in self.settings.notification_app_allowlist:
+            return False
+        self.notifications = deque((item for item in self.notifications if item.id != notification.id), maxlen=20)
+        self.notifications.appendleft(notification)
+        self.publish("phone.notification")
+        return True
+
+    def remove_notification(self, notification_id: str) -> None:
+        self.notifications = deque((item for item in self.notifications if item.id != notification_id), maxlen=20)
+        self.publish("phone.notification")
+
+    def execute(self, command: Command, now: datetime | None = None) -> CommandResult:
+        now = now or datetime.now(UTC)
+        self._sync_sleep(now)
+        if command.name.value == 'screen_off' and not self.settings.onboarding_completed:
+            return CommandResult(False, 'Finish initial setup before using screen off.')
+        if command.name.value in TIMER_COMMANDS:
+            self.timer_tick(now)
+            result = self.timer.execute(command.name.value, command.value, now=now,
+                                        focus=self.settings.timer_focus_minutes, rest=self.settings.timer_break_minutes,
+                                        source=command.source)
+        else:
+            result = self.router.execute(command, now)
+        if result.accepted and self.settings.onboarding_completed:
+            if command.name.value in {'good_morning','wake'}:
+                briefing = self.display.wake(now, morning=command.name.value=='good_morning')
+                if command.name.value=='good_morning':
+                    result.data['briefing'] = briefing
+            elif command.name.value=='good_night':
+                self.display.night(now, until=self.state.forced_sleep_until or now+timedelta(hours=8))
+            elif command.name.value=='screen_off':
+                self.display.off(now)
+            elif command.name.value=='set_brightness':
+                self.display.manual_brightness(now, self.settings.brightness)
+            self._sync_sleep(now)
+        if result.state_changed:
+            self._persist_runtime()
+            self.publish("state.updated")
+        if result.accepted:
+            self.publish("command.executed", {"name": command.name.value, "page": self.state.active_page.value, **result.data})
+        return result
+
+    def phone_seen(self, now: datetime | None = None) -> None:
+        was_connected = self.state.phone_connected
+        self.machine.phone_seen(now)
+        if not was_connected:
+            self._persist_runtime()
+            self.publish("presence.updated")
+
+    def phone_disconnected(self, now: datetime | None = None) -> None:
+        self.machine.phone_disconnected(now)
+        self.notifications.clear()
+        self._persist_runtime()
+        self.publish("presence.updated")
+
+    def unlock_with_pin(self, now: datetime | None = None) -> None:
+        self.machine.unlock_with_pin(now)
+        self._persist_runtime()
+        self.publish("privacy.updated")
+
+    def snapshot(self, now: datetime | None = None, *, briefing=False) -> dict[str, Any]:
+        now = now or datetime.now(UTC)
+        self._sync_sleep(now)
+        full = self.state.privacy == PrivacyLevel.FULL and (not self.display_state or
+               (not self.display_state['awaiting_clock'] and (briefing or self.display_state['mode']=='day')))
+        selected = set(self.settings.visible_calendar_ids)
+        visible = visible_events(self.events, now=now, calendar_ids=selected) if full else []
+        todos = todo_events(
+            self.events,
+            todo_calendar_id=self.settings.todo_calendar_id,
+            now=now,
+        ) if full else []
+        notifications = list(self.notifications) if full else []
+        weather = to_primitive(self.weather) if self.weather else None
+        if weather:
+            age = now.astimezone(UTC) - self.weather.observed_at.astimezone(UTC)
+            weather["stale"] = self.weather.stale or age > timedelta(hours=2) or age < timedelta(0)
+            weather["nudge"] = weather_nudge(self.weather, self.settings, now)
+            weather["hourly"] = [hour for hour in weather["hourly"] if datetime.fromisoformat(hour["time"]) >= now.replace(minute=0, second=0, microsecond=0)]
+        calendar_fresh = bool(not self.calendar_sync_error and self.calendar_synced_at
+                              and timedelta(0) <= now - self.calendar_synced_at <= timedelta(minutes=10))
+        return {
+            "server_time": now.isoformat(),
+            "room": self.room.view(now) if full else None,
+            "countdowns": self.countdowns.snapshot(now,private=not full,
+                quiet=bool(self.display_state and (self.display_state['mode']!='day' or self.display_state['awaiting_clock']))),
+            "transit": self.transit.snapshot(now,private=not full,
+                quiet=bool(self.display_state and (self.display_state['mode']!='day' or self.display_state['awaiting_clock']))),
+            "display": self.display_state,
+            "settings": to_primitive(self.settings),
+            "state": to_primitive(self.state),
+            "weather": weather,
+            "calendar": to_primitive(visible),
+            "agenda": day_agenda(self.events, self.settings, now, fresh=calendar_fresh) if full else None,
+            "ongoing": to_primitive(ongoing_events(visible, now)),
+            "todos": sorted([todo_view(event, self.settings.todo_completed_color_id) for event in todos],
+                            key=lambda item: (item["completed"], item["due_date"], item["summary"].casefold(), item["id"])),
+            "todo_controls": {"can_update": bool(full and self.todo_write_authorized and self.settings.todo_calendar_id and self.settings.todo_completed_color_id
+                                                   and any(event.calendar_writable for event in todos)),
+                              "stale": self.calendar_sync_error or self.calendar_synced_at is None or now - self.calendar_synced_at > timedelta(minutes=10)},
+            "notifications": to_primitive(notifications),
+            "privacy_redacted": not full,
+            "timer": self.timer.snapshot(private=not full),
+            "departure": self.departures.snapshot(self.events,self.settings,now,private=not full,fresh=calendar_fresh),
+        }
+
+    def voice_snapshot(self, *, authorized: bool, now: datetime | None = None):
+        """Questions include earlier-today events, but never bypass privacy."""
+        now = now or datetime.now(UTC)
+        snapshot = self.snapshot(now)
+        start = now.astimezone(ZoneInfo(self.settings.timezone)).replace(hour=0, minute=0, second=0, microsecond=0)
+        events = visible_events(self.events, now=start, calendar_ids=set(self.settings.visible_calendar_ids)) if not snapshot['privacy_redacted'] else []
+        snapshot['voice_calendar'] = {
+            'authorized': authorized,
+            'fresh': bool(not self.calendar_sync_error and self.calendar_synced_at and timedelta(0) <= now-self.calendar_synced_at <= timedelta(minutes=10)),
+            'events': to_primitive([event for event in events if not event.self_declined]),
+        }
+        return snapshot
+
+    def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=4)
+        self._subscribers.add(queue)
+        return queue
+
+    def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
+        self._subscribers.discard(queue)
+
+    def publish(self, reason: str, action: dict[str, Any] | None = None) -> None:
+        message = {"type": reason}
+        if action:
+            message["action"] = action
+        for queue in tuple(self._subscribers):
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            queue.put_nowait(message)

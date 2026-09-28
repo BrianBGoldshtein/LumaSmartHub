@@ -1,0 +1,63 @@
+# Transit — source and local software integration qualified
+
+Discovery, durable favorites, local configuration, polling, frontend setup/slide, native voice, cycling and onboarding review are implemented and locally software-qualified. No request occurs without a token and configured favorites (or an explicit setup directory/preview request). No real provider request or owner token was used; all tests use synthetic data. This does not qualify the owner's token/feed coverage, campus network, physical Pi or final image.
+
+## Research and provider contract
+
+- [511 transit documentation](https://511.org/open-data/transit) lists operators, lines, stops, StopMonitoring and stoptimetable. The usual allocation is 60 requests per hour per token; confirm the owner's allocation during setup. Use HTTPS even where examples show HTTP.
+- [Linked transit specification](https://511.org/sites/default/files/2025-05/511%20SF%20Bay%20Open%20Data%20Specification%20-%20Transit.pdf) describes SIRI departures. Discovery uses the JSON appendix, not the XML shape: operators/lines use `content`; stops use `Contents.dataObjects.ScheduledStopPoint`. Separate IDs for directory routes and real-time lines are preserved. Malformed siblings are skipped; unsupported shapes fail honestly.
+- [2026 data agreement](https://511.org/sites/default/files/2026-04/511_Data_Agreement_Final_2026.pdf) reviewed through the end: show “data provided by 511.org” with the provider link near departures. Agency logos require separate permission; use text names. Owner obtains token and reviews terms on the official site. Setup links the complete agreement and flags the launch-documentation requirement; it does not accept terms or send registration/documentation messages on the owner's behalf.
+- [Stanford's official live-map page](https://transportation.stanford.edu/getting-stanford/marguerite/marguerite-live-map) links ETA SPOT. This is not evidence of a public integration API. Capability-gate Marguerite coverage; provide honest schedule or official-map handoff, no scraping or invented predictions.
+
+## Implemented components
+
+`transit_transport.py`: one fixed HTTPS host and endpoint allowlist; 10-second timeout, 5-second connect timeout, no redirects or environment proxy credentials, four-MiB decoded response cap. Token supplied by callback, not persisted by this component. Sanitized errors and httpx INFO query-token redaction. Review other enabled HTTP logging before activation.
+
+`TransitBudget` reserves in a SQLite immediate transaction **before** every request. Global rolling limit55/hour includes failures and survives process restart. Concurrent workers share the same budget. Corrupt histories and backward clocks fail closed, preserving the evidence; no retries bypass the quota.
+
+`transit_parser.py`: exact stop/optional direction/route filtering. Predictions require monitored=true and both vehicle and response timestamps no older than five minutes and not in the future. Otherwise only a valid future aimed time can become a scheduled departure. Expired, over-24-hour, timezone-naive, explicitly cancelled or already-departed calls are omitted. Duplicate trip entries prefer live predictions. Cancellation lists match an item ID or a trip plus stop and any supplied route/direction/visit/frame filters. This is not a general GTFS alerts integration.
+
+`transit.py`: six favorites, private by default; explicit public choice; UUID revision conflicts and lock-serialized mutations. Single application owner, matching the existing service architecture (do not launch multiple independent writers against the DB). Persist meaningful transitions only. Disk errors roll back; corrupt favorites are preserved and configuration becomes read-only for recovery. Maximum60 cached future departures per favorite, three in each snapshot. Cached predictions expire at read time, falling back to a future schedule or Unavailable. Already-passed predicted departures never reappear under a later schedule. Repeated snapshot reads never write to storage. Night/off/waking/untrusted-clock snapshots contain no favorites, including public ones.
+
+Token is kept in the existing private SQLite `secrets` table under `transit.511`, never configuration, snapshots or audit events. Token save/removal and sample clearing are atomic; favorites remain, request budget remains, and generation checks reject pending responses. It is not portable-export material. Existing same-card private database backups still include account secrets, as documented elsewhere; they are not settings-only USB backups.
+
+`transit_runtime.py`: all discovery, preview, manual and routine calls use the same transport/budget and serialized network lock. Public directory cache has twelve bounded entries, seven-day freshness, no large geometry/URLs. Directory IDs and real-time references remain distinct. Save verifies the selection against cached/fetched provider metadata and rejects a parent station in favor of an actual boarding stop.
+
+Routine polling consumes one request per75-second slot (at most48/hour before setup use). Same-stop favorites with differing routes/directions share a response; no unbounded agency feed is downloaded. Favor visible favorites, otherwise Stanford/Caltrain, every other slot while rotating the rest. A visible lease lasts45seconds. Other favorites may become stale under a busy configuration; that is labeled, not hidden. Routine polling pauses outside day mode and while clock trust is missing. Empty/failed real-time results try schedules on a later slot, never an immediate unbudgeted retry. Failures back off, provider/quota429 pauses an hour. Successful empty feeds differ from malformed/failing responses. Cancellation waits for the bounded HTTP operation before client shutdown.
+
+## Local API contract
+
+All routes require local same-origin access. After commissioning, configuration/metadata/preview/mutation requires an unlocked privacy state; rechecked after provider waits. No LAN token can bypass this. Responses use no-store.
+
+- `GET /api/v1/transit`: `items` (favorite metadata, no samples), `views`, `token_configured`, `recovery_error`.
+- `POST /api/v1/transit/token`: exactly `{token: string|null}`. Bounded1024-byte/3-second manual parser avoids echoing a submitted secret in validation errors. Null explicitly removes the token; UI must confirm removal.
+- `POST /api/v1/transit/directory`: `{kind: operators|lines|stops, operator_id?, line_id?, query?, page?, refresh?}`. Forty entries/page, total and has_more. Search/page changes use cache; refresh is an explicit quota-consuming choice. Do not call on every keystroke when no cached directory exists.
+- `POST /api/v1/transit/preview`: `{operator_id, stop_id, route_id?}`. Verified, quota-accounted sample; returns observed direction codes and up to six sample departures. Does not save a favorite. Empty direction list means offer All directions, not guessed codes. Shares75-second departure-poll cooldown.
+- `POST /api/v1/transit/favorites`: `{title, operator_id, stop_id, route_id?, direction?, public:false, item_id?, revision?}`. IDs verified by server; labels, real-time mapping and capabilities come from provider metadata. Existing favorite edits include its revision. Cosmetic/visibility edits retain its cached sample but invalidate pending responses.
+- `DELETE /api/v1/transit/favorites/{id}`: `{revision}`. Removes local favorite only.
+- `POST /api/v1/transit/refresh`: `{item_id?:id|null}`. One shared stop group, not six quota-consuming simultaneous fetches.429 for cooldown/rest/unconfigured; configuration returned after a completed attempt, possibly stale if the provider failed.
+- `POST /api/v1/transit/visible`: `{item_id:id|null}`. Local slide heartbeat; only currently privacy-visible favorite IDs are accepted, including explicitly public favorites while locked. No data or unlock response.
+
+Snapshot `transit` is a list of visible favorite views: id/title/operator/stop/direction/public, up to three departures, state (`ready`, `stale`, `empty`, `unavailable`), checked_at. Each departure has route/direction/destination/at/minutes/kind (`predicted`, `scheduled`)/stale/updated_at plus scheduled_at and prediction_until. Frontend removes private favorites on disconnect and marks retained public data offline; prediction timestamps cannot keep counting down as live indefinitely. A monotonic elapsed clock ages the authoritative server sample, with scheduled fallback or Unavailable. Passed expected departures never resurrect at a later schedule.
+
+## Frontend and voice
+
+`TransitSetup.tsx` is an optional Extras card under Dates & travel, matching existing TouchField/theme/dirty/busy conventions. It separates credentials from favorite selection. Saved token is never fetched back. Directory searches are explicit submissions, with40-entry pagination and parent-station disabled choices; optional current-feed check supplies actual direction codes. Empty responses still allow All directions. Review defaults private, explains public commute exposure, and saves revision-aware favorite metadata. Token removal is separately confirmed and retains favorite definitions. Demo saves exist only in component memory and never call providers.
+
+`TransitPage.tsx` displays one favorite and up to three departures, rotating every10seconds with previous/next controls; next-index persists across slide visits, not private content. Twenty-second visible heartbeat influences quota scheduling only. Nonempty privacy-visible favorites add a25-second cycle entry without changing other durations. The heading is the stop's chosen name, with a smaller Transit/boarding-stop label; redundant title removed to preserve row height. Long titles clamp, status and time remain prominent, four-digit minutes use a bounded size, Neon fonts/spacing use existing pixel units. No agency logo copying. Source attribution remains next to the data.
+
+Native commands: “show transit” navigates; “when is my next departure” and aliases read the earliest visible future departure from the existing snapshot, with explicit scheduled/stale language. No Google authorization or new provider/AI request. Private stops are excluded while locked. Onboarding reports saved/private-public counts and token presence, never falsely claims live provider qualification.
+
+## Local integration evidence and remaining delivery gates
+
+`tests/transit_preview.py` serves an isolated temporary SQLite database, real API/WebSocket/frontend and mocked provider transport at8749. No automatic provider/audio/radio workers. It has a20-minute deadline; its fault-injection routes exist only in this test executable, not production. `tests/transit_live_check.py` requires a browser-created private favorite and asserts persistence, direction/route mapping, shared-stop predictions, nonsecret onboarding summary, real WebSocket redaction, setup403 and privacy-visible heartbeat IDs.
+
+Browser checks passed: agency→route→second page of45stops→observedN→private save; reload restoration and revision-aware edit; discard and cross-extra dirty guards; exact favorite removal and capacity re-enablement; masked token save with review requirement; removal preserves stops and clears all cached departures; replacement does not echo the token. Six distinct saved favorites were traversed. Malformed/offline/429 directory responses and successful retry exercised. Fixed misleading empty-search/pagination display on failed loads; failed request and genuine empty result are now distinct.
+
+Nine review/on-screen-keyboard layouts (3themes ×2048x1536/1536x2048/390x844) fit horizontally. A real server disconnect immediately removed private favorites and showed only the public stop as Saved schedule, not Live prediction. Fixture explicitly stopped; synthetic data only. Physical/native OS keyboard checks are still hardware acceptance, not inferred from browser touch-keyboard tests.
+
+Remaining: owner-local provider token/terms/coverage validation during setup, features9/10, new immutable image and packaged ARM/real WebSocket gates. Physical Pi acceptance remains deferred.
+
+## Current evidence
+
+62 backend transit foundation tests plus3spoken-answer tests and4additional query-alias cases. Four frontend pure tests cover privacy/disconnect, expiration/fallback/no resurrection and conditional cycle insertion. Prior full629backend pass; latest99frontend/TypeScript/build pass after directory UX correction. Browser9normal slides +9masked-token setups +9long-name/four-digit layouts, plus9review/keyboard layouts across three themes and native landscape/portrait/narrow. Real local browserHTTP/WS integration passed as above; no provider/device qualification.

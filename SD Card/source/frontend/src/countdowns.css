@@ -1,0 +1,31 @@
+.countdown-page { grid-template-rows:auto minmax(0,1fr) auto; }
+.countdown-list { display:grid; grid-auto-rows:1fr; gap:2vmin; min-height:0; flex:1; }
+.countdown-row { display:grid; grid-template-columns:32% minmax(0,1fr); align-items:center; gap:3vmin; padding:2.5vmin 3vmin; border-left:var(--pixel,3px) solid var(--date-color); background:color-mix(in srgb,var(--date-color) 8%,var(--surface)); border-radius:var(--radius); min-height:0; }
+.countdown-value { display:flex; flex-wrap:wrap; align-items:baseline; gap:1vmin; min-width:0; color:var(--date-color); font-family:var(--heading); }
+.countdown-value strong { font-size:10vmin; line-height:1; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.04em; }
+.countdown-value span { font-size:3.2vmin; font-weight:700; }
+.countdown-value.long-number strong { font-size:7vmin; }
+.countdown-value.word strong { font-size:5.3vmin; letter-spacing:-.025em; overflow-wrap:anywhere; }
+.countdown-title { min-width:0; }.countdown-title h2 { margin:0; font:700 5.3vmin/1.1 var(--heading); letter-spacing:-.025em; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.countdown-title p { margin:1vmin 0 0; font:600 2.7vmin/1.2 var(--body); color:var(--muted); }
+.theme-neon-grid .countdown-row { border-radius:0; gap:calc(4*var(--pixel)); padding:calc(4*var(--pixel)); }
+.theme-neon-grid .countdown-value strong { font-size:calc(20*var(--pixel)); letter-spacing:0; }
+.theme-neon-grid .countdown-value.long-number strong { font-size:calc(14*var(--pixel)); }
+.theme-neon-grid :is(.countdown-value.word strong,.countdown-title h2) { font-size:calc(10*var(--pixel)); letter-spacing:0; }
+.theme-neon-grid .countdown-value span,.theme-neon-grid .countdown-title p { font-size:calc(6*var(--pixel)); }
+.countdown-list.single .countdown-row { grid-template-columns:1fr; align-content:center; text-align:center; gap:4vmin; }
+.countdown-list.single .countdown-value { justify-content:center; }
+.countdown-list.single .countdown-value strong { font-size:18vmin; }
+.countdown-list.single .countdown-value:is(.word,.long-number) strong { font-size:10vmin; }
+.countdown-list.single .countdown-title h2 { font-size:8vmin; }
+.theme-neon-grid .countdown-list.single .countdown-value strong { font-size:calc(32*var(--pixel)); }
+.theme-neon-grid .countdown-list.single .countdown-value:is(.word,.long-number) strong { font-size:calc(20*var(--pixel)); }
+.theme-neon-grid .countdown-list.single .countdown-title h2 { font-size:calc(16*var(--pixel)); }
+@media(max-width:620px) { .countdown-row { grid-template-columns:1fr; gap:1vmin; }.countdown-value strong { font-size:11vmin; }.countdown-value.word strong { font-size:7vmin; }.countdown-title h2 { font-size:6vmin; }.countdown-title p { font-size:3vmin; } }
+.date-editor-list { display:grid; gap:16px; margin:24px 0; }.date-editor-list article { padding:20px; border:1px solid var(--line); border-left:4px solid var(--date-color,var(--accent)); border-radius:var(--radius); min-width:0; }
+.date-editor-list h3 { font:700 26px/1.2 var(--heading); margin:0; overflow-wrap:anywhere; }.date-editor-list p { margin:.5em 0; }
+.date-actions { display:flex; flex-wrap:wrap; gap:12px; margin:16px 0; }.device-setup .date-actions button { margin:0; font-size:18px; padding:12px 18px; }
+.date-choice { text-align:left; width:100%; margin:12px 0; }.date-choice span { display:block; font-size:.8em; font-weight:500; margin-top:.5em; }
+.date-confirm { padding:20px; border:1px solid var(--accent); margin:20px 0; overflow-wrap:anywhere; }
+.device-setup input:is([type=date],[type=time]) { color-scheme:dark; min-height:48px; }
+.theme-neon-grid .date-editor-list article { border-radius:0; border-left-width:var(--pixel); }

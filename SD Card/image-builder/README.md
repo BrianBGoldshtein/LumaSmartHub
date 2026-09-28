@@ -1,0 +1,41 @@
+# Reproducible image build
+
+Luma uses Raspberry Pi's official `rpi-image-gen` project to build a 64-bit Raspberry Pi OS Trixie image. Image generation requires a privileged Debian/Ubuntu Linux host; it cannot run natively on Windows.
+
+`build-image.sh` checks out the pinned image generator, injects the already-built frontend and backend source, runs `source/system/install.sh` in the image customization stage, and emits the compressed artifact under `SD Card/image/`.
+
+The generated image intentionally contains no account tokens, Wi-Fi password, Google client secret, PIN, location, or personal data. Those are collected during onboarding.
+
+After public-asset preparation, the builder writes `image/source-manifest.json`, containing hashes of the packaged source/configuration/assets and an aggregate digest. It checks those inputs again after filesystem assembly and refuses packaging if they changed. The aggregate also appears in `build-manifest.txt`. Use fresh staging for each candidate; neither an existing image nor its provenance is overwritten. This records source bytes, not a claim of bit-for-bit reproducibility: package repositories, build timestamps and generated filesystem identifiers can still vary. `test_source_manifest.py` covers deterministic hashes, change detection, excluded host environments/bytecode, missing inputs, symlink rejection and output overwrite protection.
+
+## Offline Stanford profile qualification
+
+Run `/usr/bin/python3 eduroam-smoke.py` on the Debian build host with `gir1.2-nm-1.0`, `python3-gi`, `python3-dbus-next` and `openssl`. It imports current source, verifies the generated profile with real libnm, and checks the pinned CA chain with OpenSSL. It uses dummy credentials and temporary certificate files, never connects to D-Bus, joins Wi-Fi, or changes system trust. See [campus network documentation](../docs/CAMPUS_NETWORK.md) for provenance, expiry and outstanding physical acceptance tests.
+
+## Dormant gateway sandbox qualification
+
+`gateway-sandbox-smoke.py --unit <source/system/luma-shortcut-gateway.service> --venv <qualification/venv>` runs as build-host root solely to set up transient namespaces/systemd properties. The actual probe and servers run as an unprivileged dynamic user with the production service restrictions. The service is neither enabled nor started in the host network; a private network namespace holds both a synthetic reachable TEST-NET peer and the temporary API/gateway listeners. Synthetic credentials/settings live only in a private temporary directory. It verifies read-only filesystem/runtime mounts, denial of a world-readable masked test secret and home directories, zero effective capabilities, no-new-privileges, blocked address families, blocked traffic to the reachable non-loopback peer, and an authenticated real HTTP command/persistence round trip. Files and the transient unit are cleaned up afterward.
+
+The test reuses production service properties, with test executable/bind paths and stricter network isolation. It is build-host integration evidence, not Pi-kernel qualification. `test_gateway_service.py` adds four packaging regressions, including a check that installation never enables or starts the gateway. The kernel IP filter is defense in depth; bind-address and application command/token checks remain mandatory. See the [systemd execution sandbox](https://raw.githubusercontent.com/systemd/systemd/main/man/systemd.exec.xml) and [resource/IP controls](https://raw.githubusercontent.com/systemd/systemd/main/man/systemd.resource-control.xml) documentation. No VPN or trust-account setup is performed.
+
+## Disposable QEMU boot diagnostic
+
+`qemu-smoke.sh /absolute/path/to/image-luma-pi4` extracts the actual FAT kernel/initramfs/DTB and creates a temporary qcow2 overlay over the completed raw image. It adjusts only its copied DTB's MMC aliases and firmware metadata to model details QEMU omits. Shipping boot files are not changed. Inspect the printed directory's `serial.log`; the bounded timeout is not a boot-success assertion. The campus-pairing candidate reached API/network/SSH service startup and graphical.target, but QEMU lacks the Pi's DRM devices, so this does not prove a rendered kiosk, touch, Bluetooth, Wi-Fi or audio.
+
+Add `--api-check` to request only the health/version/database response from loopback. The VM-only kernel arguments explicitly retain `graphical.target` and add systemd's generated command unit alongside it; the normal shipping boot path is unchanged. The check retries connection refusal during startup and reports whether a successful health/database response was captured. It does not fetch private settings, issue commands, install a debug shell, change login credentials, or expose a host port. This is incremental integration evidence, not the final hardware audit.
+
+`--gateway-check` additionally starts the otherwise-disabled gateway **only in the disposable VM** and sends an empty unauthenticated POST. Both the API health response and gateway's authentication rejection must appear in the serial output. It never supplies a token or executes a hub command; the original image stays disabled and unchanged. This checks ARM64 service startup, not real phone transport or physical Pi sandbox enforcement. `check-campus-image.py` compares the raw image's root partition with its ext4 sidecar, checks installed campus/gateway files and the exact frontend JS entry bundle, and verifies the gateway has no multi-user boot enablement link.
+
+## Headless display-frame qualification
+
+`display-frame-smoke.py` uses an isolated headless labwc/pixman output and disposable sandboxed Chromium profiles. It checks animation-frame telemetry before, during and after output-off, without browser automation, input, accounts or physical output control. It verifies the sole output is `HEADLESS-*` before using wlr-randr. On the Debian WSL builder, both ordinary flags and foreground-throttling flags produced240frames/4seconds throughout; ordinary kiosk flags need no change. This proves liveness only for that software compositor stack, not Pi KMS/DPMS or panel brightness/retained-frame behavior.
+
+Use the private mount-namespace `/tmp` workaround described below, with256MiB tmpfs and `runuser -u luma-build -- python3 /absolute/path/display-frame-smoke.py`. Dependencies are official Debian labwc, Chromium and wlr-randr. No `--no-sandbox`, host socket changes or physical monitor commands are used. Exit0 plus all three measured intervals is the gate; a launched process alone is not success.
+
+## Native keyboard qualification
+
+The image builds a minimal derivative of wvkbd 0.15 from Debian's original source archive (SHA-256 `0b82a6497a1d886599d10695732dc3e4fac27eb8ca5d6469c27bd27b6c00e6f5`). `source/system/wvkbd-overlay.patch` changes only its surface layer, with a dated modification notice: overlay instead of top, so Chromium's fullscreen kiosk cannot obscure it. No keyboard logging or automatic typing is enabled. The installer ships the original archive, patch, build recipe and license files alongside the executable; retain these when redistributing an image.
+
+`keyboard-smoke.py` runs as a normal Linux user with `labwc` in a private headless Wayland session. Run it with the qualification venv after `test-linux.sh`; `--binary /absolute/path/luma-keyboard` selects a separately built qualification binary. It checks process lifecycle for all palettes and captures only an input-free test protocol trace to assert overlay-layer requests. It sends no keystrokes and does not qualify touchscreen accuracy, actual fullscreen rendering, OAuth, focus, or ARM64 hardware.
+
+WSLg's shared `/tmp/.X11-unix` can prevent nested labwc startup. Keep WSLg unchanged: run the smoke in a private mount namespace with a temporary tmpfs `/tmp`, dropping to `luma-build` before starting the test. Do not change host socket permissions. The successful local qualification used `unshare --mount --propagation private`, `mount -t tmpfs -o mode=1777,size=64M tmpfs /tmp`, then `runuser -u luma-build -- <qualification-python> <keyboard-smoke.py> --binary <qualification-binary>` within that namespace. This workaround belongs only to the build host, not the Pi image.

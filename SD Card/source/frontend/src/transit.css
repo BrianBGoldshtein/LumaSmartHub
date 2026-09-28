@@ -1,0 +1,36 @@
+.page.transit-page { gap:1vmin; }
+.transit-page .section-heading { height:13vmin; }
+.transit-page .section-heading h1 { font-size:5.5vmin; max-width:65%; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.transit-heading { margin:0 0 1vmin; min-width:0; }
+.transit-heading h2 { margin:0; font:700 5.5vmin/1.1 var(--heading); overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.transit-heading p { margin:1vmin 0 0; font-size:2.6vmin; color:var(--muted); overflow-wrap:anywhere; }
+.transit-page .section-heading>span { max-width:32%; white-space:normal; overflow-wrap:anywhere; font-size:3.2vmin; line-height:1.1; }
+.transit-departures { flex:1; min-height:0; display:grid; grid-auto-rows:1fr; gap:2vmin; }
+.transit-row { display:grid; grid-template-columns:minmax(0,22%) minmax(0,1fr) minmax(0,22%); gap:2.5vmin; align-items:center; padding:1vmin 2vmin; border-top:1px solid var(--line); min-height:0; }
+.transit-route { font:700 3.8vmin/1.15 var(--heading); color:var(--accent); overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.transit-destination { min-width:0; }.transit-destination h3 { font:700 4.6vmin/1.12 var(--heading); margin:0; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.transit-destination p { margin:1vmin 0 0; color:var(--muted); font:600 2.5vmin/1.2 var(--body); }
+.transit-minutes { display:flex; align-items:baseline; justify-content:flex-end; flex-wrap:wrap; gap:.5vmin; min-width:0; }
+.transit-minutes strong { font:700 9vmin/1 var(--heading); font-variant-numeric:tabular-nums; letter-spacing:-.04em; }.transit-minutes span { font-size:3vmin; font-weight:700; }
+.transit-minutes.long-number strong { font-size:5.5vmin; }
+.transit-footer { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:1vmin; margin-top:2vmin; font-size:clamp(14px,2vmin,32px); color:var(--muted); }
+.transit-footer a { color:inherit; text-underline-offset:.2em; }
+.theme-neon-grid .transit-row { border-top-width:var(--pixel); padding:calc(2*var(--pixel)) calc(4*var(--pixel)); gap:calc(4*var(--pixel)); }
+.theme-neon-grid .page.transit-page { gap:calc(2*var(--pixel)); }
+.theme-neon-grid .transit-page .section-heading { height:calc(24*var(--pixel)); }
+.theme-neon-grid .transit-heading { margin:0 0 calc(2*var(--pixel)); }
+.theme-neon-grid .transit-heading p,.theme-neon-grid .transit-destination p { margin:calc(2*var(--pixel)) 0 0; }
+.theme-neon-grid .transit-departures { gap:calc(4*var(--pixel)); }
+.theme-neon-grid .transit-footer { gap:calc(2*var(--pixel)); margin-top:calc(4*var(--pixel)); }
+.theme-neon-grid .transit-heading h2 { font-size:calc(11*var(--pixel)); }.theme-neon-grid .transit-destination h3 { font-size:calc(9*var(--pixel)); }
+.theme-neon-grid .transit-page .section-heading h1 { font-size:calc(11*var(--pixel)); }
+.theme-neon-grid .transit-route { font-size:calc(8*var(--pixel)); }.theme-neon-grid .transit-minutes strong { font-size:calc(18*var(--pixel)); letter-spacing:0; }
+.theme-neon-grid .transit-minutes.long-number strong { font-size:calc(11*var(--pixel)); }
+.theme-neon-grid :is(.transit-heading p,.transit-destination p,.transit-minutes span) { font-size:calc(5*var(--pixel)); }
+@media(max-width:620px) { .transit-row { grid-template-columns:minmax(0,1fr) minmax(0,28%); }.transit-route { grid-column:1; }.transit-destination { grid-column:1; }.transit-minutes { grid-column:2; grid-row:1 / 3; }.transit-row { position:relative; }.transit-route { font-size:5vmin; }.transit-destination h3 { font-size:6vmin; }.transit-destination p { font-size:3.5vmin; } }
+.transit-setup .transit-options { display:grid; gap:10px; margin:20px 0; }
+.transit-setup .transit-options button { text-align:left; width:100%; margin:0; overflow-wrap:anywhere; }
+.transit-setup .transit-options span { display:block; font-size:.8em; font-weight:500; }
+.transit-setup .transit-step { color:var(--muted); font-size:18px; }
+.transit-setup .transit-review { display:grid; gap:12px; padding:20px; border:1px solid var(--line); border-radius:var(--radius); margin:20px 0; overflow-wrap:anywhere; }
+.transit-setup .transit-review p { margin:0; }.transit-setup .transit-links { display:flex; gap:16px; flex-wrap:wrap; margin:20px 0; }

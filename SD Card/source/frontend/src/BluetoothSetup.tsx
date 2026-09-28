@@ -1,0 +1,58 @@
+import {useEffect,useState} from "react";
+import {useSetupActivity} from "./setupActivity";
+import {Bluetooth,Check,Smartphone} from "lucide-react";
+
+type Phone={path:string;name:string;address:string;paired:boolean;trusted:boolean};
+type Pairing={session:string|null;phase:string;devices:Phone[];selected:Phone|null;challenge:string|null;passkey:string|null;message:string;phone_address?:string|null;connection_status?:string};
+const initial:Pairing={session:null,phase:"idle",devices:[],selected:null,challenge:null,passkey:null,message:""};
+const previewPhone:Phone={path:"preview-phone",name:"Your iPhone",address:"Preview device",paired:false,trusted:false};
+const active=(phase:string)=>["scanning","pairing","confirming"].includes(phase);
+
+export function BluetoothSetup({demo}:{demo:boolean}){
+  const [state,setState]=useState<Pairing>(initial),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  useSetupActivity(busy || active(state.phase));
+  useEffect(()=>{
+    if(demo)return;
+    let stopped=false,timer:ReturnType<typeof setTimeout>;
+    const controller=new AbortController();
+    async function poll(){
+      try{
+        const response=await fetch("/api/v1/bluetooth/pairing",{signal:controller.signal});
+        if(!response.ok)throw Error();
+        const data=await response.json();if(!stopped){setState(data);setError("");}
+      }catch{if(!stopped)setError("Bluetooth setup is unavailable. Check the local service.");}
+      if(!stopped)timer=setTimeout(()=>void poll(),1500);
+    }
+    void poll();return ()=>{stopped=true;clearTimeout(timer);controller.abort();};
+  },[demo]);
+  async function action(name:string,body?:unknown){
+    setBusy(true);setError("");
+    try{
+      if(demo){
+        if(name==="start")setState({...initial,session:"demo",phase:"scanning",devices:[previewPhone],message:"Preview scan — no Bluetooth radio is used."});
+        if(name==="select")setState(s=>({...s,phase:"confirming",selected:previewPhone,challenge:"demo-code",passkey:"042817",message:"Preview code only. On your Pi, confirm only if both screens show the same digits."}));
+        if(name==="confirm"){
+          const accepted=(body as {accepted:boolean}).accepted;
+          setState(s=>({...s,phase:accepted?"complete":"cancelled",passkey:null,challenge:null,phone_address:accepted?previewPhone.address:null,message:accepted?"Preview complete — no device was paired or trusted.":"Preview pairing rejected."}));
+        }
+        if(name==="cancel")setState(s=>({...s,phase:"cancelled",passkey:null,challenge:null,message:"Preview pairing cancelled."}));
+        return;
+      }
+      const response=await fetch(`/api/v1/bluetooth/pairing/${name}`,{method:"POST",headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
+      const data=await response.json();if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:"Please try again.");
+      if(data.phase)setState(s=>({...s,...data}));
+      else if(name==="confirm")setState(s=>({...s,phase:"pairing",passkey:null,challenge:null,message:"Waiting for the iPhone…"}));
+    }catch(error){setError(error instanceof Error?error.message:"Pairing failed");}finally{setBusy(false);}
+  }
+  return <section className="bluetooth-setup"><h2><Bluetooth/> Your iPhone</h2>
+    <p className="setup-note">Open Settings → Bluetooth on your iPhone and keep it nearby. Select it below, then compare the pairing code on both screens. Pairing lets this phone become your privacy key; it does not route calls or music through Luma.</p>
+    {state.phone_address && <p className="setup-note">Selected phone: {state.phone_address}<br/>{state.connection_status || "Notification authorization is still required."}</p>}
+    {!active(state.phase) && <button disabled={busy} onClick={()=>void action("start")}><Smartphone/>{state.phone_address?"Choose another phone":"Find my iPhone"}</button>}
+    {state.phase==="scanning" && <><p role="status">Looking for nearby devices…</p><div className="network-list">{state.devices.map(phone=><button key={phone.path} disabled={busy} onClick={()=>void action("select",{session:state.session,device:phone.path})}><Smartphone/><span>{phone.name}<small>{phone.address} · {phone.paired?(phone.trusted?"Previously paired":"Unfinished bond"):"Compare code to pair"}</small></span></button>)}</div><p className="setup-note">Discovery stops after 45 seconds. Device names are not proof of identity; check the matching code on your phone.</p></>}
+    {state.phase==="confirming" && <div className="pairing-confirmation"><p>{state.selected?.name}</p><output aria-label="Pairing code">{state.passkey}</output><p>Does this code match your iPhone?</p><button disabled={busy} onClick={()=>void action("confirm",{session:state.session,challenge:state.challenge,accepted:true})}><Check/>Codes match — pair</button><button disabled={busy} onClick={()=>void action("confirm",{session:state.session,challenge:state.challenge,accepted:false})}>Doesn’t match — reject</button></div>}
+    {active(state.phase) && <button disabled={busy} onClick={()=>void action("cancel",{session:state.session})}>Cancel pairing</button>}
+    {state.message && <p className="setup-note" role="status">{state.message}</p>}
+    {error && <p className="setup-message" role="alert">{error}</p>}
+    <p className="setup-note">After pairing, enable Share System Notifications for Luma on your iPhone if offered. Your calendar stays private until Luma verifies authorized notification access. No code confirmation is needed when selecting an already bonded, trusted phone.</p>
+  </section>;
+}

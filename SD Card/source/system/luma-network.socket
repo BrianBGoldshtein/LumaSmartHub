@@ -1,0 +1,12 @@
+[Unit]
+Description=Luma local-only Wi-Fi setup socket
+
+[Socket]
+ListenStream=/run/luma-network.sock
+SocketUser=root
+SocketGroup=luma
+SocketMode=0660
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

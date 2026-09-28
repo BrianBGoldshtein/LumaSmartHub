@@ -1,0 +1,36 @@
+# Generated Raspberry Pi images and build workspaces
+.build-tools/
+SD Card/image/*.img
+SD Card/image/*.img.xz
+SD Card/image/*.bmap
+SD Card/image/*.sha256
+SD Card/image-builder/work/
+SD Card/image-builder/.cache/
+SD Card/source/assets/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+
+# Frontend
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+/SD Card/source/frontend/vite.config.js
+/SD Card/source/frontend/vite.config.d.ts
+
+# Local secrets and runtime state
+*.local
+.env
+.env.*
+!.env.example
+runtime/
+diagnostics/

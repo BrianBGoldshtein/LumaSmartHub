@@ -1,0 +1,13 @@
+[Unit]
+Description=Luma local-only USB infrared socket
+
+[Socket]
+ListenStream=/run/luma-ir.sock
+SocketUser=root
+SocketGroup=luma
+SocketMode=0660
+RemoveOnStop=true
+Backlog=8
+
+[Install]
+WantedBy=sockets.target

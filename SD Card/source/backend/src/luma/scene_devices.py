@@ -1,0 +1,102 @@
+"""Server-minted bindings and guarded dispatch through existing device locks."""
+from copy import deepcopy
+import hashlib
+import json
+
+from .fans import BUTTONS, SLOTS
+from .room import instant
+from .purifier_adapter import PurifierBusy, PurifierRateLimit, PurifierUnavailable
+from .ir_protocol import InfraredError
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+class SceneDevices:
+    def __init__(self, service, room, fans, *, utcnow):
+        self.service, self.room, self.fans, self.utcnow = service, room, fans, utcnow
+
+    def binding(self, device):
+        if device == 'purifier':
+            store = self.service.room
+            if store.recovery_error or store.selected is None or store.session is None: return None
+            return digest(['purifier', store.revision, store.selected['id']])
+        if device in SLOTS:
+            store = self.service.fans
+            if store.recovery_error or store.slots[device] is None: return None
+            return digest([device, store.revision, store.slots[device]['route']])
+        return None
+
+    def overridden(self, device):
+        now = self.utcnow()
+        if device == 'purifier': return self.service.room.override_active(now)
+        until = instant(self.service.fans.overrides.get(device))
+        return bool(until and now < until)
+
+    def supported(self, item):
+        device, key, value = item['device'], item['action'], item['value']
+        if item['binding'] != self.binding(device): return False
+        if device == 'purifier':
+            view = self.service.room.view(self.utcnow())
+            caps = view['capabilities'] if view and view['fresh'] else None
+            if not caps: return False
+            if key in ('power', 'display'): return type(value) is bool and caps.get(key) is True
+            if key == 'speed': return type(value) is int and value in caps.get('speeds', [])
+            if key == 'mode': return type(value) is str and value in caps.get('modes', [])
+            return False
+        config = self.fans.configuration()
+        if any(row['needs_output_review'] for row in config['fans']): return False
+        row = next((row for row in config['fans'] if row['id'] == device), None)
+        return bool(value is None and row and any(button['key'] == key and button['scene_eligible'] for button in row['buttons']))
+
+    def catalog(self):
+        rows = []
+        store = self.service.room
+        if store.selected:
+            candidates = [('power', False, 'Off'), ('power', True, 'On'),
+                          *[('speed', speed, f'Speed {speed} · turns on') for speed in (1, 2, 3)],
+                          *[('mode', mode, f'{mode.title()} mode · may turn on') for mode in ('manual', 'sleep', 'auto')],
+                          ('display', False, 'Display off'), ('display', True, 'Display on')]
+            rows.append(self._catalog_device('purifier', store.selected['name'], candidates))
+        for device, row in self.service.fans.slots.items():
+            if row:
+                candidates = [(key, None, BUTTONS[key][0]) for key in row['buttons'] if BUTTONS[key][1] == 'absolute']
+                rows.append(self._catalog_device(device, row['name'], candidates))
+        return rows
+
+    def _catalog_device(self, device, name, candidates):
+        actions = []
+        for key, value, label in candidates:
+            item = {'device': device, 'action': key, 'value': value, 'binding': self.binding(device)}
+            if self.supported(item): actions.append({**item, 'label': label})
+        return {'id': device, 'name': name, 'actions': actions, 'override_active': self.overridden(device)}
+
+    def bind(self, choices):
+        """Require the editor's reviewed binding to still match; never auto-relink."""
+        clean = []
+        for item in choices:
+            if not self.supported(item):
+                raise ValueError('Device configuration or checks changed. Review its available actions again.')
+            clean.append(deepcopy(item))
+        return clean
+
+    async def dispatch(self, item, *, can_send):
+        device = item['device']
+        if can_send() is not True: return 'not_sent'
+        if self.overridden(device): return 'skipped_override'
+        if not self.supported(item): return 'unavailable'
+        guard = lambda: (can_send() is True and item['binding'] == self.binding(device)
+                         and not self.overridden(device) and self.supported(item))
+        try:
+            if device == 'purifier':
+                result = await self.room.scene_command(item['action'], item['value'], self.service.room.revision, can_send=guard)
+                return {'confirmed': 'confirmed', 'unconfirmed': 'unconfirmed',
+                        'rejected': 'rejected', 'not_sent': 'not_sent'}[result['status']]
+            result = await self.fans.scene_command(device, item['action'], self.service.fans.revision, can_send=guard)
+            return 'not_sent' if result['status'] == 'not_sent' else 'unconfirmed'
+        except (PurifierBusy, PurifierRateLimit): return 'unavailable'
+        except (PurifierUnavailable, InfraredError, ValueError):
+            # Transport may have crossed the physical boundary; receipts, not an
+            # exception class, determine whether the outcome is known.
+            return 'unconfirmed'

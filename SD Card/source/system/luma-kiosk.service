@@ -1,0 +1,14 @@
+[Unit]
+Description=Luma fullscreen dashboard
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/bash -c 'until /usr/bin/curl -fsS http://127.0.0.1:8742/api/v1/health >/dev/null; do sleep 1; done'
+ExecStart=/usr/bin/chromium --kiosk --no-first-run --disable-infobars --disable-session-crashed-bubble --disable-component-update --disable-features=Translate,MediaRouter --ozone-platform=wayland --enable-features=UseOzonePlatform --app=http://127.0.0.1:8742/
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

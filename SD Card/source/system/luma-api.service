@@ -1,0 +1,25 @@
+[Unit]
+Description=Luma smart screen control plane
+After=network-online.target bluetooth.target pipewire.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=luma
+Group=luma
+WorkingDirectory=/opt/luma/backend
+Environment=LUMA_DATA_DIR=/var/lib/luma
+Environment=LUMA_FRONTEND_DIR=/opt/luma/frontend
+ExecStart=/opt/luma/venv/bin/luma-api
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/luma
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

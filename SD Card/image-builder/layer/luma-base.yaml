@@ -1,0 +1,35 @@
+# METABEGIN
+# X-Env-Layer-Name: luma-base
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Category: application
+# X-Env-Layer-Desc: Luma Pi 4 appliance with NetworkManager and local kiosk.
+# X-Env-Layer-Requires: debian-trixie-arm64-multi,rpi-debian-trixie,
+#  rpi-misc-utils,rpi-essential-base,rpi-misc-skel,systemd-timesyncd,
+#  wireless-regulatory,network-manager
+# METAEND
+---
+mmdebstrap:
+  packages:
+    - bluez
+    - chromium
+    - curl
+    - labwc
+    - wvkbd
+    - fonts-dejavu-core
+    - lightdm
+    - pipewire
+    - pipewire-audio
+    - pipewire-pulse
+    - python3
+    - python3-venv
+    - wlr-randr
+    - ddcutil
+    - dbus-user-session
+    - avahi-daemon
+    - i2c-tools
+    - espeak-ng
+    - libportaudio2
+    - pulseaudio-utils
+    - gcc
+    - python3-dev
+    - linux-libc-dev

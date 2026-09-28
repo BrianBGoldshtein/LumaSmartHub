@@ -1,0 +1,25 @@
+[Unit]
+Description=Luma fixed-action Tailscale setup broker
+Requires=luma-tailscale-setup.socket
+
+[Service]
+ExecStart=/opt/luma/venv/bin/luma-tailscale-setup
+User=root
+Group=root
+NoNewPrivileges=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+MemoryMax=128M
+TasksMax=32
+Restart=on-failure
+RestartSec=3

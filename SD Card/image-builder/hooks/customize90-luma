@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS=${1:?rpi-image-gen must supply its root filesystem}
+[[ "${ROOTFS}" != / && -d "${ROOTFS}/etc" ]] || { echo "Invalid build root" >&2; exit 1; }
+HOOK_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+SOURCE=$(cd -- "${HOOK_DIR}/../../source" && pwd)
+STAGING="${ROOTFS}/opt/luma-source"
+install -d "${STAGING}/backend" "${STAGING}/frontend" "${STAGING}/tests"
+# Explicit subsets exclude Windows venvs, caches, credentials and node_modules.
+rsync -a --exclude __pycache__ --exclude '*.pyc' "${SOURCE}/backend/src/" "${STAGING}/backend/src/"
+cp "${SOURCE}/backend/pyproject.toml" "${STAGING}/backend/"
+cp -a "${SOURCE}/frontend/dist" "${STAGING}/frontend/"
+cp -a "${SOURCE}/system" "${STAGING}/"
+cp -a "${SOURCE}/assets" "${STAGING}/"
+install -m 0644 "${SOURCE}/tests/device_smoke.py" "${STAGING}/tests/device_smoke.py"
+install -m 0644 "${SOURCE}/tests/tailscale-status.json" "${STAGING}/tests/tailscale-status.json"
+chroot "${ROOTFS}" /usr/bin/env LUMA_IMAGE_BUILD=1 /usr/bin/bash /opt/luma-source/system/install.sh /opt/luma-source
+# Image-generated host keys must never be shared across devices.
+for key in ssh_host_rsa_key ssh_host_ecdsa_key ssh_host_ed25519_key; do
+  rm -f -- "${ROOTFS}/etc/ssh/${key}" "${ROOTFS}/etc/ssh/${key}.pub"
+done

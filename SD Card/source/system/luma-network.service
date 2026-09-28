@@ -1,0 +1,25 @@
+[Unit]
+Description=Luma constrained NetworkManager setup broker
+Requires=luma-network.socket
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+ExecStart=/opt/luma/venv/bin/luma-network
+User=root
+Group=root
+NoNewPrivileges=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+Restart=on-failure
+RestartSec=3

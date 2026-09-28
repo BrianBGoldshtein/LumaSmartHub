@@ -89,7 +89,9 @@ def installed_tree(tmp_path: Path, *, real_venv: bool = False):
     (current / "backend/src/luma").mkdir(parents=True)
     (current / "frontend").mkdir()
     if real_venv:
-        subprocess.run([sys.executable, "-m", "venv", str(current / "venv")], check=True)
+        # The deployed service venv is anchored to the OS-managed interpreter,
+        # not the hosted CI's separately installed setup-python runtime.
+        subprocess.run(["/usr/bin/python3", "-m", "venv", str(current / "venv")], check=True)
     else:
         (current / "venv/bin").mkdir(parents=True)
         if sys.platform == "win32":

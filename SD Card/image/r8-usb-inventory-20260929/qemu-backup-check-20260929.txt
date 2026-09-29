@@ -1,0 +1,16 @@
+Luma r8 exact-image disposable QEMU check — USB backup socket
+Date: 2026-09-29
+Raw image: build-work-usb-scan-fix-20260929/output/image-luma-pi4/luma-pi4.img
+Input source fingerprint: 8ca82e2bc5ba71f9b3a882f6568d4fe8977d4e8c3b945880c47cffde930f796d
+Command: qemu-smoke.sh <image-luma-pi4> --backup-check
+
+Result: PASS. The packaged luma-backup.socket activated its root-owned broker;
+the authorized luma UID connected over the local socket and received
+{"volumes":[]} with no removable media attached. The response appeared at
+approximately 67.77 guest seconds. This verifies the no-device IPC path only;
+it does not test physical USB detection, mount, export, restore or eject.
+
+The temporary QEMU qcow2 overlay was separate from the immutable raw image.
+QEMU had no network interface. It was stopped at its planned 180-second bound
+(QEMU exit 124); the wrapper's required-response assertion passed and exited
+0. This is software/emulation evidence, not a real Pi boot qualification.

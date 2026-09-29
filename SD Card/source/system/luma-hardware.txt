@@ -1,0 +1,5 @@
+# Confirmed project hardware: ReSpeaker 2-Mics Pi HAT V1 / WM8960.
+# Not compatible with the TLV320-based V2 board.
+dtparam=i2c_arm=on
+dtparam=spi=on
+dtoverlay=respeaker-2mic-v1_0

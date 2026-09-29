@@ -1,0 +1,2 @@
+# Only the dedicated LED group may access the HAT's SPI device.
+SUBSYSTEM=="spidev", KERNEL=="spidev0.1", GROUP="luma-led", MODE="0660"

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Import the real display socket instead of assuming wayland-0 or a fixed UID.
+systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP
+systemctl --user start graphical-session.target
+systemctl --user start luma-kiosk.service luma-device.service

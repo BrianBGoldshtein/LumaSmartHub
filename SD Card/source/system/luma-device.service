@@ -1,0 +1,14 @@
+[Unit]
+Description=Luma display and audio bridge
+After=graphical-session.target pipewire.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/opt/luma/venv/bin/luma-device
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,16 @@
+Luma r8 exact-image disposable QEMU check — Pi Connect local setup broker
+Date: 2026-09-29
+Raw image: build-work-usb-scan-fix-20260929/output/image-luma-pi4/luma-pi4.img
+Input source fingerprint: 8ca82e2bc5ba71f9b3a882f6568d4fe8977d4e8c3b945880c47cffde930f796d
+Command: qemu-smoke.sh <image-luma-pi4> --pi-connect-check
+
+Result: PASS. API health/database returned the expected healthy response and
+the installed local Pi Connect setup socket returned fresh-device status to
+the authorized luma user. No account was signed in, no remote shell enabled,
+and no verification URL was enrolled or exposed.
+
+The temporary QEMU qcow2 overlay was separate from the immutable raw image.
+QEMU had no network interface. It was stopped at its planned 180-second bound
+(QEMU exit 124); the wrapper's required-marker assertions passed and it exited
+0. This is software/emulation evidence, not a real Pi boot or Pi Connect
+account enrollment test.

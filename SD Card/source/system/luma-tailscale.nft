@@ -1,0 +1,9 @@
+# Only this table is replaced. Never flush the host ruleset.
+add table inet luma_tailscale
+flush table inet luma_tailscale
+add chain inet luma_tailscale input { type filter hook input priority -10; policy accept; }
+add rule inet luma_tailscale input iifname "luma-ts" tcp dport 443 accept
+add rule inet luma_tailscale input iifname "luma-ts" drop
+add chain inet luma_tailscale forward { type filter hook forward priority -10; policy accept; }
+add rule inet luma_tailscale forward iifname "luma-ts" drop
+add rule inet luma_tailscale forward oifname "luma-ts" drop

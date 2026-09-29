@@ -11,6 +11,7 @@ import {BackupSetup} from './BackupSetup';
 import {TouchField,TouchInputProvider} from './TouchField';
 import {useSetupActivity} from './setupActivity';
 import {setupLink,setupTheme} from './setupTheme';
+import {scrollSetupToTop} from './setupScroll';
 import {extraPreferences,extraPatch,type ExtraTask,type ExtraPreferences} from './weatherState';
 
 export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boolean;embedded?:boolean;onSaved?:()=>void;locked?:boolean}){
@@ -37,8 +38,7 @@ export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boo
   function choose(next:ExtraTask|'departure'|'night'|'countdowns'|'transit'|'room'|'fans'|'scenes'|'backup'|null){
     if(dirty){setMessage('Save these preferences before choosing another extra. You can also leave this setup step and discard edits.');return;}
     setTask(next);setMessage('');
-    const scroller=embedded?shellRef.current?.closest('.onboarding-shell'):shellRef.current;
-    if(scroller)scroller.scrollTop=0;
+    scrollSetupToTop(shellRef.current);
   }
   async function save(){
     if(!task || task==='departure' || task==='night' || task==='countdowns' || task==='transit' || task==='room' || task==='fans' || task==='scenes' || task==='backup')return;

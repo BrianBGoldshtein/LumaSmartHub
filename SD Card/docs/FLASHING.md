@@ -2,7 +2,7 @@
 
 ## Before writing
 
-A checked software candidate is delivered in the user-visible output folder at `image/r10-candidate-a79f7f4-20260929/luma-pi4-UNVERIFIED.img.xz`, with its checksum, manifests and validation receipts. Read the [r10 candidate handoff](../image/r10-candidate-a79f7f4-20260929/README.md) first. It predates a newer source-only room-setup polish fix; a later candidate will supersede it when built and audited. Other image folders are preserved older builds. None is a production release. These are instructions for an owner-directed hardware test, not an instruction to flash now.
+A checked software candidate is delivered in the user-visible output folder at `image/r10-candidate-a79f7f4-20260929/luma-pi4-UNVERIFIED.img.xz`, with its checksum, manifests and validation receipts. Read the [r10 candidate handoff](../image/r10-candidate-a79f7f4-20260929/README.md) first. It predates newer source-only room-device setup and recovery fixes; a later candidate will supersede it when built and audited. Other image folders are preserved older builds. None is a production release. These are instructions for an owner-directed hardware test, not an instruction to flash now.
 
 A candidate named `luma-pi4-UNVERIFIED.img.xz` may be handed off for **controlled physical testing** after its software/image checks pass. That testing is how the remaining [hardware acceptance gates](HARDWARE_VALIDATION.md) are evaluated. It is not yet qualified for unattended wall-mounted use. The release name `luma-pi4.img.xz` is reserved for the later qualified delivery.
 

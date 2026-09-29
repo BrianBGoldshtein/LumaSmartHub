@@ -1,11 +1,12 @@
-import {useContext,useEffect,useRef,useState} from 'react';
+import {useContext,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {Sunrise,Moon,Home,DoorOpen} from 'lucide-react';
 import {SetupActivity} from './setupActivity';
-import {emptyScenes,sampleScenes,sceneDraft,sceneKeys,sceneLabels,automaticLabels,actionLabel,resultLabel,type SceneKey,type SceneConfig,type SceneDefinition} from './sceneState';
+import {scrollSetupToTop} from './setupScroll';
+import {emptyScenes,sampleScenes,sceneDraft,sceneKeys,sceneLabels,automaticLabels,actionLabel,resultLabel,remoteReauthorizationReady,type SceneKey,type SceneConfig,type SceneDefinition} from './sceneState';
 import './room.css';
 
 export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(value:boolean)=>void;onBusy:(value:boolean)=>void;onSaved?:()=>void}){
-  const activity=useContext(SetupActivity),alive=useRef(true),working=useRef(false),request=useRef<AbortController|null>(null);
+  const activity=useContext(SetupActivity),alive=useRef(true),working=useRef(false),request=useRef<AbortController|null>(null),panel=useRef<HTMLDivElement>(null);
   const [config,setConfig]=useState<SceneConfig>(()=>demo?sampleScenes():emptyScenes()),[ready,setReady]=useState(demo),[busy,setBusy]=useState(false);
   const [selected,setSelected]=useState<SceneKey|null>(null),[step,setStep]=useState<'actions'|'review'>('actions'),[message,setMessage]=useState('');
   const [remoteDraft,setRemoteDraft]=useState<SceneKey[]>([]);
@@ -14,10 +15,12 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
   const sceneDirty=!!selected&&JSON.stringify(draft)!==baseline;
   const remoteSaved=sceneKeys.filter(key=>config.remote.scenes[key].allowed||config.remote.scenes[key].needs_review);
   const remoteDirty=JSON.stringify([...remoteDraft].sort())!==JSON.stringify([...remoteSaved].sort());
+  const remoteNeedsReview=remoteReauthorizationReady(config,remoteDraft);
   const dirty=sceneDirty||remoteDirty;
   const choices=config.devices.flatMap(device=>device.actions.map(item=>({item,label:`${device.name} · ${item.label}`})));
   useEffect(()=>{onDirty(dirty);return()=>onDirty(false);},[dirty,onDirty]);
   useEffect(()=>{onBusy(busy);return()=>onBusy(false);},[busy,onBusy]);
+  useLayoutEffect(()=>scrollSetupToTop(panel.current),[selected,step]);
   useEffect(()=>{alive.current=true;if(!demo)void run(load);return()=>{alive.current=false;request.current?.abort();};},[demo]);
   useEffect(()=>{setRemoteDraft(sceneKeys.filter(key=>config.remote.scenes[key].allowed||config.remote.scenes[key].needs_review));},[config.remote.revision]);
   async function call(path='',method='GET',body?:unknown){
@@ -64,11 +67,11 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
   }
   const icons={morning:Sunrise,night:Moon,arrive:Home,away:DoorOpen};
   const last=config.runs.at(-1);
-  return <div className="room-setup">
+  return <div ref={panel} className="room-setup">
     <h2>Room scenes</h2><p>{demo?'Sample preview · no device commands or saved account changes.':'A few deliberate actions, together. Start with one scene; everything is optional.'}</p>
     {!ready?<button disabled={busy} onClick={()=>void run(load)}>Load saved scenes</button>:<>
       {config.recovery_error?<p role="alert">Saved scenes need recovery. Nothing has been overwritten; actions are disabled.</p>:!selected?<>
-        <div className="fan-cards scene-cards">{sceneKeys.map(key=>{const Icon=icons[key],row=config.definitions[key];return <button key={key} disabled={busy} onClick={()=>choose(key)}><Icon aria-hidden="true"/><strong>{sceneLabels[key]}</strong><span>{row.needs_review?'Device review needed':!row.enabled?'Off':row.automatic?'Manual + automatic':'Manual only'} · {row.actions.length} actions</span></button>;})}</div>
+        <div className="fan-cards scene-cards">{sceneKeys.map(key=>{const Icon=icons[key],row=config.definitions[key];return <button key={key} disabled={busy} onClick={()=>choose(key)}><Icon aria-hidden="true"/><strong>{sceneLabels[key]}</strong><span>{row.needs_review?'Device review needed':!row.enabled?'Off':row.automatic?'Manual + automatic':'Manual only'} · {row.actions.length} {row.actions.length===1?'action':'actions'}</span></button>;})}</div>
         <section className="private-scene-policy" aria-labelledby="remote-scene-heading">
           <h3 id="remote-scene-heading">Private iPhone actions</h3>
           <p>Separate opt-in. Choose scenes to run from your authenticated Shortcut. This grants only the exact saved devices/actions below—not calendar access, nearby-phone status, scene editing, or automatic triggers.</p>
@@ -77,7 +80,7 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
             <input type="checkbox" disabled={busy||demo||config.remote.recovery_error||!selectable&&!selectedRemote} checked={selectedRemote} onChange={event=>{activity?.edited();setRemoteDraft(current=>event.target.checked?[...current,key]:current.filter(value=>value!==key));}}/>
             <span>{sceneLabels[key]} · {row.actions.length?row.actions.map(action=>actionLabel(action,config.devices)).join('; '):'no saved actions'}{permission.needs_review?' · local review required':!selectable?' · configure and review locally first':''}</span>
           </label>;})}
-          {remoteDirty&&<button disabled={busy||demo||config.remote.recovery_error} onClick={()=>void run(saveRemote)}>{remoteDraft.length?'Save separate remote permission':'Turn off remote appliance actions'}</button>}
+          {(remoteDirty||remoteNeedsReview)&&<button disabled={busy||demo||config.remote.recovery_error} onClick={()=>void run(saveRemote)}>{remoteNeedsReview&&!remoteDirty?'Reauthorize reviewed remote scenes':remoteDraft.length?'Save separate remote permission':'Turn off remote appliance actions'}</button>}
           {config.remote.enabled&&<p className="setup-note">Remote scene commands are enabled only for the exact reviewed actions above. They never unlock private calendar data. A scene edit or device relink makes its prior permission ineffective until reviewed again.</p>}
           {config.remote.recovery_error&&<p className="setup-note">Resetting discards only the unreadable remote allowlist and leaves all remote control off. You can grant scenes again after review.</p>}
         </section>

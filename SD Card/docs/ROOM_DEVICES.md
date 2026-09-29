@@ -1,6 +1,8 @@
 # Room devices — purifier, fans and scenes source status
 
-September 29 current addendum — a synthetic, real-rendered browser matrix now
+September 29 current addendum — source commit `9818b65` and
+[hosted CI run 36635445931](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36635445931)
+passed. A synthetic, real-rendered browser matrix now
 covers Air purifier, Two fans and Room scenes entry/back navigation in Hearth,
 Luma Glass and Neon Grid at390×844,1280×720 and1536×2048. All 27 combinations
 fit their viewport without horizontal overflow; embedded Extras now resets
@@ -14,6 +16,18 @@ appliance. This is source newer than the r10 image. Still open: scene/fan
 interaction failures and recovery across themes, actual touch/keyboard and
 owner hardware/provider checks. Older evidence paragraphs below are historical
 and should not be read as denying this later viewport/recovery pass.
+
+Further September29 source-only browser pass: the fan/scene detail views now
+reset their scroll positions after each transition. Three themes at narrow
+phone-width and Glass portrait showed the top heading, with no horizontal
+overflow. The real local fan API on a disposable fake-IR transport returned
+USB-unavailable during a one-shot test; the UI immediately reloaded saved
+state, displayed a durable unknown outcome and fixed no-retry message, and
+exposed no transport sentinel. A stale-but-currently-valid scene grant could
+be deliberately reauthorized from the local UI; the fake scene dispatch count
+did not increase. **131 frontend tests and production build pass.** This is
+not in r10. Dirty/edit cancellation, privacy lock during operation, physical
+touch, actual USB and appliance outcomes remain to be qualified.
 
 USB IR transport, owner-local fan setup, scene paths and a separate default-off remote-scene allowlist are implemented in source. Read [IR_DEVICES.md](IR_DEVICES.md) and [SCENES.md](SCENES.md) before extending. Dedicated unprivileged Unix broker, bounded isolated child, strict USB/LIRC discovery, one-button capture/one-shot transmission and packaging have prior73Linux-test evidence. `fans.py`, `fan_runtime.py`, `fan_api.py`, `FanSetup.tsx` and `fanState.ts` add durable two-output configuration, bounded learn/test/cancel, same-state repeatability and both-direction observation checks, unknown-before-send receipts, one-hour overrides, private owner/same-origin gates and themed optional setup. `scene_devices.py`, `scene_runtime.py`, `scene_api.py`, `scene_executor.py` and `SceneSetup.tsx` connect absolute safe actions, strict local owner access, explicit calendar/presence triggers and durable no-replay accounting. Hey Luma supports fixed manual run/cancel phrases for already-enabled scenes through the same owner/device/clock guards. The local **Private iPhone actions** panel separately grants named remote scene bundles; the restricted Tailscale gateway verifies the exact ordered actions and device bindings, and any change/relink requires local re-review. Learning/pairing never grants scene or remote permission. Remaining: fan/purifier credential and error/reconnect paths across themes, custom long-name layouts, real touch/pointer acceptance and owner hardware/account checks. No physical qualification yet; hardware selection remains open in [HARDWARE_ADDITIONS.md](HARDWARE_ADDITIONS.md).
 

@@ -17,6 +17,9 @@ export function emptyScenes():SceneConfig{
     clock_trusted:false,calendar_ready:false,phone_configured:false};
 }
 export function sceneDraft(value:SceneDefinition):SceneDefinition{return {enabled:value.enabled,automatic:value.automatic,actions:value.actions.map(item=>({...item}))};}
+export function remoteReauthorizationReady(config:SceneConfig,selected:SceneKey[]):boolean{
+  return selected.some(key=>config.remote.scenes[key].needs_review&&config.definitions[key].enabled&&config.definitions[key].actions.length>0&&!config.definitions[key].needs_review);
+}
 export function actionLabel(item:SceneAction,devices:SceneDevice[]):string{
   const device=devices.find(row=>row.id===item.device),choice=device?.actions.find(row=>row.action===item.action&&row.value===item.value&&row.binding===item.binding);
   const name=device?.name||(item.device==='purifier'?'Purifier':item.device==='fan_1'?'Fan 1':'Fan 2');

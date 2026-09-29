@@ -13,7 +13,13 @@ offline VeSync refresh. Three-theme synthetic browser recovery and 27 viewport
 navigation combinations passed; this fix is not in r10 and requires a new
 image/CI check. See [ROOM_DEVICES.md](ROOM_DEVICES.md).
 
-Open software gates: scene/fan interaction and failure/recovery visual review,
+Further source-only work anchors nested room-device steps at scroll zero,
+shows durable unknown IR results after a failed send, and provides deliberate
+re-review for a stale-but-valid remote scene grant. Three-theme rendered
+fan/scene navigation, fake-IR outage and synthetic regrant passed; 131
+frontend tests/build pass. This also requires a new image and hosted CI.
+
+Open software gates: remaining dirty/interrupted/privacy/keyboard scene/fan UI,
 new exact image build/audit, signed app-release publication and Pi updater
 rollback validation. Open owner gates: physical Pi boot/display/touch/audio,
 Hey Luma wake, USB backup/restore, Pi Connect enrollment, campus networking,

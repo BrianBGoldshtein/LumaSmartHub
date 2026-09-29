@@ -1,15 +1,16 @@
-import {useContext,useEffect,useRef,useState} from 'react';
+import {useContext,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {Fan,Radio} from 'lucide-react';
 import {SetupActivity} from './setupActivity';
 import {TouchField} from './TouchField';
-import {emptyFans,demoAdapter,demoEligibility,fanButtons,fanStatus,pendingObservation,type FanId,type FanConfig,type IrDevice} from './fanState';
+import {scrollSetupToTop} from './setupScroll';
+import {emptyFans,demoAdapter,demoEligibility,fanButtons,fanStatus,fanOutcome,pendingObservation,type FanId,type FanConfig,type IrDevice} from './fanState';
 import './room.css';
 
 type Step='overview'|'prepare'|'output'|'buttons'|'learn'|'test'|'observe';
 class FanError extends Error {status:number;constructor(message:string,status:number){super(message);this.status=status;}}
 
 export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(value:boolean)=>void;onBusy:(value:boolean)=>void;onSaved?:()=>void}){
-  const activity=useContext(SetupActivity),alive=useRef(true),working=useRef(false),request=useRef<AbortController|null>(null);
+  const activity=useContext(SetupActivity),alive=useRef(true),working=useRef(false),request=useRef<AbortController|null>(null),panel=useRef<HTMLDivElement>(null);
   const [config,setConfig]=useState<FanConfig>(emptyFans),[ready,setReady]=useState(demo),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
   const [step,setStep]=useState<Step>('overview'),[fanId,setFanId]=useState<FanId>('fan_1'),[key,setKey]=useState('power_off');
   const [devices,setDevices]=useState<IrDevice[]>([]),[choice,setChoice]=useState(''),[name,setName]=useState(''),[emitter,setEmitter]=useState('1');
@@ -22,6 +23,7 @@ export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(va
   const dirty=step==='output'&&!!choice||step==='observe';
   useEffect(()=>{onDirty(dirty);return()=>onDirty(false);},[dirty,onDirty]);
   useEffect(()=>{onBusy(busy);return()=>onBusy(false);},[busy,onBusy]);
+  useLayoutEffect(()=>scrollSetupToTop(panel.current),[step,fanId]);
   useEffect(()=>{alive.current=true;if(!demo)void run(load);return()=>{alive.current=false;request.current?.abort();};},[demo]);
   useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);
 
@@ -41,7 +43,15 @@ export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(va
   async function run(action:()=>Promise<void>){
     if(working.current)return;working.current=true;setBusy(true);setMessage('');
     try{await action();}catch(error){if(alive.current){
-      if(error instanceof FanError){setMessage(error.message);if(error.status===403){setConfig(emptyFans());setReady(false);reset('overview');}}
+      if(error instanceof FanError){
+        if(error.status===403){setConfig(emptyFans());setReady(false);reset('overview');setMessage(error.message);}
+        else{
+          // The durable receipt may have changed before the IR error. Read only
+          // local saved state; never replay the attempted send or learn.
+          try{const latest:FanConfig=await call();if(alive.current){setConfig(latest);setReady(true);setMessage(error.message);}}
+          catch{if(alive.current){setConfig(emptyFans());setReady(false);reset('overview');setMessage('Could not reload saved fan results. Check both fans before another command. Nothing was retried.');}}
+        }
+      }
       else{setConfig(emptyFans());setReady(false);reset('overview');setMessage('Connection stopped. No command will be retried. Reload saved setup and check both fans before trying again.');}
     }}finally{working.current=false;if(alive.current)setBusy(false);}
   }
@@ -88,15 +98,15 @@ export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(va
   const repeatCheck=button.kind==='absolute'&&(fan.buttons.find(item=>item.key===key)?.checks??0)>=1;
   const yesNo=(title:string,value:boolean|null,set:(value:boolean)=>void)=><fieldset className="room-controls"><legend>{title}</legend><div className="room-actions"><button disabled={busy} aria-pressed={value===true} onClick={()=>set(true)}>Yes</button><button disabled={busy} aria-pressed={value===false} onClick={()=>set(false)}>No</button></div></fieldset>;
 
-  return <div className="room-setup fan-setup"><h2><Fan aria-hidden="true"/> Your two fans</h2>
+  return <div ref={panel} className="room-setup fan-setup"><h2><Fan aria-hidden="true"/> Your two fans</h2>
     {demo&&<p className="setup-note">Sample preview only. No hardware is recorded or controlled.</p>}
     {!ready?<><p role="status">{message||'Loading saved fan setup…'}</p><button disabled={busy} onClick={()=>void run(load)}>Reload saved setup</button></>:config.recovery_error?<p role="alert">Saved fan settings need recovery. They have not been overwritten; commands are disabled.</p>:<>
       {step!=='overview'&&<button disabled={busy} onClick={back}>← Fan overview</button>}
-      {step==='overview'?<><p>Choose both outputs, then learn and test one button at a time. All automations stay off.</p><div className="fan-cards">{config.fans.map(row=><section className="room-device-card" key={row.id}><h3>{row.name||(row.id==='fan_1'?'Fan 1':'Fan 2')}</h3><p>{fanStatus(row)}</p><button disabled={busy} onClick={()=>{setFanId(row.id);reset(row.route?'buttons':'prepare');}}>{row.route?'Buttons & controls':'Set up fan'}</button></section>)}</div><p className="setup-note">Two remotes can use identical signals. Independent control must be tested in both directions. Infrared does not report a fan’s current state.</p><button disabled={busy} onClick={()=>void run(load)}>Reload saved setup</button></>:null}
+      {step==='overview'?<><p>Choose both outputs, then learn and test one button at a time. All automations stay off.</p><div className="fan-cards">{config.fans.map(row=><section className="room-device-card" key={row.id}><h3>{row.name||(row.id==='fan_1'?'Fan 1':'Fan 2')}</h3><p>{fanStatus(row)}</p>{fanOutcome(row.last_command)&&<p role="status">{fanOutcome(row.last_command)}</p>}<button disabled={busy} onClick={()=>{setFanId(row.id);reset(row.route?'buttons':'prepare');}}>{row.route?'Buttons & controls':'Set up fan'}</button></section>)}</div><p className="setup-note">Two remotes can use identical signals. Independent control must be tested in both directions. Infrared does not report a fan’s current state.</p><button disabled={busy} onClick={()=>void run(load)}>Reload saved setup</button></>:null}
       {step==='prepare'&&<><h3>Connect the IR hardware</h3><ol className="room-prerequisites"><li>Use the verified USB infrared adapter; leave the microphone’s GPIO connections alone.</li><li>Position each chosen emitter so it reaches its fan. Identical remotes may need separately controlled, shielded emitters.</li><li>Keep both fans and their original remotes visible for the later checks.</li></ol><p className="setup-note">Have not received the hardware? Choose another extra and return here later. No special fan or network hardware is assumed.</p><button disabled={busy} onClick={()=>void run(output)}><Radio aria-hidden="true"/> Discover USB adapters</button></>}
       {step==='output'&&<><h3>Choose this fan’s output</h3><div className="room-options">{devices.filter(row=>row.send).map(row=><button key={row.id} disabled={busy} aria-pressed={choice===row.id} onClick={()=>{activity.edited();setChoice(row.id);}}><strong>{row.name}</strong><span>{row.emitter_selection?'Selectable emitter channels':'One shared output'} · {row.serial_present?'Device identity available':'Review after each restart'}</span></button>)}</div>{!devices.some(row=>row.send)&&<p>No compatible transmitter found. Attach one and rediscover; a receive-only dongle cannot control a fan.</p>}
         {selected&&<form onSubmit={event=>{event.preventDefault();void run(saveOutput);}}><TouchField label="Fan name" value={name} onChange={setName} maxLength={40} required disabled={busy}/>{selected.emitter_selection&&<TouchField label="Emitter channel · from adapter documentation" value={emitter} onChange={setEmitter} mode="digits" maxLength={2} required disabled={busy}/>}<p className="setup-note">Channel availability is checked when testing. Selecting an output never sends a command.</p><button disabled={busy||!name.trim()||(selected.emitter_selection&&(!/^\d+$/.test(emitter)||Number(emitter)<1||Number(emitter)>32))}>Save output</button></form>}<button disabled={busy} onClick={()=>void run(async()=>{await discover();setChoice('');})}>Rediscover</button></>}
-      {step==='buttons'&&<><h3>{fan.name}</h3>{!allOutputs&&<p className="setup-note">Choose both fan outputs before learning buttons, so checks can cover both directions.</p>}{fan.needs_output_review&&<div className="room-confirm"><p>This adapter has no serial identity. Check its USB port and emitter wiring after each restart.</p><button disabled={busy} onClick={()=>void run(async()=>{await discover();setMessage('Adapter list refreshed. Check the wiring, then confirm the output.');})}>Rediscover adapter</button><button disabled={busy||!devices.length} onClick={()=>void run(async()=>{if(demo)preview(copy=>{copy.fans.find(row=>row.id===fanId)!.needs_output_review=false;});else setConfig(await call('/review-output',body()));})}>I checked this output</button></div>}
+      {step==='buttons'&&<><h3>{fan.name}</h3>{fanOutcome(fan.last_command)&&<p role="status">{fanOutcome(fan.last_command)}</p>}{!allOutputs&&<p className="setup-note">Choose both fan outputs before learning buttons, so checks can cover both directions.</p>}{fan.needs_output_review&&<div className="room-confirm"><p>This adapter has no serial identity. Check its USB port and emitter wiring after each restart.</p><button disabled={busy} onClick={()=>void run(async()=>{await discover();setMessage('Adapter list refreshed. Check the wiring, then confirm the output.');})}>Rediscover adapter</button><button disabled={busy||!devices.length} onClick={()=>void run(async()=>{if(demo)preview(copy=>{copy.fans.find(row=>row.id===fanId)!.needs_output_review=false;});else setConfig(await call('/review-output',body()));})}>I checked this output</button></div>}
         <div className="fan-buttons">{fan.buttons.map(item=><div className="room-device-card" key={item.key}><strong>{item.label}</strong><span>{item.kind==='absolute'?`${item.checks}/2 checks`:'Manual confirmation only'}{item.scene_eligible?' · scene-eligible, not enabled':''}</span><button disabled={busy} onClick={()=>{setKey(item.key);setAck(false);setStep('test');}}>Test / use</button></div>)}</div>
         {observing&&<button disabled={busy} onClick={()=>{setKey(fan.last_command!.button);setReceipt(fan.last_command!.id);setExpected(null);setOther(null);setStep('observe');}}>Finish last test observation</button>}
         <label className="fan-select">Button to learn<select value={key} disabled={busy||!allOutputs} onChange={event=>setKey(event.target.value)}>{fanButtons.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select></label><button disabled={busy||!allOutputs} onClick={()=>void run(startLearn)}>Learn this button</button><div className="room-actions"><button disabled={busy} onClick={()=>{setAck(false);setStep('prepare');}}>Change output</button><button disabled={busy} onClick={()=>setConfirm('remove')}>Remove fan</button></div></>}

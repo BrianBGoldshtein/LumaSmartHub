@@ -1,5 +1,16 @@
 # Room scenes — implementation checkpoint
 
+September29 source-only UI addendum: a stale iPhone Shortcut scene grant now
+shows an explicit **Reauthorize reviewed remote scenes** button if its current
+definition is enabled, nonempty and no longer needs device review. A synthetic
+production-API browser pass reauthorized Night without increasing device
+dispatch count; the backend reported `allowed=true`, `needs_review=false`.
+The three-theme overview-to-detail matrix stays within viewport width and
+resets nested scroll to the scene heading. **131 frontend tests** and build
+pass. This is not in the r10 image, and no real iPhone/appliance or physical
+touch was involved. Dirty-edit, interrupted-operation and real-device checks
+remain open; the prior checkpoint follows.
+
 2026-09-28 source checkpoint. The scene model, boot-local transition monitors, bounded executor, device dispatcher, runtime, local API, service worker and themed `SceneSetup` are connected. Manual scenes require current owner access; automatic events remain explicitly opt-in and source-gated. A distinct default-off iPhone Shortcut allowlist now exists for exact saved scene/device-action bundles. No real owner account, remote, fan or purifier was used in verification, and there is no physical/device qualification claim. Read this file together with [ROOM_DEVICES.md](ROOM_DEVICES.md); older chronology inside those files may describe the former foundation-only state.
 
 ## Implemented contract

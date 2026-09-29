@@ -1,7 +1,8 @@
-import {useContext,useEffect,useRef,useState} from 'react';
+import {useContext,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {Wind} from 'lucide-react';
 import {SetupActivity} from './setupActivity';
 import {TouchField} from './TouchField';
+import {scrollSetupToTop} from './setupScroll';
 import {emptyRoom,sampleRoom,samplePurifier,purifierStatus,purifierFresh,supportsPurifier,commandStatus,type RoomConfig,type PurifierDevice,type PurifierAction} from './roomState';
 import './room.css';
 
@@ -19,7 +20,7 @@ async function api(path='',body?:unknown){
 }
 
 export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(value:boolean)=>void;onBusy:(value:boolean)=>void;onSaved?:()=>void}){
-  const activity=useContext(SetupActivity),alive=useRef(true),working=useRef(false);
+  const activity=useContext(SetupActivity),alive=useRef(true),working=useRef(false),panel=useRef<HTMLDivElement>(null);
   const [config,setConfig]=useState<RoomConfig>(emptyRoom),[ready,setReady]=useState(demo),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
   const [step,setStep]=useState<Step>('overview'),[confirm,setConfirm]=useState<Confirmation>(null);
   const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[country,setCountry]=useState('US'),[reviewed,setReviewed]=useState(false);
@@ -28,6 +29,7 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
   const dirty=!!username||!!password||country!=='US'||!!choice;
   useEffect(()=>{onDirty(dirty);return()=>onDirty(false);},[dirty,onDirty]);
   useEffect(()=>{onBusy(busy);return()=>onBusy(false);},[busy,onBusy]);
+  useLayoutEffect(()=>scrollSetupToTop(panel.current),[step]);
   useEffect(()=>{alive.current=true;if(!demo)void load();return()=>{alive.current=false;};},[demo]);
   useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);
   // Local cached state only: this never triggers a provider request. Don't replace
@@ -84,7 +86,7 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
     await run(async()=>{const disconnect=confirm==='disconnect';const value=demo?{...emptyRoom(),revision:'sample-only',connected:!disconnect}:await api(disconnect?'/vesync/disconnect':'/purifier/select',{revision:config.revision,...(!disconnect?{device_id:null}:{})});saved(value,disconnect?'VeSync disconnected. This does not switch off the purifier.':'Purifier unselected. This does not switch it off.');});
   }
   const view=config.purifier,fresh=purifierFresh(view,now),caps=fresh?view?.capabilities:null;
-  return <div className="room-setup"><h2><Wind aria-hidden="true"/> Your room</h2>
+  return <div ref={panel} className="room-setup"><h2><Wind aria-hidden="true"/> Your room</h2>
     {demo&&<p className="setup-note">Interactive sample · no account, network or appliance changes. Use made-up credentials only.</p>}
     {!ready?<><p>Load saved room settings to continue.</p><button disabled={busy} onClick={()=>void load()}>Reload saved state</button></>:config.recovery_error?<p role="alert">Room settings need recovery. Nothing was overwritten; device commands are disabled.</p>:<>
       {step!=='overview'&&<button disabled={busy} onClick={back}>← Back to room devices</button>}

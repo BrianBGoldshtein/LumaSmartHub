@@ -11,6 +11,13 @@ are not in r10. Rebuild before treating those fixes as installed. Scene/fan
 failure/reconnect UI, actual touch and all owner hardware/account tests remain
 open; app-only signed update has not been published or tested on Pi.
 
+Later source-only acceptance work now also anchors nested purifier/fan/scene
+steps at the top, surfaces unknown IR receipts immediately after an outage,
+and permits explicit reauthorization of a stale scene grant after current
+device review. Synthetic three-theme navigation, fake-IR outage and scene
+regrant passed. Remaining dirty/interrupted/privacy/keyboard paths and real
+hardware/account acceptance are not implied by those tests.
+
 ## Current acceptance ledger
 
 | Scope | Source state | Software evidence | Still outstanding |

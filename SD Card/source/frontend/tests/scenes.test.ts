@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {emptyScenes,sceneDraft,actionLabel,resultLabel,sampleScenes} from '../src/sceneState.ts';
+import {emptyScenes,sceneDraft,actionLabel,resultLabel,remoteReauthorizationReady,sampleScenes} from '../src/sceneState.ts';
 
 test('four independent scenes start empty and disabled without remote permission',()=>{
   const config=emptyScenes();assert.equal(Object.keys(config.definitions).length,4);assert.equal(config.remote_control,false);
@@ -19,4 +19,16 @@ test('old device bindings require review and uncertain outcomes never imply succ
   assert.match(actionLabel({...item,binding:'changed'},config.devices),/review needed/);
   assert.match(resultLabel('unknown'),/unknown/);assert.match(resultLabel('not_started'),/Not run/);
   assert.match(resultLabel('skipped_override'),/manual override/);
+});
+test('stale remote grant offers reauthorization only after its scene is locally usable',()=>{
+  const config=sampleScenes(),action=config.devices[0].actions[0];
+  config.remote.scenes.night.needs_review=true;
+  config.definitions.night={enabled:true,automatic:false,actions:[action]};
+  assert.equal(remoteReauthorizationReady(config,['night']),true);
+  config.definitions.night.needs_review=true;
+  assert.equal(remoteReauthorizationReady(config,['night']),false);
+  config.definitions.night.needs_review=false;
+  config.definitions.night.enabled=false;
+  assert.equal(remoteReauthorizationReady(config,['night']),false);
+  assert.equal(remoteReauthorizationReady(config,[]),false);
 });

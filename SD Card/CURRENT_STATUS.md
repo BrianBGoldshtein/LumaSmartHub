@@ -15,16 +15,26 @@ history, not the current image recommendation.
 Current source is **newer than r10**: browser review found that embedded Extras
 opened lower room-device pages at an inherited scroll offset, and a VeSync
 outage left stale control buttons visible until the next local refresh. Both
-are fixed in source. A synthetic local browser pass now covers Air purifier,
+are fixed in source at `9818b65`; [hosted CI run 36635445931](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36635445931)
+passed. A synthetic local browser pass now covers Air purifier,
 Two fans and Room scenes overview navigation across all three themes at
 390×844, 1280×720 and 1536×2048, including back navigation and no horizontal
 overflow. The purifier's long-name/offline/recovery path passed in all three
 themes; after an offline error, controls disappear immediately and return only
 after a successful reported-state read. No real VeSync account or appliance
-was contacted. These fixes still need committed CI and a new image build.
+was contacted. A further room-device pass fixed internal step transitions for
+purifier, fan and scene setup, kept unknown IR receipts visible after reload,
+and exposed an explicit reauthorization button for stale but now-valid iPhone
+scene grants. The fake-IR and scene production HTTP/WebSocket fixtures passed;
+the rendered fan/scene detail pages stayed anchored at scroll zero across all
+three themes, and a synthetic IR outage preserved a new durable unknown
+receipt. Regranting a synthetic scene changed only remote permission, with no
+extra device dispatch. **131 frontend tests** and production build pass for
+this newer source. These newest fixes still need hosted CI and a new image.
 
-Outstanding software work: finish scene/fan interactive failure and recovery
-review; rebuild/audit an image containing these UI fixes; verify signed
+Outstanding software work: finish remaining scene/fan dirty-edit, interrupted
+operation and privacy/keyboard checks; rebuild/audit an image containing these
+UI fixes; verify signed
 application-update publication and rollback through the actual Pi after owner
 hardware acceptance. Owner-only gates: Pi flash/boot, screen and touch,
 ReSpeaker/wake phrase and timer audio, USB backup/restore, Pi Connect enrollment,

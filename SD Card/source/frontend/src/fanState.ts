@@ -22,6 +22,9 @@ export function fanStatus(fan:FanView){
   return `${tested} of ${fan.buttons.length} buttons tested`;
 }
 export function pendingObservation(receipt:FanReceipt|null,now:number){return !!receipt&&receipt.kind==='test'&&receipt.status==='sent_unconfirmed'&&!receipt.observed&&now-Date.parse(receipt.at)>=0&&now-Date.parse(receipt.at)<=120000;}
+export function fanOutcome(receipt:FanReceipt|null){
+  return receipt?.status==='unknown'?'Last send outcome unknown · check both fans. Nothing was retried.':null;
+}
 export function demoEligibility(config:FanConfig){
   config.independent=config.fans.every(fan=>!!fan.route&&fan.buttons.some(button=>button.checks>0));
   for(const fan of config.fans)for(const button of fan.buttons)button.scene_eligible=config.independent&&button.kind==='absolute'&&button.checks>=2;

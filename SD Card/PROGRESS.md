@@ -1,5 +1,27 @@
 # Luma implementation ledger
 
+## September 29 — nested room steps, IR uncertainty and remote-scene re-review
+
+Browser evidence against disposable local production HTTP fixtures exposed
+inherited scroll in scene details and incomplete recovery affordances. A shared
+setup scroll helper now anchors each purifier/fan/scene step at the top,
+including embedded onboarding. A failed fan operation re-reads only local
+saved state; a durable unknown IR receipt is visibly labeled after reload,
+without retrying the send. Stale-but-valid scene grants now present an
+explicit owner-local reauthorization button rather than requiring an
+unexplained off/on sequence. Singular scene action counts were corrected.
+
+Verification: 131 frontend unit tests and production TypeScript/Vite build
+pass. Existing fake-IR and scene production HTTP/WebSocket scripts pass. The
+rendered three-theme fan/scene overview-to-detail matrix at390×844/1536×2048
+has no horizontal overflow and resets detail scroll to zero. In a synthetic
+IR outage, the UI showed the fixed no-retry message and a new durable unknown
+receipt; the fake transport's private sentinel did not render. Reauthorizing
+a synthetic stale Night scene cleared review-needed and did not dispatch a
+device command. No actual USB, fan, account, Pi or SD was touched. Remaining:
+other dirty/interrupted/privacy/keyboard paths, hosted CI and a fresh audited
+image, then owner-only hardware/account acceptance.
+
 ## September 29 — r10 verified software image; room setup follow-up in source
 
 Built r10 from `a79f7f4`, audited the exact 170 shipped Luma files and ARM64
@@ -19,10 +41,12 @@ left stale controls visible until periodic polling; the frontend now re-reads
 local saved state immediately, without recontacting VeSync or retrying the
 command. Offline controls disappear, and after a successful fresh read they
 return. Long names wrap at390px; browser body width equals viewport; no fake
-secret was rendered. These fixes are newer than r10, not physically tested.
+secret was rendered. These fixes are committed/pushed as `9818b65` and
+[hosted CI run 36635445931](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36635445931)
+passed. They are newer than r10, not physically tested.
 
-Next: commit/push these UI changes and docs; finish scene/fan error and
-reconnect browser paths; rebuild/audit the final owner-test image; then obtain
+Next: finish scene/fan error and reconnect browser paths; rebuild/audit the
+next owner-test image; then obtain
 owner-controlled physical acceptance before any claim of v1 or signed-release
 deployment. The private signing key stays offline and `main` untouched.
 

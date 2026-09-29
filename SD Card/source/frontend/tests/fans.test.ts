@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {emptyFans,demoAdapter,demoEligibility,fanButtons,fanStatus,pendingObservation} from '../src/fanState.ts';
+import {emptyFans,demoAdapter,demoEligibility,fanButtons,fanStatus,fanOutcome,pendingObservation} from '../src/fanState.ts';
 
 test('two independent empty fan slots never imply connected hardware',()=>{
   const config=emptyFans();assert.equal(config.fans.length,2);assert.equal(config.independent,false);
@@ -24,4 +24,10 @@ test('observation is only available for recent completed test sends',()=>{
 test('no-serial review status takes precedence over saved button checks',()=>{
   const row=emptyFans().fans[0];row.route={device:demoAdapter,emitter:1};row.needs_output_review=true;
   assert.equal(fanStatus(row),'Review USB output after restart');
+});
+test('uncertain IR send survives reload as an explicit check-both-fans warning',()=>{
+  const receipt={id:'test',button:'power_off',kind:'manual' as const,status:'unknown' as const,at:new Date().toISOString(),observed:false};
+  assert.match(fanOutcome(receipt)??'',/outcome unknown.*check both fans/i);
+  assert.equal(fanOutcome({...receipt,status:'not_sent'}),null);
+  assert.equal(fanOutcome(null),null);
 });

@@ -1,5 +1,21 @@
 # Luma — current restart point
 
+## Current source overlay — September 29: preview-safe phone removal
+
+The uncommitted demo-mode “Forget this iPhone” fix now clears only synthetic
+preview state and cannot call the real Bluetooth-forget endpoint. Verification
+on this source: **127 frontend tests passed**, dashboard and Vite-config
+TypeScript checks passed, and Vite produced a fresh production bundle in a
+temporary directory. The local browser completed synthetic pairing/removal and
+displayed “Preview only — no Bluetooth pairing or saved phone was changed.”
+No Pi, Bluetooth radio or real device was used. Build outputs stayed outside
+the read-only managed worktree.
+
+GitHub confirms `codex/luma-r7-levoit` is published at `f272c05`; no hosted
+workflow run exists for that checkpoint. The current fix and this note remain
+uncommitted. `main` is untouched. Do not treat the fix as available to the Pi
+until it is pushed and hosted CI passes.
+
 ## Latest checkpoint — September 29: r9 host, CI and exact-image checks
 
 Current candidate: `image/r9-campus-network-20260929/luma-pi4-UNVERIFIED.img.xz`;

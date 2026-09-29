@@ -2,6 +2,7 @@ import {useEffect,useState,type FormEvent} from "react";
 import {useSetupActivity} from "./setupActivity";
 import {Bluetooth,Check,Smartphone} from "lucide-react";
 import {TouchField} from "./TouchField";
+import {forgetBluetoothPhone} from "./bluetoothForget";
 
 type Phone={path:string;name:string;address:string;paired:boolean;trusted:boolean};
 type Pairing={session:string|null;phase:string;devices:Phone[];selected:Phone|null;challenge:string|null;passkey:string|null;message:string;phone_address?:string|null;connection_status?:string};
@@ -48,9 +49,10 @@ export function BluetoothSetup({demo,pinConfigured}:{demo:boolean;pinConfigured:
   async function forgetPhone(event:FormEvent<HTMLFormElement>){
     event.preventDefault();setBusy(true);setForgetError("");
     try{
-      const response=await fetch("/api/v1/bluetooth/forget",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:forgetPin})});
-      const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:"Luma could not remove the phone pairing.");
-      setForgetPin("");setForgetMode(false);setState(s=>({...s,phone_address:null,connection_status:"Not configured"}));setNotice(data.bond_removed?"The old pairing was removed. Find and pair your iPhone again when ready.":"The saved phone selection was cleared; no old bond was present.");
+      const result=await forgetBluetoothPhone(demo,forgetPin);
+      setForgetPin("");setForgetMode(false);
+      if(result.preview){setState({...initial,message:"Preview only — no Bluetooth pairing or saved phone was changed."});setNotice("Preview only — no Bluetooth pairing or saved phone was changed.");}
+      else{setState(s=>({...s,phone_address:null,connection_status:"Not configured"}));setNotice(result.bond_removed?"The old pairing was removed. Find and pair your iPhone again when ready.":"The saved phone selection was cleared; no old bond was present.");}
     }catch(error){setForgetError(error instanceof Error?error.message:"Luma could not remove the phone pairing.");setForgetPin("");}finally{setBusy(false);}
   }
   return <section className="bluetooth-setup"><h2><Bluetooth/> Your iPhone</h2>

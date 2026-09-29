@@ -14,7 +14,13 @@ Feature 6 remains excluded. Tetris timing remains frozen.
 
 Current source evidence: **989 Linux backend tests and 957 Windows backend
 tests (32 Linux-only skipped)**; the focused Linux USB inventory module passed
-8/8. Frontend: **124 tests** and the TypeScript/production build passed. The
+8/8. The current frontend source overlay passes **127 tests**, including three
+regressions proving demo-mode phone forgetting never calls the live endpoint.
+Both TypeScript projects type-check, and Vite's production build passes when
+its output is directed to an allowed temporary directory. The local demo
+pair/forget browser flow also confirms that only preview state changes. The
+previous r9 image itself remains at its recorded **124-test** source revision;
+the overlay has not been packaged into a new image or signed app bundle. The
 Windows image-builder suite passed **25** and skipped **14** requiring native
 Linux tools. The r9 candidate at
 `image/r9-campus-network-20260929/luma-pi4-UNVERIFIED.img.xz` has source
@@ -31,9 +37,10 @@ commit 7a5a918. These checks do not prove physical boot, screen/touch/audio,
 removable-media, or live network/provider behavior. The build manifest says
 `boot_verified=false`; the exact raw-image audit says `hardware_qualified=false`.
 
-The feature branch is published at commit 7a5a918; `main` is unchanged. No
-GitHub Release was created and no Pi was updated or reflashed. The existing Pi
-state remains untouched.
+The feature branch is published through `f272c05`; GitHub confirms no workflow
+run for that commit. The current local UI fix and these status changes are not
+yet committed or pushed. `main` is unchanged. No GitHub Release was created
+and no Pi was updated or reflashed. The existing Pi state remains untouched.
 
 ### Remaining gates
 
@@ -47,10 +54,10 @@ state remains untouched.
 - Complete any remaining room-device/scene review and test the real purifier,
   independently controlled fans, phone, USB media, power-loss recovery,
   physical screen/touch/audio, memory and thermal behavior.
-- Restore Git history/remote reachability and publish the already-authorized
-  development branch; run hosted CI. Keep `main` untouched until the agreed
-  hardware acceptance and v1 approval. Preserve the release-signing key off
-  GitHub.
+- Commit and push the current preview-only Bluetooth fix and status update to
+  the already-published development branch; run hosted CI. Keep `main` untouched
+  until the agreed hardware acceptance and v1 approval. Preserve the
+  release-signing key off GitHub.
 - Finish owner setup later: calendars and Google write consent, transit
   choices/token, Levoit model/enrollment, exact Woozoo models/remotes, scene
   choices and backup passphrase. Enter credentials only on the Pi/provider.

@@ -23,7 +23,9 @@ branch CI does not sign or publish releases. The UI/API/systemd changes are
 source-only and must be included in the fresh final image. Verification:
 **977 backend tests passed**, **124 frontend tests passed**, TypeScript and the
 production build passed, and updater systemd packaging checks passed. No signed
-release was published and nothing was installed on the Pi.
+release was published and nothing was installed on the Pi. GitHub Actions run
+#14 passed on feature commit `64f2ce2` after the branch was synchronized with
+the complete current source tree.
 
 Completed the requested Space Invaders-style autoplay scene across Neon Grid,
 Luma Glass and Hearth. It has a reversing/descending five-row formation,

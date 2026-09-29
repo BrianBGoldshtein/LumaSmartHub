@@ -21,8 +21,9 @@ GitHub-release metadata, checksum, signature, downgrade, local-only API,
 review-token, broker, and systemd package tests. Verification: **977 backend
 tests passed**, **124 frontend tests passed**, TypeScript/production build
 passed, and the updater systemd packaging checks passed. This source must be
-included in the next fresh full image; no release was signed/published and
-nothing has been installed on the Pi.
+included in the next fresh full image. GitHub Actions run #14 passed on feature
+commit `64f2ce2`; no release was signed/published and nothing has been
+installed on the Pi.
 
 Completed the requested Space Invaders interlude as an autonomous classic game
 in all three themes. Its 55-invader formation reverses and descends, both sides

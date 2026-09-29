@@ -158,5 +158,7 @@ complete backend suite, frontend tests/build, and image-manifest tests. The
 focused Linux updater suite at that checkpoint passed 8/8. On September 29, the
 updated local source passed 977 backend tests, 124 frontend tests,
 TypeScript/production build, and the updater's systemd packaging checks. Hosted
-CI has not yet run on the new GitHub-update commit; the configured Debian build
-machine remains an independent full-suite gate.
+GitHub Actions run #14 passed on feature commit `64f2ce2`, covering the backend,
+frontend, build, image-manifest, updater-broker, Pi Connect and wireless-package
+checks. The configured Debian build machine remains an independent full-suite
+gate.

@@ -2,6 +2,14 @@
 
 ## Latest checkpoint — September 29, 2026
 
+Room onboarding now respects its provider setup cooldown with a visible
+discovery countdown. Disposable real-browser checks covered fan/purifier
+confirmation drafts and keyboard paths in all three themes, and a separate
+real local HTTP/fake-VeSync pass checked sign-in, saved selection, offline
+control removal, recovery and privacy redaction with zero appliance commands.
+Frontend build and 131 tests pass. Hosted CI and image delivery are pending
+for this newest source-only increment; physical/device acceptance is open.
+
 The next source overlay also passes a synthetic privacy-lock-during-dispatch
 check and three-theme scene keyboard confirmations, with sample fan/purifier
 keyboard confirmation checks. An existing WebSocket API test now explicitly

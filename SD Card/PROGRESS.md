@@ -1,5 +1,20 @@
 # Luma implementation ledger
 
+## September 29 — room onboarding cooldown and wider browser recovery checks
+
+After VeSync sign-in the room panel now waits out the service's five-second
+setup-request interval with a visible discovery countdown. The previous UI
+offered an immediate discovery that predictably returned a rate-limit error.
+A new disposable browser script (`source/frontend/qa/room-interactions.mjs`)
+used the real local HTTP app/SQLite and a fake VeSync provider: sample login,
+selection, all-three-theme narrow offline-control removal and fresh recovery,
+privacy redaction during a reconnect draft, saved-session survival and zero
+unintended purifier commands passed. The scene browser script also now checks
+fan and purifier dirty draft/confirmation keyboard paths across all three
+themes, rather than one theme each. Frontend TypeScript/production build and
+131 unit tests pass. These are synthetic tests, not actual provider, touch or
+Pi hardware acceptance. The new source is not in r11 and needs hosted CI.
+
 ## September 29 — privacy/keyboard acceptance and CI teardown repair
 
 The disposable scene fixture now permits a synthetic privacy lock while one

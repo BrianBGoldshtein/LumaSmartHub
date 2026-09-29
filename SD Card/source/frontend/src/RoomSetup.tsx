@@ -27,7 +27,7 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
   const confirmPanel=useConfirmKeyboard(!!confirm,()=>{if(!busy)setConfirm(null);});
   const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[country,setCountry]=useState('US'),[reviewed,setReviewed]=useState(false);
   const [rows,setRows]=useState<PurifierDevice[]>([]),[discovered,setDiscovered]=useState(false),[choice,setChoice]=useState<PurifierDevice|null>(null),[name,setName]=useState('');
-  const [now,setNow]=useState(Date.now());
+  const [now,setNow]=useState(Date.now()),[discoverAfter,setDiscoverAfter]=useState(0);
   const dirty=!!username||!!password||country!=='US'||!!choice;
   useEffect(()=>{onDirty(dirty);return()=>onDirty(false);},[dirty,onDirty]);
   useEffect(()=>{onBusy(busy);return()=>onBusy(false);},[busy,onBusy]);
@@ -63,7 +63,12 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
     if(!reviewed||!username.trim()||!password||!/^[A-Z]{2}$/.test(country))return;
     const credentials={username:username.trim(),password,country,revision:config.revision};
     setPassword('');
-    await run(async()=>{const value:RoomConfig=demo?{...emptyRoom(),revision:'sample-only',connected:true}:await api('/vesync/login',credentials);saved(value,demo?'Sample session only. No credentials sent or saved.':'VeSync session saved. Discover your purifier next.');});
+    await run(async()=>{const value:RoomConfig=demo?{...emptyRoom(),revision:'sample-only',connected:true}:await api('/vesync/login',credentials);
+      // The service spaces VeSync setup requests by five seconds. Make the
+      // first discovery available after that interval instead of inviting an
+      // immediate, predictable rate-limit error during onboarding.
+      setDiscoverAfter(demo?0:Date.now()+5500);
+      saved(value,demo?'Sample session only. No credentials sent or saved.':'VeSync session saved. Discover your purifier next.');});
   }
   async function discover(){
     setStep('discover');setRows([]);setDiscovered(false);
@@ -107,7 +112,7 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
               {caps.display&&<div className="room-actions"><button onClick={()=>void command('display',true)}>Purifier display on</button><button onClick={()=>void command('display',false)}>Purifier display off</button></div>}
             </fieldset>}
           </>}
-          <div className="room-actions"><button disabled={busy} onClick={()=>{setStep('prepare');setReviewed(false);}}>{config.connected?'Reconnect VeSync':'Connect VeSync'}</button>{config.connected&&<button disabled={busy} onClick={()=>void discover()}>{config.selected?'Choose another purifier':'Find my purifier'}</button>}{view&&<button disabled={busy} onClick={()=>void refresh()}>Check reported state</button>}</div>
+          <div className="room-actions"><button disabled={busy} onClick={()=>{setStep('prepare');setReviewed(false);}}>{config.connected?'Reconnect VeSync':'Connect VeSync'}</button>{config.connected&&<button disabled={busy||now<discoverAfter} onClick={()=>void discover()}>{now<discoverAfter?`Find my purifier in ${Math.ceil((discoverAfter-now)/1000)}s`:config.selected?'Choose another purifier':'Find my purifier'}</button>}{view&&<button disabled={busy} onClick={()=>void refresh()}>Check reported state</button>}</div>
           {config.connected&&<details><summary>Disconnect or change selection</summary><p>This only removes Luma’s connection or selection. The purifier keeps its current settings.</p><div className="room-actions">{config.selected&&<button disabled={busy} onClick={()=>setConfirm('unselect')}>Unselect purifier</button>}<button disabled={busy} onClick={()=>setConfirm('disconnect')}>Disconnect VeSync</button></div></details>}
         </div>
         <p className="setup-note">Connecting the purifier does not enable any scene or remote control. Set up each Woozoo separately in Two fans; infrared commands remain unconfirmed until you observe the fan.</p>

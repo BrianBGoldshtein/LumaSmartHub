@@ -1,5 +1,19 @@
 # Room devices — purifier, fans and scenes source status
 
+Newest September 29 source follow-up: the purifier now displays a short,
+disabled discovery countdown after successful login, matching the service's
+five-second VeSync setup pacing rather than surfacing a predictable rate-limit
+error during onboarding. `source/frontend/qa/room-interactions.mjs` passed
+against temporary SQLite and the real local API with synthetic VeSync HTTP:
+sample sign-in/selection, offline controls removed and fresh recovery in all
+three themes at 390 px, privacy redaction during a dirty reconnect form, saved
+selection survival, no provider token/password leak and zero unintended
+purifier commands. The scene browser script additionally passed fan and
+purifier dirty-draft, safe-focus, both-way Tab, Escape and discard checks in
+all three themes at 390 px. 131 frontend tests and production build pass.
+No physical touch, owner credentials, actual VeSync or USB IR were used;
+hosted CI and the next image still need this source.
+
 Later September 29 source-only acceptance: a synthetic privacy transition
 during a held scene action hid the private editor immediately; the durable
 run was interrupted and did not replay on unlock. A shared keyboard handler

@@ -98,29 +98,43 @@ try{
   checks.push({privacy:{redacted,interrupted:!lockedRun.finished,dispatches:final.dispatches}});
 }finally{await api('_qa/control','POST',{mode:'release'});await privacyTab.close();}
 
-const fanTab=await browser('?demo=1&setup=extras&theme=hearth');
-try{
-  await fanTab.click('Two fans');await fanTab.click('Set up fan');await fanTab.click('Discover USB adapters');
-  await fanTab.until("document.querySelector('.fan-setup .room-options')?.textContent.includes('Sample USB IR adapter')");
-  await fanTab.tap("document.querySelector('.fan-setup .room-options button')");await fanTab.click('Fan overview');
-  await fanTab.until("!!document.querySelector('.fan-setup [role=alertdialog]')");
-  const safe=await fanTab.evaluate("document.activeElement?.textContent.includes('Keep working')");
-  await fanTab.key('Escape');await fanTab.until("!document.querySelector('.fan-setup [role=alertdialog]')");
-  if(!safe)throw Error('Fan confirmation did not focus the safe choice');
-  checks.push({fanKeyboard:{safeFocus:safe,escape:true}});
-}finally{await fanTab.close();}
+for(const theme of ['hearth','luma-glass','neon-grid']){
+  const fanTab=await browser(`?demo=1&setup=extras&theme=${theme}`);
+  try{
+    await fanTab.click('Two fans');await fanTab.click('Set up fan');await fanTab.click('Discover USB adapters');
+    await fanTab.until("document.querySelector('.fan-setup .room-options')?.textContent.includes('Sample USB IR adapter')");
+    await fanTab.tap("document.querySelector('.fan-setup .room-options button')");await fanTab.click('Fan overview');
+    await fanTab.until("!!document.querySelector('.fan-setup [role=alertdialog]')");
+    const safe=await fanTab.evaluate("document.activeElement?.textContent.includes('Keep working')");
+    await fanTab.key('Tab');const forward=await fanTab.evaluate("document.activeElement?.textContent.includes('Discard and leave')");
+    await fanTab.key('Tab',true);const back=await fanTab.evaluate("document.activeElement?.textContent.includes('Keep working')");
+    await fanTab.key('Escape');await fanTab.until("!document.querySelector('.fan-setup [role=alertdialog]')");
+    const retained=await fanTab.evaluate("document.querySelector('.fan-setup .room-options button[aria-pressed=true]')!==null");
+    await fanTab.click('Fan overview');await fanTab.click('Discard and leave');
+    await fanTab.until("!!document.querySelector('.fan-setup .fan-cards')");
+    const fit=await fanTab.evaluate('document.body.scrollWidth<=innerWidth');
+    if(!safe||!forward||!back||!retained||!fit)throw Error(`${theme}: fan draft, keyboard or narrow layout failed`);
+    checks.push({fanKeyboard:{theme,safeFocus:safe,forward,back,escape:true,retained,fit}});
+  }finally{await fanTab.close();}
 
-const roomTab=await browser('?demo=1&setup=extras&theme=luma-glass');
-try{
-  await roomTab.click('Air purifier');await roomTab.click('Connect VeSync');
-  await roomTab.tap("document.querySelector('.room-setup .extras-toggle input')");
-  await roomTab.click('Continue to local sign-in');
-  await roomTab.tap("document.querySelector('.room-setup input[type=text]')");await roomTab.insert('qa@example.invalid');
-  await roomTab.click('Back to room devices');
-  await roomTab.until("!!document.querySelector('.room-setup [role=alertdialog]')");
-  const safe=await roomTab.evaluate("document.activeElement?.textContent.includes('Keep current settings')");
-  await roomTab.key('Escape');await roomTab.until("!document.querySelector('.room-setup [role=alertdialog]')");
-  if(!safe)throw Error('Purifier confirmation did not focus the safe choice');
-  checks.push({purifierKeyboard:{safeFocus:safe,escape:true}});
-}finally{await roomTab.close();}
+  const roomTab=await browser(`?demo=1&setup=extras&theme=${theme}`);
+  try{
+    await roomTab.click('Air purifier');await roomTab.click('Connect VeSync');
+    await roomTab.tap("document.querySelector('.room-setup .extras-toggle input')");
+    await roomTab.click('Continue to local sign-in');
+    await roomTab.tap("document.querySelector('.room-setup input[type=text]')");await roomTab.insert('qa@example.invalid');
+    await roomTab.click('Back to room devices');
+    await roomTab.until("!!document.querySelector('.room-setup [role=alertdialog]')");
+    const safe=await roomTab.evaluate("document.activeElement?.textContent.includes('Keep current settings')");
+    await roomTab.key('Tab');const forward=await roomTab.evaluate("document.activeElement?.textContent.includes('Discard changes')");
+    await roomTab.key('Tab',true);const back=await roomTab.evaluate("document.activeElement?.textContent.includes('Keep current settings')");
+    await roomTab.key('Escape');await roomTab.until("!document.querySelector('.room-setup [role=alertdialog]')");
+    const retained=await roomTab.evaluate("[...document.querySelectorAll('.room-setup input[type=text]')].some(item=>item.value==='qa@example.invalid')");
+    await roomTab.click('Back to room devices');await roomTab.click('Discard changes');
+    await roomTab.until("document.querySelector('.room-setup .room-device-card')!==null");
+    const fit=await roomTab.evaluate('document.body.scrollWidth<=innerWidth');
+    if(!safe||!forward||!back||!retained||!fit)throw Error(`${theme}: purifier draft, keyboard or narrow layout failed`);
+    checks.push({purifierKeyboard:{theme,safeFocus:safe,forward,back,escape:true,retained,fit}});
+  }finally{await roomTab.close();}
+}
 console.log(JSON.stringify({checks},null,2));

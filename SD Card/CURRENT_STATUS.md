@@ -2,6 +2,18 @@
 
 ## Current checkpoint — September 29: r11 image plus newer scene/keyboard source
 
+Newest source-only room-setup increment: after a successful VeSync login, the
+purifier discovery button now shows the service's brief setup cooldown instead
+of inviting an immediate rate-limit error. A disposable real-browser/HTTP
+fake-provider pass saved a sample account/selection, checked offline controls
+removed and fresh recovery in Hearth, Glass and Neon at 390 px, and hid a
+private reconnect draft on privacy lock without losing the saved selection.
+No command reached a physical appliance; synthetic provider command count was
+zero. Fan and purifier draft retention, safe focus, Tab wrapping, Escape and
+discard also passed at 390 px in all three themes. See
+[room-device evidence](docs/ROOM_DEVICES.md). This source is **not in r11**;
+hosted CI for this new increment and a rebuilt image are still outstanding.
+
 Further source-only verification covered an active scene during a synthetic
 privacy lock: private editor content vanished, the one already-dispatched
 action remained uncertain/interrupted in the saved journal, and unlocking did
@@ -56,8 +68,8 @@ personalized card without a verified backup or an explicit decision to reset
 saved account setup**; the new image does not migrate settings/tokens. See
 [flashing precautions](docs/FLASHING.md).
 
-Remaining software checks: scene/fan dirty-edit, interrupted-operation and
-privacy/keyboard paths, plus an actual signed application update and rollback
+Remaining software checks: fan interruption/privacy paths, remaining room-device
+interaction and real touch/pointer acceptance, plus an actual signed application update and rollback
 after the owner approves a release. Owner-only gates: real Pi boot, display,
 touch, ReSpeaker/Hey Luma/timer audio, USB backup/restore, Pi Connect
 enrollment, Stanford network behavior, iPhone presence/Bluetooth, Woozoo,

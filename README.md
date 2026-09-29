@@ -6,8 +6,7 @@ interface—not a general-purpose desktop. The app combines themed time, weather
 Google Calendar and tasks with optional local voice, phone presence, timers,
 sleep-aware display behavior and room automations.
 
-> **Project status: development / pre-release — not v1.** This is the proposed
-> GitHub landing-page README for the development branch. `main` remains the
+> **Project status: development / pre-release — not v1.** `main` remains the
 > untouched starter release until the owner has completed hardware testing,
 > reviewed the results, and approved publishing v1. The Pi, display, touch,
 > audio, campus network, phone and appliance paths still require physical
@@ -83,9 +82,11 @@ that document is research/compatibility guidance, not a verified purchase list.
 
 For an owner setting up the appliance:
 
-1. Wait for an explicitly handed-off image that matches the current software
-   and read its `README`, SHA-256 file and build manifest. The source folder by
-   itself is **not** a bootable SD image.
+1. Read the [r11 candidate handoff](SD%20Card/docs/R11_HANDOFF.md), its
+   SHA-256 and build manifest. The source folder by itself is **not** a bootable
+   SD image. If the card already contains your Google/Tailscale setup, first
+   make and verify a private full-card backup or explicitly accept setting up
+   those accounts again; flashing does not migrate saved state.
 2. Use Raspberry Pi Imager → **Choose OS → Use Custom** and select the exact
    `.img.xz` provided with that handoff. Select and verify the intended card
    carefully: writing erases it. Skip Imager's OS customization; Luma has its
@@ -101,7 +102,7 @@ For an owner setting up the appliance:
    Visitor, the owner accepts the network terms; Stanford eduroam uses the
    owner's SUNet identity. Follow
    [`SD Card/docs/CAMPUS_NETWORK.md`](SD%20Card/docs/CAMPUS_NETWORK.md).
-   The current r8 development image candidate includes NetworkManager's Wi-Fi
+   The current r11 development image candidate includes NetworkManager's Wi-Fi
    supplicant backend and screen-based [Raspberry Pi Connect recovery
    access](SD%20Card/docs/PI_CONNECT.md), which remains off until the owner
    enrolls it. It also includes the optional, PIN-gated `Luma-Devices` hotspot
@@ -127,26 +128,21 @@ frontend, production UI build and image-manifest tools. Required public assets
 are regenerated from checksum-pinned sources in CI. **CI has no updater signing
 private key and does not publish a trusted image or update bundle.**
 
-The current backend source passed **989 Linux tests** and **957 Windows tests**
-(32 Linux-only skips). The 8-test Linux USB-inventory suite includes scanner
-hardening. The newest full-image candidate is r8 at
-[`SD Card/image/r8-usb-inventory-20260929/README.md`](SD%20Card/image/r8-usb-inventory-20260929/README.md),
-SHA-256 `b98feb293b431a360cb4240020250125f8b0133c5fb58e9341450e04054516b1`.
-Its XZ, source fingerprint, root-partition/package checks and exhaustive
-170-file audit passed; disposable QEMU checks also passed for the backup
-socket and Pi Connect setup broker. Frontend (124), TypeScript/production
-build, and image-builder (39) checks were unchanged and passed at the preceding
-source checkpoint. The image manifest says `boot_verified=false` and its exact
-audit says `hardware_qualified=false`: this is software evidence, not a
-physical Pi/campus/Levoit test.
+The newest full-image candidate is [r11](SD%20Card/docs/R11_HANDOFF.md),
+SHA-256 `585e06340ac8001de20d62ea71460ee8aac8073d09737d1df2e4beed0be00f62`.
+Its source passed [hosted CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36636971459):
+996 backend, 131 frontend and 47 image-builder checks, plus the production UI
+build. XZ/checksum, source fingerprint, raw partition and package checks, an
+exhaustive 171-file image audit, and disposable QEMU checks of the backup and
+Pi Connect setup brokers passed. The image manifest still says
+`boot_verified=false` and its audit says `hardware_qualified=false`: these are
+software checks, not physical Pi/campus/Levoit acceptance.
 
 The device checks signed releases targeted to `main`, not raw branch files;
 the private signing key stays on the Linux build machine and outside GitHub.
-This source checkout has no local commit history yet. The supplied GitHub
-`main` is fetched and an isolated feature branch is prepared; no commit or push
-has been made while the commit author identity is being confirmed. Hosted CI
-has not run on these changes. `main` must remain untouched until hardware
-acceptance.
+Development changes are pushed to `codex/luma-r7-levoit`; `main` must remain
+untouched until hardware acceptance and explicit owner approval. No signed
+application release has been published or installed on the Pi yet.
 In-place update scope, release publishing, verification, rollback and recovery are documented in
 [`SD Card/docs/UPDATE_DEPLOYMENT.md`](SD%20Card/docs/UPDATE_DEPLOYMENT.md).
 Build-host setup is in

@@ -2,25 +2,19 @@
 
 ## Latest checkpoint — September 29, 2026
 
-The current full-image candidate is **r10**, not r9. The archive and evidence
-are in the user-visible `SD Card/image/r10-candidate-a79f7f4-20260929` output
-folder; the [repository handoff](../image/r10-candidate-a79f7f4-20260929/README.md)
-records commit `a79f7f4`, SHA-256, host suites, 170-file exact-image audit and
-targeted QEMU checks. `boot_verified=false` and `hardware_qualified=false`.
-The earlier r9 discussion below is chronology. A newer source-only room-device
-UI fix resets nested setup scroll and removes controls immediately after an
-offline VeSync refresh. Three-theme synthetic browser recovery and 27 viewport
-navigation combinations passed; this fix is not in r10 and requires a new
-image/CI check. See [ROOM_DEVICES.md](ROOM_DEVICES.md).
-
-Further source-only work anchors nested room-device steps at scroll zero,
-shows durable unknown IR results after a failed send, and provides deliberate
-re-review for a stale-but-valid remote scene grant. Three-theme rendered
-fan/scene navigation, fake-IR outage and synthetic regrant passed; 131
-frontend tests/build pass. This also requires a new image and hosted CI.
+The current full-image candidate is **r11**, from source `74d1f71`. The local
+archive and receipts are in the user-visible
+`SD Card/image/r11-candidate-74d1f71-20260929` output folder; the
+[handoff](R11_HANDOFF.md) records the SHA-256, hosted CI and host suites,
+171-file exact-image audit, and targeted QEMU checks. `boot_verified=false`
+and `hardware_qualified=false`. Earlier r9/r10 discussion below is chronology.
+r11 includes the room-device nested scroll/offline-control recovery, durable
+unknown IR receipts, and explicit re-review for a stale-but-valid remote
+scene grant. Three-theme synthetic browser paths passed; 131 frontend
+tests/build and hosted CI passed. See [ROOM_DEVICES.md](ROOM_DEVICES.md).
 
 Open software gates: remaining dirty/interrupted/privacy/keyboard scene/fan UI,
-new exact image build/audit, signed app-release publication and Pi updater
+signed app-release publication and Pi updater
 rollback validation. Open owner gates: physical Pi boot/display/touch/audio,
 Hey Luma wake, USB backup/restore, Pi Connect enrollment, campus networking,
 iPhone presence, real fans/Levoit and power-loss survival. `main` remains

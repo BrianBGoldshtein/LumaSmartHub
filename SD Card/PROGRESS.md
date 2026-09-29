@@ -1,5 +1,23 @@
 # Luma implementation ledger
 
+## September 29 — r11 candidate assembled and audited
+
+Built r11 from `74d1f7172ab32e483481cffe29b52b6db5f9d994`, with staged
+source fingerprint
+`cdc43d4325eab4609ab8afaa274d2c65df5b398978e4fceda3fea6ef6ec0ca84`.
+The 644,461,532-byte candidate and receipts are in the user-visible
+`SD Card/image/r11-candidate-74d1f71-20260929` folder; SHA-256 is
+`585e06340ac8001de20d62ea71460ee8aac8073d09737d1df2e4beed0be00f62`.
+XZ and copied-archive checksums passed, as did raw partition/package checks,
+a 171-file source-to-image audit, and disposable QEMU checks of protected USB
+backup socket and Pi Connect setup broker. The latest hosted CI run
+`36636971459` passed. See [r11 handoff](docs/R11_HANDOFF.md). The r10 archive
+is preserved. No physical SD/Pi was written or tested. The existing
+personalized card has no verified backup/migration; do not flash it without
+addressing that gate. Next: remaining scene/fan/privacy/keyboard software
+paths, owner physical acceptance, then first signed app-update/rollback. `main`
+stays untouched until owner approval.
+
 ## September 29 — nested room steps, IR uncertainty and remote-scene re-review
 
 Browser evidence against disposable local production HTTP fixtures exposed
@@ -12,14 +30,16 @@ explicit owner-local reauthorization button rather than requiring an
 unexplained off/on sequence. Singular scene action counts were corrected.
 
 Verification: 131 frontend unit tests and production TypeScript/Vite build
-pass. Existing fake-IR and scene production HTTP/WebSocket scripts pass. The
-rendered three-theme fan/scene overview-to-detail matrix at390×844/1536×2048
+pass. Commit `74d1f71` is pushed and
+[hosted CI run 36636971459](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36636971459)
+passed. Existing fake-IR and scene production HTTP/WebSocket scripts pass. The
+rendered three-theme fan/scene overview-to-detail matrix at 390×844/1536×2048
 has no horizontal overflow and resets detail scroll to zero. In a synthetic
 IR outage, the UI showed the fixed no-retry message and a new durable unknown
 receipt; the fake transport's private sentinel did not render. Reauthorizing
 a synthetic stale Night scene cleared review-needed and did not dispatch a
 device command. No actual USB, fan, account, Pi or SD was touched. Remaining:
-other dirty/interrupted/privacy/keyboard paths, hosted CI and a fresh audited
+other dirty/interrupted/privacy/keyboard paths and a fresh audited
 image, then owner-only hardware/account acceptance.
 
 ## September 29 — r10 verified software image; room setup follow-up in source

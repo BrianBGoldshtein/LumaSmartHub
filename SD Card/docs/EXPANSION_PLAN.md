@@ -2,14 +2,13 @@
 
 Updated September 29, 2026. This is the durable implementation plan and current source-status index; it is not a claim of physical-device acceptance. The owner selected features **1, 2, 3, 4, 5, 7, 8, 9 and 10**; feature 6 (meeting/focus-mode integration) is excluded. Guided onboarding and the optional setup cards are implemented in source.
 
-Latest delivery note: **r10** (source `a79f7f4`) supersedes r9 as the
+Latest delivery note: **r11** (source `74d1f71`) is the newest
 software-checked, hardware-unverified full image; read its
-[handoff](../image/r10-candidate-a79f7f4-20260929/README.md). The table below
-records the earlier r9 checkpoint. Newer source-only room-device UI fixes
-passed three-theme synthetic browser navigation/offline/recovery checks but
-are not in r10. Rebuild before treating those fixes as installed. Scene/fan
-failure/reconnect UI, actual touch and all owner hardware/account tests remain
-open; app-only signed update has not been published or tested on Pi.
+[handoff](R11_HANDOFF.md). The table below records the earlier r9 checkpoint.
+r11 includes room-device nested scroll/offline/recovery and remote scene
+re-review UI fixes. Remaining scene/fan dirty/interrupted/privacy/keyboard
+paths, actual touch and all owner hardware/account tests remain open;
+app-only signed update has not been published or tested on Pi.
 
 Later source-only acceptance work now also anchors nested purifier/fan/scene
 steps at the top, surfaces unknown IR receipts immediately after an outage,

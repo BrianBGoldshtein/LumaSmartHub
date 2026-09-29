@@ -1,6 +1,41 @@
 # Luma — current restart point
 
-## Current checkpoint — September 29: r10 image plus newer room-setup source
+## Current checkpoint — September 29: r11 software-checked image
+
+The newest Pi 4 image candidate is **r11**, from source commit `74d1f71`, in
+the user-visible `SD Card/image/r11-candidate-74d1f71-20260929` folder. Its
+SHA-256 is
+`585e06340ac8001de20d62ea71460ee8aac8073d09737d1df2e4beed0be00f62`;
+the staged source fingerprint is
+`cdc43d4325eab4609ab8afaa274d2c65df5b398978e4fceda3fea6ef6ec0ca84`.
+The source passed [hosted CI run 36636971459](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36636971459)
+(996 backend, 131 frontend, 47 builder host checks and production UI build).
+XZ/checksum, raw partition/package checks, a **171-file** shipped-image audit,
+and two targeted disposable QEMU-overlay checks passed. The latter checked the
+protected backup socket and fresh Pi Connect setup broker, **not** a real USB
+stick or owner enrollment. See [r11 handoff](docs/R11_HANDOFF.md). r10 is
+preserved as an older candidate. Neither image has passed physical hardware
+qualification; `main` is still untouched.
+
+The r11 image includes nested room-step scroll recovery, immediate removal of
+stale VeSync controls after provider failure, durable unknown IR receipts, and
+explicit reauthorization of a stale-but-valid remote scene grant. The copied
+Windows archive was independently SHA-256 checked. **Do not flash the already
+personalized card without a verified backup or an explicit decision to reset
+saved account setup**; the new image does not migrate settings/tokens. See
+[flashing precautions](docs/FLASHING.md).
+
+Remaining software checks: scene/fan dirty-edit, interrupted-operation and
+privacy/keyboard paths, plus an actual signed application update and rollback
+after the owner approves a release. Owner-only gates: real Pi boot, display,
+touch, ReSpeaker/Hey Luma/timer audio, USB backup/restore, Pi Connect
+enrollment, Stanford network behavior, iPhone presence/Bluetooth, Woozoo,
+Levoit and power-loss/settings survival. The optional Levoit AP requires
+network-owner approval and a second AP-capable USB Wi-Fi adapter. App-only
+updates can preserve state, but OS/security/firmware changes may still need a
+future image. Do not promise this is definitively the last flash.
+
+## Previous checkpoint — September 29: r10 image plus newer room-setup source
 
 The latest full Pi image is **r10**, from source commit `a79f7f4`, in the
 user-visible `SD Card/image/r10-candidate-a79f7f4-20260929` folder. SHA-256:
@@ -30,20 +65,24 @@ the rendered fan/scene detail pages stayed anchored at scroll zero across all
 three themes, and a synthetic IR outage preserved a new durable unknown
 receipt. Regranting a synthetic scene changed only remote permission, with no
 extra device dispatch. **131 frontend tests** and production build pass for
-this newer source. These newest fixes still need hosted CI and a new image.
+this newer source. Commit `74d1f71` is pushed; [hosted CI run 36636971459](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36636971459)
+passed. A fresh r11 image build is underway from this exact checkout.
 
 Outstanding software work: finish remaining scene/fan dirty-edit, interrupted
-operation and privacy/keyboard checks; rebuild/audit an image containing these
-UI fixes; verify signed
+operation and privacy/keyboard checks; complete and audit the r11 image
+containing these UI fixes; verify signed
 application-update publication and rollback through the actual Pi after owner
 hardware acceptance. Owner-only gates: Pi flash/boot, screen and touch,
 ReSpeaker/wake phrase and timer audio, USB backup/restore, Pi Connect enrollment,
 campus Wi-Fi/eduroam/AP policy, iPhone presence/Bluetooth, two Woozoo fans,
 Levoit and settings survival. `main` remains reserved for accepted v1.
+The currently installed personalized card has **not** been backed up or
+migrated; a full-image flash would erase its accounts/settings. See
+[flashing precautions](docs/FLASHING.md) before owner testing.
 
-## Current source overlay — September 29: Hey Luma capture diagnostics
+## Historical source overlay — September 29: Hey Luma capture diagnostics
 
-The latest uncommitted source overlay replaces implicit PortAudio microphone
+This earlier source overlay replaced implicit PortAudio microphone
 selection with explicit Pulse-compatible capture from `luma_mic`, reports
 bounded startup/capture diagnostics to the guided voice check, and removes the
 obsolete PortAudio dependency. Review found that the WebRTC AEC processor was

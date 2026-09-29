@@ -1,14 +1,12 @@
 # On-device qualification checklist
 
-Run this checklist on the assembled Pi before wall mounting. The owner has explicitly deferred physical testing until a later prompt; do not run it against hardware yet.
+Run this checklist on the assembled Pi before wall mounting, when the owner requests physical testing. The r11 candidate remains hardware-unverified; its QEMU probes do not count as this checklist.
 
 ## Read-only startup preflight
 
-The delivery includes `source/tests/device_smoke.py`, a standard-library Linux checker. The current `r9-campus-network-20260929` image installs it root-owned at `/opt/luma/qualification/device_smoke.py`; it is a manual tool, not an always-running service. Once physical testing is requested, run `sudo -u luma python3 /opt/luma/qualification/device_smoke.py` from the approved administrator account. For the older OAuth candidate only, copy the checker to the Pi first and install/run it from the directory containing the copied file:
+The delivery includes `source/tests/device_smoke.py`, a standard-library Linux checker. The r11 candidate installs it root-owned at `/opt/luma/qualification/device_smoke.py`; it is a manual tool, not an always-running service. Once physical testing is requested, run it from the approved administrator account:
 
 ```sh
-sudo install -d -m 0755 /opt/luma/qualification
-sudo install -o root -g root -m 0644 device_smoke.py /opt/luma/qualification/device_smoke.py
 sudo -u luma python3 /opt/luma/qualification/device_smoke.py
 ```
 

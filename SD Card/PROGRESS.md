@@ -1,5 +1,26 @@
 # Luma implementation ledger
 
+## September 28 — exact-image broker startup bottleneck identified
+
+Captured the live Python stack from the failing, immutable r4 image after its
+authorized client timed out. The service was cold-importing the VeSync SDK and
+compiling its Mashumaro dataclasses through
+`backup_media → portable_backup → scenes → fans → room → purifier_adapter`;
+it had not reached listener/accept handling. The earlier CPU-limit and
+system-call-filter theories were not the cause. Split archive envelope
+constants/validation into `backup_envelope.py` so the broker and media layer
+can start without the portable settings serializer or device/provider graph.
+Added a fresh-interpreter regression proving those modules stay unloaded on
+broker import. Windows backup-related tests: **18 passed, 17 Linux-only
+skipped**. Debian Linux backup socket/media/inventory suite: **35 passed**;
+the complete backend suite: **943 passed**; image-builder unit tests: **26
+passed**. The initial subprocess test lacked the checkout source path in
+`PYTHONPATH`; corrected it and reran cleanly. Remaining before clearing the
+gate: push the tested source/docs on the authorized feature branch, rebuild an
+immutable r5, and repeat the exact-image list-response test under the packaged
+systemd service limits. r4 remains rejected for reflash; do not copy it to the
+SD handoff or flash it. Hardware acceptance is still owner-prompt-gated.
+
 ## September 28 — exact-image USB broker gate found failing
 
 Revalidated the built r4 candidate instead of relying on earlier static
@@ -13,9 +34,11 @@ public key, and offline API/database/gateway/Tailscale checks pass. The
 exact-image QEMU probe sends only `{"action":"list"}` from the installed
 `luma` UID with no removable disk attached. The socket listens and activates
 `luma-backup.service`, but the client receives no response after a 60-second
-deadline. Read-only service inspection reported `active/running`, exit
-status0 and no broker journal error. This is a **failed integration gate**,
-not a QEMU or hardware pass.
+deadline. A later disposable-VM faulthandler capture showed cold startup
+compiling `pyvesync`/Mashumaro models through the eager portable-backup
+scene/device import chain; listener handling had not started. Clearing
+`SystemCallFilter` in `/run` did not change the outcome. This is a **failed
+integration gate**, not a QEMU or hardware pass.
 
 Updated `qemu-smoke.sh` to use the actual service UID and a longer deadline,
 and documented the failure in current-status, requirements, image-builder and

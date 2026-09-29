@@ -1,5 +1,23 @@
 # Luma — current restart point
 
+Latest continuation checkpoint — September 28: resolved the mystery behind
+the r4 backup-broker timeout with an exact-image faulthandler capture. The
+root broker was spending its cold start importing `backup_media →
+portable_backup → scenes → fans → room → purifier_adapter → pyvesync`; the
+`pyvesync`/Mashumaro model compilation was still in progress when the client
+timed out at 60 seconds. This was not a socket-accept loop or a systemd
+syscall-filter denial. Split the bounded encrypted-container constants and
+fixed-cost envelope validation into lightweight `backup_envelope.py`, then
+made broker/media import that module instead of the portable settings
+serializer. Added a fresh-process regression that asserts broker import does
+not load scenes or VeSync SDK modules. Windows backup-related tests: **18
+passed, 17 Linux-only skipped**; Debian backup socket/media/inventory suite:
+**35 passed**; complete Debian backend suite: **943 passed**; image-builder
+unit tests: **26 passed**. The separate clean Linux publishing clone is now
+patched on the authorized feature branch. CI/push and the immutable-image
+QEMU response still need to pass; r4 remains **not ready for reflash**.
+Exact-image stack evidence is in the September 28 `PROGRESS.md` entry.
+
 Latest continuation checkpoint — September 28: implemented the signed,
 in-place application updater requested for future development. Fresh image
 version 0.2.0 will install into root-owned `/opt/luma-releases/0.2.0` behind a

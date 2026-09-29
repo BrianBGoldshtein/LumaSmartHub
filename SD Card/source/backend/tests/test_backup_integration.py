@@ -7,6 +7,7 @@ import asyncio
 from datetime import UTC, datetime
 import os
 import socket
+import subprocess
 import sys
 
 try:
@@ -23,12 +24,30 @@ from luma.backup_media import BackupMedia, RemovableVolume
 from luma.models import Theme
 
 
-pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Unix socket and peer credentials require Linux")
 VOLUME_ID = "a" * 32
 PASSWORD = "integration test passphrase"
 
 
+def test_broker_cold_import_does_not_load_room_integrations():
+    """The root socket worker must stay independent of cloud/device SDK imports."""
+    result = subprocess.run(
+        [sys.executable, "-c", (
+            "import sys; import luma.backup_broker; "
+            "assert not any(name == 'luma.scenes' or name.startswith('luma.scenes.') "
+            "or name == 'luma.purifier_adapter' or name.startswith('pyvesync') "
+            "for name in sys.modules)"
+        )],
+        capture_output=True, text=True, timeout=15,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, (
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")),
+            os.environ.get("PYTHONPATH", ""),
+        )))},
+    )
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform != "linux", reason="Unix socket and peer credentials require Linux")
 async def test_packaged_socket_protocol_media_and_owner_api_round_trip(tmp_path, monkeypatch):
     """Exercise real UDS framing, SO_PEERCRED, encrypted media, API preview/apply/eject."""
     socket_path = tmp_path / "luma-backup.sock"

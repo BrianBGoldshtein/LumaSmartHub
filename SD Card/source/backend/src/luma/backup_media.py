@@ -18,7 +18,7 @@ import stat
 import subprocess
 import sys
 
-from .portable_backup import MAX_ARCHIVE_BYTES, validate_archive_envelope
+from .backup_envelope import MAX_ARCHIVE_BYTES, validate_archive_envelope
 
 
 BACKUP_DIR = "Luma Backups"
@@ -271,4 +271,3 @@ class BackupMedia:
         finally:
             os.close(root_fd)
         return {"ejected": True}
-

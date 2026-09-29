@@ -34,8 +34,13 @@ rebuilt/requalified. No physical flash or hardware test is being performed.
   long names, all three themes, narrow/portrait layouts, keyboard and touch;
   then complete Linux/package/real-WebSocket checks for those paths.
 - Fix the failing settings-only backup broker on the exact image: QEMU proves
-  socket activation and service start, but not an authorized response. Then
-  qualify the packaged owner-local API round trip and archive
+  socket activation and service start, but not an authorized response. A
+  faulthandler trace attributes the delay to eager VeSync/Mashumaro imports
+  reached through portable-backup validation, not socket handling. The source
+  now separates lightweight envelope checks; the cold-import regression,
+  Linux socket/media suite (35), and complete Linux backend suite (943) pass.
+  The exact-image response remains required. Then repeat the packaged API
+  round trip and archive
   restore/mute/account-preservation behavior. Synthetic temporary-media tests
   have passed; this does not establish real USB-device compatibility.
 - After the broker fix, produce a fresh immutable r5 and repeat its

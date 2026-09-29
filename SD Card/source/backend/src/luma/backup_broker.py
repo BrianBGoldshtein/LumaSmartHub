@@ -11,7 +11,7 @@ from contextlib import suppress
 
 from .backup_inventory import LinuxUSBInventory
 from .backup_media import BackupMedia, MediaError
-from .portable_backup import MAX_ARCHIVE_BYTES
+from .backup_envelope import MAX_ARCHIVE_BYTES
 
 
 SOCKET = "/run/luma-backup.sock"

@@ -1,5 +1,31 @@
 # Luma implementation ledger
 
+## September 29 — r10 verified software image; room setup follow-up in source
+
+Built r10 from `a79f7f4`, audited the exact 170 shipped Luma files and ARM64
+package/configuration inventory, verified XZ/raw integrity and SHA-256, and
+ran disposable QEMU-overlay checks for the offline backup socket and fresh
+Pi Connect setup broker. Host tests passed: 996 backend, 127 frontend and 47
+builder; source CI passed. The archive is in the user-visible output folder,
+not GitHub. See [r10 handoff](image/r10-candidate-a79f7f4-20260929/README.md).
+This remains an unverified hardware candidate; no Pi or SD was modified.
+
+A subsequent synthetic browser review exercised three themes × three viewports
+for Air purifier, Two fans and Room scenes, with pointer navigation/back and
+no horizontal overflow. It found inherited nested scroll offsets in embedded
+Extras; opening any room-device page now starts at the top. A real local
+HTTP/UI fake-VeSync test across all three themes found that failed refreshes
+left stale controls visible until periodic polling; the frontend now re-reads
+local saved state immediately, without recontacting VeSync or retrying the
+command. Offline controls disappear, and after a successful fresh read they
+return. Long names wrap at390px; browser body width equals viewport; no fake
+secret was rendered. These fixes are newer than r10, not physically tested.
+
+Next: commit/push these UI changes and docs; finish scene/fan error and
+reconnect browser paths; rebuild/audit the final owner-test image; then obtain
+owner-controlled physical acceptance before any claim of v1 or signed-release
+deployment. The private signing key stays offline and `main` untouched.
+
 ## September 29 — Hey Luma capture-path repair (source overlay; CI pending)
 
 Replaced the voice agent's implicit PortAudio input with `parec` opening the

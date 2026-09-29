@@ -1,5 +1,25 @@
 # Requirements and remaining delivery work
 
+## Latest checkpoint — September 29, 2026
+
+The current full-image candidate is **r10**, not r9. The archive and evidence
+are in the user-visible `SD Card/image/r10-candidate-a79f7f4-20260929` output
+folder; the [repository handoff](../image/r10-candidate-a79f7f4-20260929/README.md)
+records commit `a79f7f4`, SHA-256, host suites, 170-file exact-image audit and
+targeted QEMU checks. `boot_verified=false` and `hardware_qualified=false`.
+The earlier r9 discussion below is chronology. A newer source-only room-device
+UI fix resets nested setup scroll and removes controls immediately after an
+offline VeSync refresh. Three-theme synthetic browser recovery and 27 viewport
+navigation combinations passed; this fix is not in r10 and requires a new
+image/CI check. See [ROOM_DEVICES.md](ROOM_DEVICES.md).
+
+Open software gates: scene/fan interaction and failure/recovery visual review,
+new exact image build/audit, signed app-release publication and Pi updater
+rollback validation. Open owner gates: physical Pi boot/display/touch/audio,
+Hey Luma wake, USB backup/restore, Pi Connect enrollment, campus networking,
+iPhone presence, real fans/Levoit and power-loss survival. `main` remains
+untouched until hardware acceptance and v1 approval.
+
 ## Current source and delivery state — September 29, 2026
 
 Latest voice follow-up is a **source overlay newer than r9**: capture now

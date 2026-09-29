@@ -41,6 +41,13 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
     try{await action();}catch(e){if(alive.current){
       const error=e as Error;
       if(e instanceof RoomError&&e.status===403){resetDraft();setConfig(emptyRoom());setReady(false);setStep('overview');}
+      else if(e instanceof RoomError){
+        // A provider failure can invalidate the last reading. Re-read only the
+        // local saved state so stale controls disappear without retrying VeSync.
+        try{const latest:RoomConfig=await api();if(alive.current){setConfig(latest);setReady(true);}}
+        catch{if(alive.current){setConfig(emptyRoom());setReady(false);setMessage('Could not reload saved room state. Check the purifier before sending another command.');}return;}
+      }
+      if(!alive.current)return;
       // A lost response must never imply a command failed or invite auto-replay.
       if(!(e instanceof RoomError)){setConfig(emptyRoom());setReady(false);setMessage('Connection interrupted. Nothing will be retried automatically. Reload saved state and check the purifier before sending another command.');}
       else setMessage(error.message);

@@ -1,5 +1,20 @@
 # Room devices — purifier, fans and scenes source status
 
+September 29 current addendum — a synthetic, real-rendered browser matrix now
+covers Air purifier, Two fans and Room scenes entry/back navigation in Hearth,
+Luma Glass and Neon Grid at390×844,1280×720 and1536×2048. All 27 combinations
+fit their viewport without horizontal overflow; embedded Extras now resets
+scroll to the selected page top. Against the local production HTTP API with a
+fake VeSync transport, the purifier's long selected name, offline refresh and
+successful fresh-state recovery passed in all three themes. An outage removes
+the stale purifier controls immediately, while showing the saved reading and
+fixed no-queue error; recovery restores controls only after a valid reported
+read. No test logged in to a real account, contacted VeSync or switched an
+appliance. This is source newer than the r10 image. Still open: scene/fan
+interaction failures and recovery across themes, actual touch/keyboard and
+owner hardware/provider checks. Older evidence paragraphs below are historical
+and should not be read as denying this later viewport/recovery pass.
+
 USB IR transport, owner-local fan setup, scene paths and a separate default-off remote-scene allowlist are implemented in source. Read [IR_DEVICES.md](IR_DEVICES.md) and [SCENES.md](SCENES.md) before extending. Dedicated unprivileged Unix broker, bounded isolated child, strict USB/LIRC discovery, one-button capture/one-shot transmission and packaging have prior73Linux-test evidence. `fans.py`, `fan_runtime.py`, `fan_api.py`, `FanSetup.tsx` and `fanState.ts` add durable two-output configuration, bounded learn/test/cancel, same-state repeatability and both-direction observation checks, unknown-before-send receipts, one-hour overrides, private owner/same-origin gates and themed optional setup. `scene_devices.py`, `scene_runtime.py`, `scene_api.py`, `scene_executor.py` and `SceneSetup.tsx` connect absolute safe actions, strict local owner access, explicit calendar/presence triggers and durable no-replay accounting. Hey Luma supports fixed manual run/cancel phrases for already-enabled scenes through the same owner/device/clock guards. The local **Private iPhone actions** panel separately grants named remote scene bundles; the restricted Tailscale gateway verifies the exact ordered actions and device bindings, and any change/relink requires local re-review. Learning/pairing never grants scene or remote permission. Remaining: fan/purifier credential and error/reconnect paths across themes, custom long-name layouts, real touch/pointer acceptance and owner hardware/account checks. No physical qualification yet; hardware selection remains open in [HARDWARE_ADDITIONS.md](HARDWARE_ADDITIONS.md).
 
 Fan UI evidence — September28 browser passes: an earlier sample-mode Hearth flow configured two outputs, enforced separate learner/test acknowledgements and two-fan observation, and kept the second observation requirement visible; no IR device was accessed. A later real-rendered `FanSetup` pass used the production local HTTP API with the disposable fake-IR fixture; its details follow below. Earlier overview-only checks include Neon at390×844,2048×1536,1536×2048 and Glass portrait with no horizontal overflow. `fan-setup-hearth-qa.png` is synthetic demo data, not hardware proof. The attempted broad rapid viewport matrix was invalid/stale and must not be counted. No physical touch qualification. All-theme/theme-specific game-style/keyboard/error/reconnect/pointer and real remote/fan paths still need coverage. Do not redo the fan store/API/UI because an older checkpoint says transport-only.

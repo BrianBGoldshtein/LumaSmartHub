@@ -1,5 +1,36 @@
 # Luma — current restart point
 
+## Current checkpoint — September 29: r10 image plus newer room-setup source
+
+The latest full Pi image is **r10**, from source commit `a79f7f4`, in the
+user-visible `SD Card/image/r10-candidate-a79f7f4-20260929` folder. SHA-256:
+`a00f122c34f02a6d83ca08b78dad9f5cd62a590eb2d89c4fa99acfbad8b3c278`.
+Its 996-backend/127-frontend/47-builder host checks, green source CI,
+170-file image audit and two targeted QEMU-overlay checks passed. Read the
+[r10 handoff](image/r10-candidate-a79f7f4-20260929/README.md). Physical boot,
+touch, audio, Wi-Fi, USB, Pi Connect enrollment, real accounts/appliances and
+power-loss are **not verified**. The previous r9 sections below are retained as
+history, not the current image recommendation.
+
+Current source is **newer than r10**: browser review found that embedded Extras
+opened lower room-device pages at an inherited scroll offset, and a VeSync
+outage left stale control buttons visible until the next local refresh. Both
+are fixed in source. A synthetic local browser pass now covers Air purifier,
+Two fans and Room scenes overview navigation across all three themes at
+390×844, 1280×720 and 1536×2048, including back navigation and no horizontal
+overflow. The purifier's long-name/offline/recovery path passed in all three
+themes; after an offline error, controls disappear immediately and return only
+after a successful reported-state read. No real VeSync account or appliance
+was contacted. These fixes still need committed CI and a new image build.
+
+Outstanding software work: finish scene/fan interactive failure and recovery
+review; rebuild/audit an image containing these UI fixes; verify signed
+application-update publication and rollback through the actual Pi after owner
+hardware acceptance. Owner-only gates: Pi flash/boot, screen and touch,
+ReSpeaker/wake phrase and timer audio, USB backup/restore, Pi Connect enrollment,
+campus Wi-Fi/eduroam/AP policy, iPhone presence/Bluetooth, two Woozoo fans,
+Levoit and settings survival. `main` remains reserved for accepted v1.
+
 ## Current source overlay — September 29: Hey Luma capture diagnostics
 
 The latest uncommitted source overlay replaces implicit PortAudio microphone

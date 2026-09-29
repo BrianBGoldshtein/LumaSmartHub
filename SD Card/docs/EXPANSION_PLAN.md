@@ -2,6 +2,15 @@
 
 Updated September 29, 2026. This is the durable implementation plan and current source-status index; it is not a claim of physical-device acceptance. The owner selected features **1, 2, 3, 4, 5, 7, 8, 9 and 10**; feature 6 (meeting/focus-mode integration) is excluded. Guided onboarding and the optional setup cards are implemented in source.
 
+Latest delivery note: **r10** (source `a79f7f4`) supersedes r9 as the
+software-checked, hardware-unverified full image; read its
+[handoff](../image/r10-candidate-a79f7f4-20260929/README.md). The table below
+records the earlier r9 checkpoint. Newer source-only room-device UI fixes
+passed three-theme synthetic browser navigation/offline/recovery checks but
+are not in r10. Rebuild before treating those fixes as installed. Scene/fan
+failure/reconnect UI, actual touch and all owner hardware/account tests remain
+open; app-only signed update has not been published or tested on Pi.
+
 ## Current acceptance ledger
 
 | Scope | Source state | Software evidence | Still outstanding |

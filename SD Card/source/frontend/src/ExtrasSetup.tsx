@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {Timer,CloudSun,ArrowLeft,Footprints,Moon,CalendarDays,TrainFront,Wind,HardDrive} from 'lucide-react';
 import {DepartureSetup} from './DepartureSetup';
 import {NightSetup} from './NightSetup';
@@ -14,6 +14,7 @@ import {setupLink,setupTheme} from './setupTheme';
 import {extraPreferences,extraPatch,type ExtraTask,type ExtraPreferences} from './weatherState';
 
 export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boolean;embedded?:boolean;onSaved?:()=>void;locked?:boolean}){
+  const shellRef=useRef<HTMLDivElement>(null);
   const [values,setValues]=useState(()=>extraPreferences()),[baseline,setBaseline]=useState(()=>extraPreferences());
   const [task,setTask]=useState<ExtraTask|'departure'|'night'|'countdowns'|'transit'|'room'|'fans'|'scenes'|'backup'|null>(null),[saving,setBusy]=useState(false),[ready,setReady]=useState(demo),[message,setMessage]=useState('');
   const [childDirty,setChildDirty]=useState(false),[childBusy,setChildBusy]=useState(false);
@@ -36,6 +37,8 @@ export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boo
   function choose(next:ExtraTask|'departure'|'night'|'countdowns'|'transit'|'room'|'fans'|'scenes'|'backup'|null){
     if(dirty){setMessage('Save these preferences before choosing another extra. You can also leave this setup step and discard edits.');return;}
     setTask(next);setMessage('');
+    const scroller=embedded?shellRef.current?.closest('.onboarding-shell'):shellRef.current;
+    if(scroller)scroller.scrollTop=0;
   }
   async function save(){
     if(!task || task==='departure' || task==='night' || task==='countdowns' || task==='transit' || task==='room' || task==='fans' || task==='scenes' || task==='backup')return;
@@ -49,7 +52,7 @@ export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boo
   }
   const Panel=embedded?'div':'main';
   const number=(key:keyof ExtraPreferences,label:string,signed=false)=><TouchField label={label} value={String(values[key])} onChange={value=>edit(key,value)} mode={signed?'decimal':'digits'} maxLength={signed?4:3} required disabled={busy}/>;
-  return <TouchInputProvider><div className={embedded?'setup-embedded':`app theme-${theme} setup-page`}><Panel className={embedded?'device-setup':'setup-content device-setup'}>
+  return <TouchInputProvider><div ref={shellRef} className={embedded?'setup-embedded':`app theme-${theme} setup-page`}><Panel className={embedded?'device-setup':'setup-content device-setup'}>
     {!embedded && <><a className="setup-back" href={setupLink(demo,theme,'device')} onClick={event=>{if(dirty||busy){event.preventDefault();setMessage('Save your preferences before leaving.');}}}>← All settings</a><h1>Make it yours.</h1></>}
     {!ready?<><p role="status">{message || 'Loading saved preferences…'}</p>{message && <button onClick={()=>{setMessage('');setRetry(value=>value+1);}}>Retry</button>}</>:<>
       {!task?<section><h2>Daily rhythm</h2><p>Choose an extra to personalize. Everything here is optional.</p><div className="extras-choices">

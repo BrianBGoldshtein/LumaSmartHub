@@ -18,28 +18,31 @@ from a fresh complete run against this working copy. CI for authorized
 feature-branch commit `c613252` is green (run 36488243784). No private signing
 or SSH key is in GitHub or source.
 
-A corrected r4 Raspberry Pi 4 image is being built from source fingerprint
+A corrected r4 Raspberry Pi 4 image has been built from source fingerprint
 `770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921` after a
 static image audit caught that the rejected r2 candidate lacked the approved
-public recovery SSH key. r2 must not be flashed. The r4 build is not complete
-until raw-image/file audits and offline ARM64/API/WebSocket checks pass; the
-candidate is not yet ready for reflash. No physical flash or hardware test is
-being performed.
+public recovery SSH key. r2 must not be flashed. r4's raw-image/file audits,
+API/database/gateway/Tailscale offline checks pass, but the exact-image USB
+backup gate fails: QEMU activates the socket and service, yet the authorized
+`luma` client receives no response within 60 seconds. The image is **not ready
+for reflash** until this service integration is fixed and the immutable image
+rebuilt/requalified. No physical flash or hardware test is being performed.
 
 ### Remaining gates
 
 - Finish and record room-device/scene UI checks for errors, reconnects,
   long names, all three themes, narrow/portrait layouts, keyboard and touch;
   then complete Linux/package/real-WebSocket checks for those paths.
-- Qualify the settings-only backup broker on the exact image: systemd socket
-  activation, installed service UID/peer authorization, packaged API round
-  trip, and archive restore/mute/account-preservation behavior. Synthetic
-  temporary-media tests have passed; this does not establish real USB-device
-  compatibility.
-- Complete r4 static/raw-file audit, compressed-image SHA/XZ verification,
-  offline ARM64 boot/API/database and denied-gateway smoke, real packaged
-  WebSocket push/disconnect, and update the immutable candidate/checksum
-  handoff. Never overwrite or flash the owner's card without explicit prompt.
+- Fix the failing settings-only backup broker on the exact image: QEMU proves
+  socket activation and service start, but not an authorized response. Then
+  qualify the packaged owner-local API round trip and archive
+  restore/mute/account-preservation behavior. Synthetic temporary-media tests
+  have passed; this does not establish real USB-device compatibility.
+- After the broker fix, produce a fresh immutable r5 and repeat its
+  source-manifest, raw/rootfs/file audit, compressed-image SHA/XZ check and
+  offline ARM64/API/database/gateway/Tailscale smokes; then qualify real
+  packaged WebSocket push/disconnect and update the checksum handoff. Never
+  overwrite or flash the owner's card without explicit prompt.
 - Hardware remains untested: Pi/display/touch/DDC and power behavior,
   ReSpeaker/AEC/voice range, iPhone/ANCS, Stanford Visitor terms and eduroam,
   authorized Google/VeSync/511 accounts, Woozoo IR independence, USB media,

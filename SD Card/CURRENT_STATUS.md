@@ -35,13 +35,21 @@ backend tests** on Ubuntu. The focused Linux updater suite passes
 **8/8**, including a real venv relocation/entrypoint check. Neither CI nor the
 repository contains the update-signing private key.
 
-**Current build:** corrected r4 Pi 4 image build is active in isolated Linux
-staging `/home/luma-build/luma-final-20260928-r4`, source fingerprint
-`770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921`.
-The rejected r2 candidate omitted the approved public recovery SSH key and
-must not be flashed. Finish r4 package generation, raw/filesystem audit and
-offline boot/WebSocket smoke before calling it a candidate. Do not flash or
-overwrite the owner's existing SD.
+**Latest r4 image result:** the immutable Pi 4 image has been built at
+`/home/luma-build/luma-final-20260928-r4/image/luma-pi4-UNVERIFIED.img.xz`
+(SHA-256 `3acfdaccca4b3dd74eb92f577eea951791454cbb709ac61adb6eb0f1a66dcf70`).
+Its source fingerprint is
+`770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921`;
+the source manifest, embedded root-filesystem comparison, exhaustive
+161-file audit, approved recovery public key and API/gateway/Tailscale
+offline-QEMU checks passed. However, exact-image QEMU testing does **not**
+qualify the USB backup service: the socket listens and activates
+`luma-backup.service`, but an authorized `luma` client receives no response
+within 60 seconds. Do not copy this image into the SD handoff folder or flash
+it until that packaged service integration is fixed and revalidated. QEMU is
+software evidence only; hardware remains owner-prompt-gated. The rejected r2
+candidate omitted the approved public recovery SSH key and must not be used.
+Never overwrite the owner's existing SD.
 Updater deployment itself remains untested on a physical Pi. Narrow/portrait/
 touch, actual Pi/phone/appliance/campus network tests remain owner-gated.
 

@@ -4,11 +4,11 @@
 set -euo pipefail
 IMAGE_DIR=$(realpath "${1:?Path to completed image-luma-pi4 directory}")
 [[ -f "${IMAGE_DIR}/luma-pi4.img" && -f "${IMAGE_DIR}/boot.vfat" ]] || exit 1
-[[ ${2:-} == '' || ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]] || { echo 'Optional second argument: --api-check, --gateway-check or --tailscale-check' >&2; exit 1; }
+[[ ${2:-} == '' || ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check ]] || { echo 'Optional second argument: --api-check, --gateway-check, --tailscale-check or --backup-check' >&2; exit 1; }
 [[ $# -le 3 && ( ${3:-} == '' || ${3:-} == --diagnostics ) ]] || { echo 'Optional third argument: --diagnostics (fresh, unprovisioned images only)' >&2; exit 1; }
 SMOKE_SECONDS=180
 KERNEL_ARGS='console=ttyAMA1,115200 root=/dev/disk/by-slot/system fsck.repair=yes rootwait systemd.show_status=yes'
-if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]]; then
+if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check ]]; then
   # systemd.run normally replaces default.target. Keep the appliance's graphical
   # boot and add the generated diagnostic unit alongside it, only in this VM.
   # Output is health/version/database only; never dump settings or credentials.
@@ -24,6 +24,18 @@ if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscal
       KERNEL_ARGS=${KERNEL_ARGS%\"}
       KERNEL_ARGS+=' --next --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 30 --header Content-Type:application/json --data-binary @/opt/luma/qualification/tailscale-status.json http://127.0.0.1:8742/api/v1/tailscale"'
       KERNEL_ARGS+=' systemd.wants=luma-tailscaled.service'
+    fi
+  elif [[ ${2:-} == --backup-check ]]; then
+    # Exercise actual socket activation and Linux SO_PEERCRED on the image.
+    # No removable device is attached; the authorized luma client must get an
+    # empty inventory from the root-owned broker over the packaged socket.
+    KERNEL_ARGS+=' systemd.wants=luma-backup.socket'
+    KERNEL_ARGS+=' systemd.run="-/usr/sbin/runuser -u luma -- /opt/luma/venv/bin/python -c s=__import__(bytes([115,111,99,107,101,116]).decode()).socket(1,1);s.settimeout(60);s.connect(bytes([47,114,117,110,47,108,117,109,97,45,98,97,99,107,117,112,46,115,111,99,107]).decode());s.sendall(bytes([123,34,97,99,116,105,111,110,34,58,34,108,105,115,116,34,125,10]));print(s.makefile(bytes([114,98]).decode()).readline().decode().strip())"'
+    if [[ ${3:-} == --diagnostics ]]; then
+      # Repeated systemd.run= commands are later ExecStart lines in the same
+      # oneshot; '-' lets these read-only diagnostics run after a probe timeout.
+      KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl show luma-backup.service -p ActiveState -p SubState -p ExecMainStatus"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/journalctl -u luma-backup.service -n 25 --no-pager"'
     fi
   else
     KERNEL_ARGS+=' systemd.run="/usr/bin/curl --fail --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 2 http://127.0.0.1:8742/api/v1/health"'
@@ -66,6 +78,14 @@ if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscal
     echo 'API health and database integrity responded in emulation; hardware remains unqualified.'
   else
     echo 'No successful API health response captured.' >&2
+    exit 1
+  fi
+fi
+if [[ ${2:-} == --backup-check ]]; then
+  if grep -Fq '{"volumes":[]}' "${SMOKE_ROOT}/serial.log"; then
+    echo 'Packaged backup socket activated the root broker; the installed luma UID passed peer authorization and received an empty offline USB inventory.'
+  else
+    echo 'No authorized backup-broker inventory response captured; inspect the fresh VM log.' >&2
     exit 1
   fi
 fi

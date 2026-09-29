@@ -77,15 +77,22 @@ USB export.
 
 ## Not physically or release qualified yet
 
-The inventory/broker/API/UI are source-integrated and tested with synthetic
-Linux block-device state, a real temporary Unix-socket/API/media round trip,
-and native static checks of the service packaging.
-They are not yet qualified against the actual systemd socket activation, the
-installed `luma` service UID, real Pi USB media, or the final image. Required
-gates: verify packaged activation and service identity on the Linux image; test
-removable media, restore and rollback on assembled hardware only after the
-owner prompts; then rebuild and qualify a separate immutable final image. The
-existing card/image must remain untouched.
+The source-level broker/API/UI tests pass, but the packaged exact-image gate is
+currently **failing**. On September 28, the r4 ARM64 image's disposable QEMU
+boot reported `luma-backup.socket` listening and activated the installed
+`luma-backup.service`. A request from the actual unprivileged `luma` account
+using the installed venv's Python client still timed out after a 60-second
+deadline; the service was active/running and its journal showed no error. This
+is not a pass for systemd activation or peer authorization. The test uses no
+USB device and changes only a qcow2 overlay, not the candidate image or SD
+card.
+
+Next software gate: find why the active packaged handler does not answer in
+QEMU, correct it, rebuild an immutable candidate from the verified source,
+then require both the empty-inventory socket response and an authenticated
+owner-local API round trip on the exact image. Only after the owner prompts may
+assembled-device tests exercise real USB media, restore and power-cut
+recovery. Keep the current card/image untouched meanwhile.
 
 Do not call feature 10 complete, do not write to arbitrary disks, and do not
 claim a tested USB backup/restore flow until those pieces and a real packaged

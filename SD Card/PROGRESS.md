@@ -1,5 +1,31 @@
 # Luma implementation ledger
 
+## September 28 — exact-image USB broker gate found failing
+
+Revalidated the built r4 candidate instead of relying on earlier static
+checks. Its immutable archive is
+`/home/luma-build/luma-final-20260928-r4/image/luma-pi4-UNVERIFIED.img.xz`,
+SHA-256 `3acfdaccca4b3dd74eb92f577eea951791454cbb709ac61adb6eb0f1a66dcf70`,
+source fingerprint
+`770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921`.
+Raw-partition/rootfs equality, exhaustive 161-file audit, approved recovery
+public key, and offline API/database/gateway/Tailscale checks pass. The
+exact-image QEMU probe sends only `{"action":"list"}` from the installed
+`luma` UID with no removable disk attached. The socket listens and activates
+`luma-backup.service`, but the client receives no response after a 60-second
+deadline. Read-only service inspection reported `active/running`, exit
+status0 and no broker journal error. This is a **failed integration gate**,
+not a QEMU or hardware pass.
+
+Updated `qemu-smoke.sh` to use the actual service UID and a longer deadline,
+and documented the failure in current-status, requirements, image-builder and
+portable-backup references. Next: instrument/reproduce the installed listener
+path, fix it, run source/systemd tests, build a new immutable r5 (do not
+overwrite r4), repeat exact-image checks, then publish the updated branch. Do
+not place r4 in the SD handoff folder or flash it. Real Pi, display, touch,
+voice, phone, campus network, provider, appliances, USB media and power-cut
+tests remain owner-prompt-gated.
+
 ## September 28 — authenticated, reversible application update path
 
 Implemented first-image versioned releases behind `/opt/luma`; app-only signed
@@ -23,13 +49,13 @@ suite is **942 passed** in hosted CI; the fresh Windows run is **912 passed,
 Actions CI for Linux backend, frontend and image-manifest tests; published on
 `codex/luma-updater-ci-20260928`, with the full hosted workflow green at commit
 `c613252` (run 36488243784). CI prepares checksum-pinned public assets but has
-no signing key. The corrected r4 updater-enabled Pi image is building in
+no signing key. The corrected r4 updater-enabled Pi image completed in
 isolated Linux staging with source fingerprint
 `770906ac80b3efc86dfea19bcee93b2b7e7930d7966c22ab65a577a0e6908921`; r2 was
-rejected because the approved SSH public key was absent. Finish raw/static
-audit and offline-boot/WebSocket smoke before calling r4 a candidate. Existing
-card preserved; hardware acceptance/flashing remain owner-prompt gated. Full
-updater boundaries and recovery are in
+rejected because the approved SSH public key was absent. The exact-image
+backup-broker integration gate now fails as recorded above, so r4 is not a
+reflash candidate. Existing card preserved; hardware acceptance/flashing
+remain owner-prompt gated. Full updater boundaries and recovery are in
 `docs/UPDATE_DEPLOYMENT.md`.
 
 ## September 28 — current-source cross-platform test recheck

@@ -1,22 +1,31 @@
 # Luma — current restart point
 
-## Current source overlay — September 29: preview-safe phone removal
+## Current source overlay — September 29: updater hardening and preview-safe phone removal
 
-The uncommitted demo-mode “Forget this iPhone” fix now clears only synthetic
-preview state and cannot call the real Bluetooth-forget endpoint. Verification
-on this source: **127 frontend tests passed**, dashboard and Vite-config
-TypeScript checks passed, and Vite produced a fresh production bundle in a
-temporary directory. The local browser completed synthetic pairing/removal and
-displayed “Preview only — no Bluetooth pairing or saved phone was changed.”
-No Pi, Bluetooth radio or real device was used. Build outputs stayed outside
-the read-only managed worktree.
+The demo-mode “Forget this iPhone” fix clears only synthetic preview state and
+cannot call the real Bluetooth-forget endpoint. Verification on that source:
+**127 frontend tests passed**, TypeScript checks and production build passed,
+and the local browser showed “Preview only — no Bluetooth pairing or saved
+phone was changed.” No Pi, Bluetooth radio or real device was used.
 
 The fix is committed and pushed as `ce9dc1c` on
 `codex/luma-r7-levoit`. [GitHub Actions run 36609105394](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36609105394)
 passed the complete backend suite, frontend tests, TypeScript/production
-build, and image-builder/recovery/packaging checks. `main` is untouched. The
-fix is not yet in the r9 image or a signed app release, so it is not yet
-available to install on the Pi.
+build, and image-builder/recovery/packaging checks.
+
+The latest updater work is committed as `4cf28c5`. It now rolls back if the
+active-version pointer was replaced but the following directory sync fails;
+after a successful install, it restarts the root broker from the new release
+so future updates use the current updater code. Settings also blocks duplicate
+checks during installation and keeps the failure reason visible after reload.
+[Hosted CI run 36611410992](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36611410992)
+passed **991 Linux backend tests**, all **127 frontend tests**, TypeScript and
+production build, and the image-builder/recovery/packaging checks. The offline
+Ed25519 signing key remains off GitHub; updates use reviewed signed Releases,
+not raw branch code.
+
+`main` is untouched. Neither overlay has been rebuilt into the r9 image or
+published as a signed `.lup`; no Pi was updated or reflashed.
 
 ## Latest checkpoint — September 29: r9 host, CI and exact-image checks
 

@@ -12,9 +12,10 @@ shared/NAT subnet. Campus policy, adapter compatibility and real Levoit
 onboarding are not established; see [CAMPUS_NETWORK.md](CAMPUS_NETWORK.md).
 Feature 6 remains excluded. Tetris timing remains frozen.
 
-Current source evidence: **989 Linux backend tests and 957 Windows backend
-tests (32 Linux-only skipped)**; the focused Linux USB inventory module passed
-8/8. The current frontend source overlay passes **127 tests**, including three
+Current source evidence: **991 Linux backend tests**; at the last Windows run,
+**957 backend tests passed and 32 Linux-only tests were skipped**. The focused
+Linux USB inventory module passed 8/8. The current frontend source overlay
+passes **127 tests**, including three
 regressions proving demo-mode phone forgetting never calls the live endpoint.
 Both TypeScript projects type-check, and Vite's production build passes when
 its output is directed to an allowed temporary directory. The local demo
@@ -42,7 +43,14 @@ passed all backend, frontend, TypeScript/build and image-builder/recovery jobs.
 That UI-source update has not been rebuilt into the r9 image or signed as a
 `.lup` release.
 
-The feature branch includes `ce9dc1c`; `main` is unchanged. No GitHub Release
+Updater follow-up `4cf28c5` adds rollback coverage for a pointer-replacement
+followed by directory-sync failure, refreshes the root update broker from the
+newly active release after a successful install, and improves interrupted or
+failed-update status in Settings. [Hosted CI run 36611410992](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36611410992)
+passed all 991 Linux backend tests, 127 frontend tests/build, and image-builder
+checks. The private signing key remains offline; no release was published.
+
+The feature branch includes `4cf28c5`; `main` is unchanged. No GitHub Release
 was created and no Pi was updated or reflashed. The existing Pi state remains
 untouched.
 

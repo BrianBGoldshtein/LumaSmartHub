@@ -1,5 +1,23 @@
 # Luma implementation ledger
 
+## September 29 — updater transaction and broker lifecycle hardening
+
+Hardened signed app updates at the two lifecycle edges: if syncing the active
+pointer's parent fails after replacement, installation now attempts the same
+automatic rollback as a failed health check; after a successful update, the
+root broker requests a systemd restart so the next update uses the newly
+installed broker code. Settings disables another check while an install is in
+flight and displays the broker's failure message after a reload. The offline
+Ed25519 key stays on the build machine; no CI secret, GitHub Release, or direct
+branch install was introduced.
+
+Commit `4cf28c5` on `codex/luma-r7-levoit`; hosted Actions run
+[36611410992](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36611410992)
+passed: **991 Linux backend tests**, **127 frontend tests**, production build,
+and image-builder/recovery/packaging checks. No Pi deployment or hardware test
+was performed. These updater changes are newer than the r9 image and still need
+to be included in the eventual owner-flashable candidate.
+
 ## September 29 — r9 hosted CI and exact-image QEMU validation
 
 The latest candidate is `image/r9-campus-network-20260929/luma-pi4-UNVERIFIED.img.xz`;

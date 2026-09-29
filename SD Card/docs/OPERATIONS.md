@@ -35,11 +35,11 @@ These tests establish **process-crash recovery**, not physical power-loss immuni
 
 ## Hey Luma — default local voice
 
-The implementation uses Vosk and sounddevice for local recognition, plus espeak-ng for local speech. This is not Siri and does not change iPhone audio routing. No raw audio or transcripts are persisted by Luma. Recognition runs continuously in RAM when enabled. The owner requested it **on by default for new installs**; the older OAuth image predates this change. A saved off preference survives upgrades/restarts, and older saved settings without a voice field stay off until explicitly enabled.
+The implementation uses Vosk for local recognition, `parec` to capture from the explicitly selected PipeWire/Pulse source `luma_mic`, and espeak-ng for local speech. It does not rely on PortAudio's machine-dependent default input. This is not Siri and does not change iPhone audio routing. No raw audio or transcripts are persisted by Luma; bounded audio frames are held in RAM only while voice is enabled. The owner requested it **on by default for new installs**; the older OAuth image predates this change. A saved off preference survives upgrades/restarts, and older saved settings without a voice field stay off until explicitly enabled.
 
 The image installer includes the voice extra and the checksum-verified `vosk-model-small-en-us-0.15` model at `/opt/luma/models/vosk`. Its license is bundled in `/opt/luma/licenses`. Host-side recognition has been tested, but the real Pi microphone, room acoustics and wake accuracy still need physical qualification. The [official Vosk models page](https://alphacephei.com/vosk/models) documents other models; changing the model is an advanced maintenance operation.
 
-Normal setup does not require downloading a model or installing Python packages. Open **Device setup → Hey Luma** and run **Check my voice**. If previously disabled, enable it first. During the check, the panel reports whether the voice service has checked in and displays a temporary microphone level meter. A service that never checks in indicates startup/capture failure; a live but quiet meter points toward mic selection, connection or capture gain; a strong live meter with no recognized phrase points toward recognition/phrase matching. Audio and transcripts remain in RAM and are not saved; numeric level telemetry exists only during the active check. **Turn microphone off** immediately rejects pending voice commands and cancels calibration; the desktop bridge stops capture on its next poll, normally about two seconds. A failed startup's retry delay does not delay a subsequent off request. This is a software mute, not a physical microphone disconnect.
+Normal setup does not require downloading a model or installing Python packages. Open **Device setup → Hey Luma** and run **Check my voice**. If previously disabled, enable it first. During the check, the panel reports whether the voice service has checked in and displays a temporary microphone level meter. Fixed, non-sensitive diagnostics distinguish a missing recognizer/model/capture utility from an unavailable source or stopped stream. A live but quiet meter points toward connection or capture gain; a strong live meter with no recognized phrase points toward recognition/phrase matching. Audio and transcripts remain in RAM and are not saved; numeric level telemetry exists only during the active check. **Turn microphone off** immediately rejects pending voice commands and cancels calibration; the desktop bridge stops capture on its next poll, normally about two seconds. A failed startup's retry delay does not delay a subsequent off request. This is a software mute, not a physical microphone disconnect.
 
 ### Removable USB media in the Google file chooser
 
@@ -60,17 +60,19 @@ Say “Hey Luma” followed by one of these phrases, or say the wake phrase and 
 
 Local recognition supports these bounded hub controls, not arbitrary questions, message dictation or a general Siri replacement. It never verifies identity or unlocks private data. If it does not understand, repeat a listed phrase or use touch. No phone/VPN/internet connection is needed to recognize these commands; fresh calendar/weather still needs internet access, and private summaries still require the existing nearby-phone/PIN policy.
 
-In a terminal belonging to the **luma desktop session**, inspect devices:
+In a terminal belonging to the **luma desktop session**, verify that PipeWire's PulseAudio-compatible server is reachable and that the configured source exists:
 
 ```sh
-/opt/luma/venv/bin/python -m sounddevice
+pactl info
+pactl list short sources
+systemctl --user status pipewire pipewire-pulse
 ```
 
-For advanced capture troubleshooting only, create `/home/luma/.config/luma/voice.env` with the verified capture device and model path. The supplied service sets `PULSE_SOURCE=luma_mic` and `PULSE_SINK=luma_speaker`; verify that the selected PortAudio input actually uses the echo-cancelled source. Keep service enablement under the saved UI switch rather than enabling a second independent startup route.
+The list should include `luma_mic`, the source created by the bundled echo-cancellation module. Debian Trixie splits this into `libpipewire-0.3-modules` (the echo-cancel server module) and `libspa-0.2-modules` (the WebRTC AEC implementation). The image explicitly lists and audits both package providers and their ARM64 plugin files; this catches the WebRTC processor being omitted by a minimal package list. The [PipeWire module file list](https://packages.debian.org/trixie/arm64/libpipewire-0.3-modules/filelist) and [SPA module file list](https://packages.debian.org/trixie/arm64/libspa-0.2-modules/filelist) document these split plugins. The reader explicitly opens that named source through the Pulse protocol; if the name differs on a future audio stack, first verify the correct source, then set it as `LUMA_MIC_SOURCE`. Do not substitute a physical hardware input without checking echo cancellation and playback feedback. Keep service enablement under the saved UI switch rather than enabling a second independent startup route.
 
 ```ini
 LUMA_VOSK_MODEL=/opt/luma/models/vosk
-LUMA_MIC_DEVICE=YOUR_VERIFIED_INPUT_DEVICE
+LUMA_MIC_SOURCE=luma_mic
 LUMA_WAKE_PHRASE="hey luma"
 ```
 

@@ -25,8 +25,9 @@ install -m 0644 -o root -g root "${SOURCE_ROOT}/system/luma-update-ed25519.pub" 
 apt-get update
 apt-get install -y --no-install-recommends \
   bluetooth bluez chromium curl labwc wvkbd fonts-dejavu-core pipewire pipewire-audio \
+  libpipewire-0.3-modules libspa-0.2-modules \
   pipewire-pulse python3 python3-venv wlr-randr ddcutil dbus-user-session \
-  lightdm avahi-daemon i2c-tools pulseaudio-utils gcc python3-dev linux-libc-dev espeak-ng libportaudio2 alsa-utils \
+  lightdm avahi-daemon i2c-tools pulseaudio-utils gcc python3-dev linux-libc-dev espeak-ng alsa-utils \
   libwayland-dev libpango1.0-dev libxkbcommon-dev pkg-config make patch xz-utils nftables iptables \
   udisks2 gvfs-backends util-linux exfatprogs ntfs-3g firmware-realtek dnsmasq-base
 apt-get install -y --no-install-recommends rpi-connect qrencode

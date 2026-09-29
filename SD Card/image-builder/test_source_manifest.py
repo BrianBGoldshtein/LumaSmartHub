@@ -12,6 +12,9 @@ spec.loader.exec_module(module)
 
 
 class SourceManifestTests(unittest.TestCase):
+    def test_image_version_marker_is_a_required_build_input(self):
+        self.assertIn("source/tools/update-base-version.txt", module.FILES)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix="luma-manifest-test-")
         self.addCleanup(self.directory.cleanup)

@@ -20,6 +20,10 @@ mmdebstrap:
     - pipewire
     - pipewire-audio
     - pipewire-pulse
+    # The echo-cancel server module and its WebRTC SPA implementation are split
+    # packages; require both directly and verify their installed plugin files.
+    - libpipewire-0.3-modules
+    - libspa-0.2-modules
     - python3
     - python3-venv
     - wlr-randr
@@ -28,7 +32,6 @@ mmdebstrap:
     - avahi-daemon
     - i2c-tools
     - espeak-ng
-    - libportaudio2
     - pulseaudio-utils
     # network-manager only Recommends this package. The appliance builds
     # without recommends, so make the Wi-Fi supplicant backend explicit.

@@ -12,6 +12,18 @@ class WirelessImagePackageTests(unittest.TestCase):
         # The old candidate proves this is not redundant: wpasupplicant is only
         # a Debian Recommends of NetworkManager and was absent from its SPDX SBOM.
 
+    def test_echo_cancellation_spa_module_is_explicit_and_audited(self):
+        layer = (ROOT / "image-builder/layer/luma-base.yaml").read_text()
+        installer = (ROOT / "source/system/install.sh").read_text()
+        checker = (ROOT / "image-builder/check-campus-image.py").read_text()
+        for package in ("libpipewire-0.3-modules", "libspa-0.2-modules"):
+            self.assertIn(f"- {package}", layer)
+            self.assertIn(package, installer)
+            self.assertIn(f'"{package}"', checker)
+        self.assertIn("libpipewire-module-echo-cancel.so", checker)
+        self.assertIn("libspa-aec-webrtc.so", checker)
+        self.assertIn('"pipewire_echo_cancellation_and_webrtc_plugins_installed": True', checker)
+
     def test_networkmanager_shared_hotspot_has_its_optional_dhcp_dns_helper(self):
         layer = (ROOT / "image-builder/layer/luma-base.yaml").read_text()
         installer = (ROOT / "source/system/install.sh").read_text()

@@ -17,6 +17,9 @@ command -v sha256sum >/dev/null
 command -v rsync >/dev/null
 command -v python3 >/dev/null
 [[ -f "${DELIVERY_ROOT}/source/frontend/dist/index.html" ]] || { echo "Build the frontend first." >&2; exit 1; }
+APP_VERSION=$(python3 -c 'import pathlib,sys,tomllib; print(tomllib.loads(pathlib.Path(sys.argv[1]).read_text())["project"]["version"])' "${DELIVERY_ROOT}/source/backend/pyproject.toml")
+BASE_VERSION=$(tr -d '[:space:]' < "${DELIVERY_ROOT}/source/tools/update-base-version.txt")
+[[ "${APP_VERSION}" == "${BASE_VERSION}" ]] || { echo "Update base-version.txt to the application version included in this full image." >&2; exit 1; }
 bash "${SCRIPT_DIR}/prepare-assets.sh"
 install -d "${DELIVERY_ROOT}/image"
 CANDIDATE="${DELIVERY_ROOT}/image/luma-pi4-UNVERIFIED.img.xz"

@@ -121,6 +121,15 @@ class VoicePhase(BaseModel):
     phase: AssistantPhase
 
 
+class VoiceDiagnostic(BaseModel):
+    model_config = {"extra": "forbid"}
+    code: Literal[
+        "recognizer_unavailable", "model_unavailable",
+        "audio_capture_tool_missing", "capture_source_invalid",
+        "capture_source_unavailable", "capture_stream_stopped",
+    ]
+
+
 class CalibrationSample(BaseModel):
     session: str = Field(max_length=64)
     text: str = Field(max_length=1000)
@@ -206,7 +215,7 @@ def create_app(
     weather = WeatherRuntime(service, weather_client)
     bluetooth = BluetoothRuntime(service)
     calibration = VoiceCalibration()
-    voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle"}
+    voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None}
     google_sync_lock = asyncio.Lock()
     google_status: dict[str, Any] = {"last_synced": None, "error": None}
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
@@ -612,8 +621,21 @@ def create_app(
             return {"accepted": False}
         voice_agent_status["last_seen"] = monotonic()
         voice_agent_status["phase"] = payload.phase.value
+        if payload.phase != AssistantPhase.ERROR:
+            voice_agent_status["diagnostic"] = None
         changed = service.state.assistant_phase != payload.phase
         service.state.assistant_phase = payload.phase
+        if changed:
+            service.publish("voice.phase")
+        return {"accepted": True}
+
+    @app.post("/api/v1/voice/diagnostic", dependencies=[Depends(local_only)])
+    async def voice_diagnostic(payload: VoiceDiagnostic) -> dict[str, bool]:
+        if not service.settings.voice_enabled:
+            return {"accepted": False}
+        voice_agent_status.update(last_seen=monotonic(), phase="error", diagnostic=payload.code)
+        changed = service.state.assistant_phase != AssistantPhase.ERROR
+        service.state.assistant_phase = AssistantPhase.ERROR
         if changed:
             service.publish("voice.phase")
         return {"accepted": True}
@@ -628,9 +650,12 @@ def create_app(
     def calibration_payload() -> dict[str, Any]:
         result = calibration.status()
         seen = voice_agent_status["last_seen"]
-        available = service.settings.voice_enabled and seen > 0 and monotonic() - seen <= 15
+        diagnostic = voice_agent_status["diagnostic"]
+        available = (service.settings.voice_enabled and seen > 0
+                     and monotonic() - seen <= 15 and diagnostic is None)
         return {**result, "agent_available": available,
-                "agent_phase": voice_agent_status["phase"] if available else "unavailable"}
+                "agent_phase": voice_agent_status["phase"] if available else "unavailable",
+                "agent_error": diagnostic}
 
     @app.get("/api/v1/voice/calibration", dependencies=[Depends(local_only)])
     async def calibration_status() -> dict:
@@ -887,6 +912,7 @@ def create_app(
             raise HTTPException(422, str(exc)) from exc
         if updates.get("voice_enabled") is False:
             calibration.cancel()
+            voice_agent_status.update(last_seen=0.0, phase="idle", diagnostic=None)
             service.state.assistant_phase = AssistantPhase.IDLE
             service.publish("voice.disabled")
         if weather.location() != old_location:

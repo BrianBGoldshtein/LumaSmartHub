@@ -78,9 +78,11 @@ def main():
                 fields[key] = value
         if fields.get("Status") == "install ok installed" and fields.get("Package"):
             installed_packages.add(fields["Package"])
-    missing_packages = {"wpasupplicant", "dnsmasq-base", "firmware-realtek", "rpi-connect", "qrencode", "gvfs-backends", "gvfs-daemons"} - installed_packages
+    missing_packages = {"wpasupplicant", "dnsmasq-base", "firmware-realtek", "rpi-connect", "qrencode", "gvfs-backends", "gvfs-daemons", "libpipewire-0.3-modules", "libspa-0.2-modules"} - installed_packages
     if missing_packages:
         raise ValueError("Required wireless/recovery package(s) are missing: " + ", ".join(sorted(missing_packages)))
+    inspect("stat /usr/lib/aarch64-linux-gnu/pipewire-0.3/libpipewire-module-echo-cancel.so")
+    inspect("stat /usr/lib/aarch64-linux-gnu/spa-0.2/aec/libspa-aec-webrtc.so")
     inspect("stat /usr/lib/gvfs/gvfs-udisks2-volume-monitor")
     version = re.search(rb"(?m)^version = (\d+\.\d+)\.", inspect("cat /opt/luma/venv/pyvenv.cfg"))
     if not version:
@@ -205,6 +207,7 @@ def main():
                       "stanford_ca_not_in_system_trust": True, "wireless_country": "US",
                       "wpasupplicant_installed": True, "dnsmasq_base_installed": True,
                       "firmware_realtek_installed": True,
+                      "pipewire_echo_cancellation_and_webrtc_plugins_installed": True,
                       "rpi_connect_installed": True,
                       "pi_connect_setup_broker_verified": True,
                       "github_signed_update_broker_verified": True,

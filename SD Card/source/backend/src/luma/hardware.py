@@ -5,7 +5,6 @@ import json
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 
 
 Runner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
@@ -99,11 +98,8 @@ class AudioController:
 @dataclass(slots=True)
 class VoiceController:
     runner: Runner = run_checked
-    model_path: Path = Path("/opt/luma/models/vosk/am")
 
     def set_enabled(self, enabled: bool) -> bool:
-        if enabled and not self.model_path.is_dir():
-            return False
         self.runner(["systemctl", "--user", "start" if enabled else "stop", "luma-voice.service"])
         if enabled:
             return self.runner(["systemctl", "--user", "is-active", "luma-voice.service"]).stdout.strip() == "active"

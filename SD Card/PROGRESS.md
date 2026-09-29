@@ -1,5 +1,43 @@
 # Luma implementation ledger
 
+## September 29 — Hey Luma capture-path repair (source overlay; CI pending)
+
+Replaced the voice agent's implicit PortAudio input with `parec` opening the
+named `luma_mic` PipeWire/Pulse source. Audio remains bounded, mono 16 kHz PCM
+in RAM; terminal capture failures now produce fixed local diagnostic codes.
+The voice setup panel explains missing recognizer/model/tool and source/stream
+failures instead of leaving the user at an indefinite generic wait. Removed
+the obsolete `sounddevice`/PortAudio runtime dependency and the service gate
+that silently skipped startup when its model was absent. Reviewing the exact
+Trixie package split exposed another likely blocker: the WebRTC AEC SPA plugin
+was not explicit in the minimal image recipe. Both the PipeWire echo-cancel
+server module and WebRTC implementation are now explicitly listed in the base
+layer and installer; the offline image audit requires both packages and both
+ARM64 plugin files. Updated voice operations and audio-source troubleshooting
+docs.
+
+Verification so far: **127 frontend tests passed**, TypeScript and production
+build passed; 32 image-builder tests passed with 15 skips for native Linux
+tools/POSIX-only checks; 172 Python files parse; publisher Bash syntax and
+`git diff --check` pass. Focused backend pytest could not run here because the Windows bundled
+Python lacks pytest and WSL is access-denied; full backend checks are pending
+hosted CI. No Pi or microphone was used. The capture source, room acoustics,
+wake accuracy and playback echo still require hardware qualification; the
+current r9 image does not contain this overlay and must be rebuilt before it
+is flashed.
+
+The local update publisher is also being closed out without moving the private
+key into CI: the bundle builder now proves that the local signer matches the
+public key pinned into the image and refuses to write signed bundles inside the
+source tree. A local release helper enforces a clean, exact `main` checkout,
+the latest green CI run, non-reused increasing tags and a typed confirmation
+before stable publication. Image version `update-base-version.txt` is a
+required source-manifest input and the full-image builder checks it against the
+app version baked into that image; app-only versions must advance beyond this
+baseline. Key-match and helper-syntax regressions are in the image-builder
+test suite. Signing/publishing was not run: hardware acceptance and merge to
+`main` have not happened, and app/image baseline are still `0.2.0`.
+
 ## September 29 — updater transaction and broker lifecycle hardening
 
 Hardened signed app updates at the two lifecycle edges: if syncing the active

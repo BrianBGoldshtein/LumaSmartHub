@@ -31,26 +31,35 @@ The asset name and tag must match exactly
 (`v0.3.0` → `luma-update-0.3.0.lup`). Set the release target to `main` and add
 human-readable release notes; drafts and prereleases are not installed.
 
-The Ed25519 private key stays on the Linux build machine and is never placed in
-GitHub Actions, the repository, release notes, or the Pi. After the feature
-branch has passed CI and its code has been accepted into `main`, build the
-front end, create the signed bundle with the documented local key, then publish
-that file as the release asset using an authenticated GitHub CLI session:
+The Ed25519 private key stays on the owner's Linux signing machine and is never
+placed in GitHub Actions, the repository, release notes, or the Pi. CI never
+receives a signing secret. The local release helper rebuilds and tests the
+frontend/backend, requires a clean checkout of the exact `origin/main` commit,
+checks for a successful GitHub Actions run on that commit, verifies the key
+matches the public key pinned into the image, and signs locally. It cannot
+publish a release until `--publish` is given and the operator types the exact
+tag confirmation. Use it only after hardware acceptance and after the tested
+code has been merged to `main`:
 
 ```sh
-(cd "SD Card/source/frontend" && pnpm install --frozen-lockfile && pnpm run build)
-python3 "SD Card/source/tools/build-update-bundle.py" "SD Card" \
+bash "SD Card/source/tools/publish-update-release.sh" \
   --key /home/luma-build/keys/luma-update-ed25519.pem \
-  --output /home/luma-build/luma-update-0.3.0.lup
-gh release create v0.3.0 --target main --title "Luma 0.3.0" \
-  --notes-file release-notes.md /home/luma-build/luma-update-0.3.0.lup
+  --notes-file /home/luma-build/luma-release-notes.md \
+  --publish
 ```
 
-Replace the example version and notes for each release; never reuse a version.
-The publishing account needs write permission to this repository, but the Pi
-uses no GitHub account, token, API key, or secret. If campus Wi-Fi has not
-completed its visitor sign-in or otherwise cannot reach GitHub, checking fails
-without changing the installed app; use the on-screen Wi-Fi setup and retry.
+The helper asks you to type `publish vX.Y.Z` before it signs or publishes. It
+requires an authenticated `gh` session with write access and creates the stable
+release on `main`, attaching exactly `luma-update-X.Y.Z.lup`. Without
+`--publish`, it builds a local signed bundle only. If you first build a preview
+bundle, use a different `--output` path for the later publishing run because
+the signer deliberately never overwrites an existing archive. Use a new stable
+version every time; the helper refuses a reused tag, asset name, dirty checkout,
+non-main branch, stale main, or missing green CI run. Keep notes and signed
+archives outside the checkout. The Pi uses no GitHub account, token, API key,
+or secret. If campus Wi-Fi has not completed its visitor sign-in or otherwise
+cannot reach GitHub, checking fails without changing the installed app; use the
+on-screen Wi-Fi setup and retry.
 
 This Settings feature and its root-owned `luma-update.socket` broker must be
 present in the newly qualified full image. The app-only updater deliberately
@@ -81,10 +90,12 @@ and all SQLite writes backward-compatible within app-only releases so a code
 rollback can still read the existing `/var/lib/luma` database. Those changes
 require a newly built and qualified full image.
 
-The signing private key is kept only on the owner's Linux build machine at
+The signing private key is kept only on the owner's Linux signing machine at
 `/home/luma-build/keys/luma-update-ed25519.pem` (directory mode 0700, key mode
 0600); it is not in the Windows workspace, source tree, SD image, GitHub
-workflow or Pi. Losing this key means making a fresh full image with a new
+workflow or Pi. The bundle tool refuses keys with permissive POSIX mode bits
+and checks that the local private key matches the image-pinned public key before
+it builds anything. Losing this key means making a fresh full image with a new
 pinned public key; there is no bypass or remote key-rotation command.
 
 ## Build, transfer and apply

@@ -2,6 +2,22 @@
 
 ## Current source and delivery state — September 29, 2026
 
+Latest voice follow-up is a **source overlay newer than r9**: capture now
+explicitly opens `luma_mic` through PipeWire/Pulse, and calibration displays
+fixed microphone/recognizer/model startup diagnostics. The lean Trixie image
+now explicitly installs and audits the PipeWire echo-cancel module and its
+WebRTC AEC plugin. Local frontend/build and image-builder checks pass;
+hosted backend CI and an actual image rebuild remain pending. Do not treat r9
+as containing this fix. Physical microphone and wake-phrase validation remain
+mandatory.
+
+Offline app-release signing is also being finalized locally. The signing
+builder verifies that its private key matches the public key pinned in the
+image, and the publisher requires clean accepted `main`, latest green CI,
+strictly increasing versions and an explicit confirmation. CI holds no
+signing key. Neither signing nor publication has been run; hardware acceptance
+and merge to `main` are still gates.
+
 The selected source feature set is integrated into the r9 development image:
 guided setup, local voice, calendar and tasks, timers, reminders, night display,
 transit, room devices/scenes, encrypted settings backup, signed app-only

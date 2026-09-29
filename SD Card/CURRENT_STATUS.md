@@ -1,6 +1,30 @@
 # Luma — current restart point
 
-## Current source overlay — September 29: updater hardening and preview-safe phone removal
+## Current source overlay — September 29: Hey Luma capture diagnostics
+
+The latest uncommitted source overlay replaces implicit PortAudio microphone
+selection with explicit Pulse-compatible capture from `luma_mic`, reports
+bounded startup/capture diagnostics to the guided voice check, and removes the
+obsolete PortAudio dependency. Review found that the WebRTC AEC processor was
+not explicitly included in the lean image package list. Both Trixie packages
+and their ARM64 plugin files are now required by the recipe and image audit.
+**127 frontend tests pass; TypeScript/production
+build, 32 local image-builder tests (15 native Linux/build-host/POSIX skips),
+172-file Python parse and publisher Bash syntax pass. Hosted backend CI is
+pending.** No Pi,
+mic or rebuilt image has been tested; r9 lacks this overlay and must not be
+treated as fixed. Rebuild and re-audit before any owner flash.
+
+The offline update-signing workflow is being made reproducible locally: the
+builder matches the private key to the image-pinned public key; the publisher
+requires exact clean `main`, latest green CI, a version newer than the base and
+all existing version tags, and a typed release confirmation. CI never gets a
+signing secret. The full-image version is now an explicit source-manifest input
+and must match the app version baked into that image. Local publishing is not
+run until the owner hardware gate and `main` merge; both versions remain
+`0.2.0`.
+
+## Previous source overlay — September 29: updater hardening and preview-safe phone removal
 
 The demo-mode “Forget this iPhone” fix clears only synthetic preview state and
 cannot call the real Bluetooth-forget endpoint. Verification on that source:

@@ -1,6 +1,6 @@
 import json
 import subprocess
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 from fastapi.testclient import TestClient
@@ -55,9 +55,13 @@ def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp
     started = client.post("/api/v1/voice/calibration/start").json()
     session = started["session"]
     assert not started["agent_available"]
+    failed_start = client.post("/api/v1/voice/diagnostic", json={"code": "capture_source_unavailable"})
+    assert failed_start.json()["accepted"]
+    health = client.get("/api/v1/voice/calibration").json()
+    assert not health["agent_available"] and health["agent_error"] == "capture_source_unavailable"
     assert client.post("/api/v1/voice/phase", json={"phase": "listening"}).json()["accepted"]
     health = client.get("/api/v1/voice/calibration").json()
-    assert health["agent_available"] and health["agent_phase"] == "listening"
+    assert health["agent_available"] and health["agent_phase"] == "listening" and health["agent_error"] is None
     level = client.post("/api/v1/voice/calibration/level", json={"session": session, "rms": .04, "peak": .3}).json()
     assert level["signal_available"] and level["signal_rms"] == .04
     assert not client.post("/api/v1/voice/command", json={"text": "brightness zero"}).json()["accepted"]
@@ -73,6 +77,8 @@ def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp
     assert remote.patch("/api/v1/settings", json={"voice_enabled": True}, headers=headers).status_code == 403
     assert remote.get("/api/v1/voice/calibration", headers=headers).status_code == 403
     assert remote.post("/api/v1/voice/calibration/level", json={"session": session, "rms": .1, "peak": .5}, headers=headers).status_code == 403
+    assert remote.post("/api/v1/voice/diagnostic", json={"code": "capture_source_unavailable"}, headers=headers).status_code == 403
+    assert client.post("/api/v1/voice/diagnostic", json={"code": "arbitrary text"}).status_code == 422
 
 
 def test_command_grammar_covers_supported_controls_and_unknown_audio():
@@ -83,15 +89,16 @@ def test_command_grammar_covers_supported_controls_and_unknown_audio():
             assert parse_local_command(phrase) is not None
 
 
-def test_voice_controller_requires_model_and_active_service(tmp_path):
+def test_voice_controller_attempts_service_start_even_if_model_is_missing():
     runner = Mock(return_value=subprocess.CompletedProcess([], 0, "active\n"))
-    controller = VoiceController(runner, tmp_path / "missing")
-    assert not controller.set_enabled(True)
-    runner.assert_not_called()
-    controller.model_path = tmp_path
+    controller = VoiceController(runner)
     assert controller.set_enabled(True)
     assert controller.set_enabled(False)
-    runner.assert_called_with(["systemctl", "--user", "stop", "luma-voice.service"])
+    assert runner.call_args_list == [
+        call(["systemctl", "--user", "start", "luma-voice.service"]),
+        call(["systemctl", "--user", "is-active", "luma-voice.service"]),
+        call(["systemctl", "--user", "stop", "luma-voice.service"]),
+    ]
 
 
 def test_led_frames_are_bounded_and_idle_is_dark():

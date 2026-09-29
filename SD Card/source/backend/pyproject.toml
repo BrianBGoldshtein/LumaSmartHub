@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-voice = ["vosk>=0.3.45,<0.4", "sounddevice>=0.5,<0.6", "spidev>=3.6,<4; sys_platform == 'linux'"]
+voice = ["vosk>=0.3.45,<0.4", "spidev>=3.6,<4; sys_platform == 'linux'"]
 test = [
   "pytest>=8.3,<9",
   "pytest-asyncio>=0.24,<1",

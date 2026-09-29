@@ -12,7 +12,7 @@ from pathlib import Path
 TREES = ("source/backend/src", "source/frontend/dist", "source/system", "source/assets",
          "image-builder/hooks", "image-builder/layer")
 FILES = ("source/backend/pyproject.toml", "source/tests/device_smoke.py", "source/tests/tailscale-status.json", "image-builder/luma.yaml",
-         "image-builder/build-image.sh", "image-builder/prepare-assets.sh", "image-builder/source-manifest.py")
+         "source/tools/update-base-version.txt", "image-builder/build-image.sh", "image-builder/prepare-assets.sh", "image-builder/source-manifest.py")
 
 
 def manifest(root: Path) -> dict:

@@ -1,6 +1,6 @@
 # Hey Luma — free local question library
 
-Implemented in source; native scene commands were added September28,2026 and must be included in the next image. No LLM, AI API, token usage, new paid service, or uploaded microphone audio. Existing Vosk recognition, deterministic Python answers and espeak-ng speech run on the Pi. This is a supported phrase library, not open-ended conversational AI or Siri.
+Implemented in source; native scene commands were added September28,2026 and must be included in the next image. No LLM, AI API, token usage, new paid service, or uploaded microphone audio. Vosk recognition, deterministic Python answers and espeak-ng speech run on the Pi. Microphone capture explicitly selects PipeWire/Pulse source `luma_mic`; it does not trust an implicit PortAudio default. This is a supported phrase library, not open-ended conversational AI or Siri.
 
 Start with **Hey Luma**, then one of these questions. You can say the wake phrase and question together, or ask within the existing seven-second wake window.
 

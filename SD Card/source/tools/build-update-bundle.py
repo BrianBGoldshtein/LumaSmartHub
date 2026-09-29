@@ -16,12 +16,37 @@ import tomllib
 import zipfile
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 
 def canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"),
                       ensure_ascii=True, allow_nan=False).encode("ascii")
+
+
+def load_signing_key(root: Path, key_path: Path) -> Ed25519PrivateKey:
+    root = root.resolve(strict=True)
+    key_path = key_path.resolve(strict=True)
+    if key_path.is_relative_to(root):
+        raise ValueError("signing key must be outside the delivery tree")
+    if os.name == "posix" and stat.S_IMODE(key_path.stat().st_mode) & 0o077:
+        raise ValueError("signing key permissions are too open; use mode 0600")
+    key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("signing key must be Ed25519 PEM")
+
+    public_path = root / "source/system/luma-update-ed25519.pub"
+    if public_path.is_symlink() or not public_path.is_file():
+        raise ValueError("the image-pinned Ed25519 public key is missing or unsafe")
+    pinned = serialization.load_pem_public_key(public_path.read_bytes())
+    if not isinstance(pinned, Ed25519PublicKey):
+        raise ValueError("the image-pinned public key is not Ed25519")
+    if key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw) != pinned.public_bytes(
+        Encoding.Raw, PublicFormat.Raw
+    ):
+        raise ValueError("signing key does not match the public key pinned in this image source")
+    return key
 
 
 def main() -> None:
@@ -31,17 +56,15 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path, help="New output path; existing files are never replaced")
     args = parser.parse_args()
     root = args.root.resolve(strict=True)
-    key_path = args.key.resolve(strict=True)
     output = args.output.absolute()
     if output.exists() or output.is_symlink():
         parser.error("output already exists; choose a new filename")
-    if key_path.is_relative_to(root):
-        parser.error("signing key must be outside the delivery tree")
-    if stat.S_IMODE(key_path.stat().st_mode) & 0o077:
-        parser.error("signing key permissions are too open; use mode 0600")
-    key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
-    if not isinstance(key, Ed25519PrivateKey):
-        parser.error("signing key must be Ed25519 PEM")
+    if output.resolve(strict=False).is_relative_to(root):
+        parser.error("signed bundles must be written outside the delivery tree")
+    try:
+        key = load_signing_key(root, args.key)
+    except (OSError, TypeError, ValueError) as error:
+        parser.error(str(error))
 
     backend = root / "source/backend"
     project = tomllib.loads((backend / "pyproject.toml").read_text(encoding="utf-8"))["project"]

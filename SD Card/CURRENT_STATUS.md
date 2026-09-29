@@ -2,6 +2,17 @@
 
 ## Current checkpoint — September 29: r11 image plus newer scene/keyboard source
 
+Newest source-only fan correction: after a failed IR send the active Test screen
+now shows the durable unknown-outcome warning immediately, and a fresh owner
+acknowledgement is required before any repeat. A real-browser/HTTP temporary
+fake-IR pass checked this in Hearth, Glass and Neon at 390 px, then locked
+privacy during a held learn: the private screen vanished, the request was
+cancelled and no late button was saved. The focused 30 fan backend tests and
+131 frontend tests/build passed. No actual USB IR or Woozoo was contacted.
+The preceding purifier-onboarding increment passed
+[hosted Linux CI run 36646429234](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36646429234).
+The new fan source still needs hosted CI and a rebuilt image.
+
 Newest source-only room-setup increment: after a successful VeSync login, the
 purifier discovery button now shows the service's brief setup cooldown instead
 of inviting an immediate rate-limit error. A disposable real-browser/HTTP
@@ -12,7 +23,8 @@ No command reached a physical appliance; synthetic provider command count was
 zero. Fan and purifier draft retention, safe focus, Tab wrapping, Escape and
 discard also passed at 390 px in all three themes. See
 [room-device evidence](docs/ROOM_DEVICES.md). This source is **not in r11**;
-hosted CI for this new increment and a rebuilt image are still outstanding.
+hosted CI passed for the purifier increment, but a rebuilt image is still
+outstanding.
 
 Further source-only verification covered an active scene during a synthetic
 privacy lock: private editor content vanished, the one already-dispatched
@@ -68,8 +80,8 @@ personalized card without a verified backup or an explicit decision to reset
 saved account setup**; the new image does not migrate settings/tokens. See
 [flashing precautions](docs/FLASHING.md).
 
-Remaining software checks: fan interruption/privacy paths, remaining room-device
-interaction and real touch/pointer acceptance, plus an actual signed application update and rollback
+Remaining software checks: additional room-device interruption/error paths and
+real touch/pointer acceptance, plus an actual signed application update and rollback
 after the owner approves a release. Owner-only gates: real Pi boot, display,
 touch, ReSpeaker/Hey Luma/timer audio, USB backup/restore, Pi Connect
 enrollment, Stanford network behavior, iPhone presence/Bluetooth, Woozoo,

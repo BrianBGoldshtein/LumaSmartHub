@@ -45,6 +45,9 @@ export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(va
   async function run(action:()=>Promise<void>){
     if(working.current)return;working.current=true;setBusy(true);setMessage('');
     try{await action();}catch(error){if(alive.current){
+      // A failed transport call may have sent the IR pulse. Force another
+      // deliberate observation/acknowledgement before any manual repeat.
+      setAck(false);
       if(error instanceof FanError){
         if(error.status===403){setConfig(emptyFans());setReady(false);reset('overview');setMessage(error.message);}
         else{
@@ -81,7 +84,7 @@ export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(va
   async function send(test:boolean){
     if(demo){const id=crypto.randomUUID();preview(copy=>{copy.fans.find(row=>row.id===fanId)!.last_command={id,button:key,kind:test?'test':'manual',status:'sent_unconfirmed',at:new Date().toISOString(),observed:false};});setReceipt(id);}
     else{const value=await call(test?'/test':'/command',{...body(),button:key,confirmed:true});setConfig(value.configuration);setReceipt(value.result.id);
-      if(value.result.status!=='sent_unconfirmed'){setMessage('Outcome unknown. Check both fans. This test cannot count as a completed check.');return;}}
+      if(value.result.status!=='sent_unconfirmed'){setAck(false);setMessage('Outcome unknown. Check both fans. This test cannot count as a completed check.');return;}}
     setNow(Date.now());
     if(test){setExpected(null);setOther(null);setRepeated(null);setStep('observe');}else{setMessage('Command sent · device state remains unconfirmed.');setAck(false);}
   }
@@ -102,6 +105,7 @@ export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(va
 
   return <div ref={panel} className="room-setup fan-setup"><h2><Fan aria-hidden="true"/> Your two fans</h2>
     {demo&&<p className="setup-note">Sample preview only. No hardware is recorded or controlled.</p>}
+    {step!=='overview'&&step!=='buttons'&&fanOutcome(fan.last_command)&&<p role="status" className="setup-message">{fanOutcome(fan.last_command)}</p>}
     {!ready?<><p role="status">{message||'Loading saved fan setup…'}</p><button disabled={busy} onClick={()=>void run(load)}>Reload saved setup</button></>:config.recovery_error?<p role="alert">Saved fan settings need recovery. They have not been overwritten; commands are disabled.</p>:<>
       {step!=='overview'&&<button disabled={busy} onClick={back}>← Fan overview</button>}
       {step==='overview'?<><p>Choose both outputs, then learn and test one button at a time. All automations stay off.</p><div className="fan-cards">{config.fans.map(row=><section className="room-device-card" key={row.id}><h3>{row.name||(row.id==='fan_1'?'Fan 1':'Fan 2')}</h3><p>{fanStatus(row)}</p>{fanOutcome(row.last_command)&&<p role="status">{fanOutcome(row.last_command)}</p>}<button disabled={busy} onClick={()=>{setFanId(row.id);reset(row.route?'buttons':'prepare');}}>{row.route?'Buttons & controls':'Set up fan'}</button></section>)}</div><p className="setup-note">Two remotes can use identical signals. Independent control must be tested in both directions. Infrared does not report a fan’s current state.</p><button disabled={busy} onClick={()=>void run(load)}>Reload saved setup</button></>:null}

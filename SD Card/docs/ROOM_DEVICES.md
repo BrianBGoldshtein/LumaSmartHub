@@ -1,5 +1,16 @@
 # Room devices — purifier, fans and scenes source status
 
+Newest September 29 fan follow-up: the active Test view now shows a durable
+unknown IR-send result immediately, instead of hiding it until Back, and a
+failed/unknown send clears its acknowledgement so repeating requires a new
+explicit decision. The real HTTP/WebSocket-capable temporary fixture with
+fake IR passed three-theme narrow browser checks for unknown receipt, blocked
+repeat, no secret/sentinel leak and no horizontal overflow. A held learn was
+cancelled by a synthetic privacy lock; the private view disappeared and the
+saved button revision did not change. Focused fan backend tests: 30 pass;
+frontend 131 tests and production build pass. No actual USB IR/fans/touch or
+owner account was used; hosted CI and next image remain outstanding.
+
 Newest September 29 source follow-up: the purifier now displays a short,
 disabled discovery countdown after successful login, matching the service's
 five-second VeSync setup pacing rather than surfacing a predictable rate-limit
@@ -12,7 +23,8 @@ purifier commands. The scene browser script additionally passed fan and
 purifier dirty-draft, safe-focus, both-way Tab, Escape and discard checks in
 all three themes at 390 px. 131 frontend tests and production build pass.
 No physical touch, owner credentials, actual VeSync or USB IR were used;
-hosted CI and the next image still need this source.
+the [hosted purifier CI run](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36646429234)
+passed; the next image still needs this source.
 
 Later September 29 source-only acceptance: a synthetic privacy transition
 during a held scene action hid the private editor immediately; the durable

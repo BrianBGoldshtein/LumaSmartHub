@@ -2,13 +2,21 @@
 
 ## Latest checkpoint — September 29, 2026
 
+Fan Test now exposes a saved unknown IR result before navigation and requires
+another acknowledgement before any repeat. Three-theme synthetic real-browser
+checks also covered privacy lock during a held learn and durable cancellation
+without a late button. Focused backend fan tests: 30 pass; frontend 131 tests
+and build pass. Hosted CI and image delivery are pending for this newest fan
+increment. Physical USB/fans/touch and owner acceptance remain open.
+
 Room onboarding now respects its provider setup cooldown with a visible
 discovery countdown. Disposable real-browser checks covered fan/purifier
 confirmation drafts and keyboard paths in all three themes, and a separate
 real local HTTP/fake-VeSync pass checked sign-in, saved selection, offline
 control removal, recovery and privacy redaction with zero appliance commands.
-Frontend build and 131 tests pass. Hosted CI and image delivery are pending
-for this newest source-only increment; physical/device acceptance is open.
+Frontend build and 131 tests pass. [Hosted Linux CI run 36646429234](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36646429234)
+passed for the purifier increment; image delivery and physical/device
+acceptance are open.
 
 The next source overlay also passes a synthetic privacy-lock-during-dispatch
 check and three-theme scene keyboard confirmations, with sample fan/purifier

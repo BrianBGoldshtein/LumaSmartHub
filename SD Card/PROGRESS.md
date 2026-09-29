@@ -1,5 +1,22 @@
 # Luma implementation ledger
 
+## September 29 — uncertain IR send visibility and privacy cancellation
+
+The Fan Test screen previously retained an unknown IR-send receipt in the
+backend but hid its warning until navigation back to Buttons or Overview.
+It now displays that receipt in place and clears the acknowledgement after
+an unsuccessful transport call or unknown result, preventing an accidental
+immediate repeat. The disposable browser script
+`source/frontend/qa/fan-interactions.mjs` used the real local HTTP app and
+temporary SQLite with fake IR: three-theme 390 px unknown receipts, disabled
+repeat and no sentinel leak; one held learning operation was cancelled on
+privacy lock without changing the saved button. Focused backend fan tests:
+30 pass. Frontend 131 tests and production build pass. No physical fan/USB
+or Pi was tested; hosted CI and image packaging for this increment remain.
+
+The previous purifier-onboarding source increment `c3aa6d8` passed
+[hosted Linux CI run 36646429234](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36646429234).
+
 ## September 29 — room onboarding cooldown and wider browser recovery checks
 
 After VeSync sign-in the room panel now waits out the service's five-second
@@ -13,7 +30,8 @@ unintended purifier commands passed. The scene browser script also now checks
 fan and purifier dirty draft/confirmation keyboard paths across all three
 themes, rather than one theme each. Frontend TypeScript/production build and
 131 unit tests pass. These are synthetic tests, not actual provider, touch or
-Pi hardware acceptance. The new source is not in r11 and needs hosted CI.
+Pi hardware acceptance. The source is not in r11; its hosted CI passed in the
+run linked above.
 
 ## September 29 — privacy/keyboard acceptance and CI teardown repair
 

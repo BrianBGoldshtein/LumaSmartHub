@@ -72,6 +72,15 @@ async def main():
                 infrared.release.clear()
             if body.get('release') is True:
                 infrared.release.set()
+            if body.get('locked') is True:
+                service.update_settings({'onboarding_completed': True})
+                service.state.pin_unlocked_until = None
+                service.phone_disconnected()
+                service.publish('privacy.updated')
+            elif body.get('locked') is False:
+                service.unlock_with_pin()
+            if body.get('theme') in ('hearth', 'luma-glass', 'neon-grid'):
+                service.update_settings({'theme': body['theme']})
             return status_value()
 
         @app.get('/_qa/status')
@@ -84,7 +93,8 @@ async def main():
             return {'fixture': 'synthetic-fans', 'mode': infrared.mode,
                     'actions': list(infrared.actions), 'dispatches': infrared.dispatches,
                     'cancellations': infrared.cancellations,
-                    'learn_started': infrared.started.is_set()}
+                    'learn_started': infrared.started.is_set(),
+                    'privacy_redacted': service.snapshot()['privacy_redacted']}
 
         # The static frontend fallback is appended by create_app; keep the
         # fixture-only diagnostic routes ahead of it.

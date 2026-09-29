@@ -13,10 +13,11 @@ serializer. Added a fresh-process regression that asserts broker import does
 not load scenes or VeSync SDK modules. Windows backup-related tests: **18
 passed, 17 Linux-only skipped**; Debian backup socket/media/inventory suite:
 **35 passed**; complete Debian backend suite: **943 passed**; image-builder
-unit tests: **26 passed**. The separate clean Linux publishing clone is now
-patched on the authorized feature branch. CI/push and the immutable-image
-QEMU response still need to pass; r4 remains **not ready for reflash**.
-Exact-image stack evidence is in the September 28 `PROGRESS.md` entry.
+unit tests: **26 passed**. The fix and ledger are published on the authorized
+feature branch at commit `1e86b4b`; GitHub Actions run 36506577393 passed. The
+immutable-image QEMU response still needs to pass on a rebuilt r5; r4 remains
+**not ready for reflash**. Exact-image stack evidence is in the September 28
+`PROGRESS.md` entry.
 
 Latest continuation checkpoint — September 28: implemented the signed,
 in-place application updater requested for future development. Fresh image

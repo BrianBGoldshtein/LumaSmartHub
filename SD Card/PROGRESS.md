@@ -15,9 +15,10 @@ broker import. Windows backup-related tests: **18 passed, 17 Linux-only
 skipped**. Debian Linux backup socket/media/inventory suite: **35 passed**;
 the complete backend suite: **943 passed**; image-builder unit tests: **26
 passed**. The initial subprocess test lacked the checkout source path in
-`PYTHONPATH`; corrected it and reran cleanly. Remaining before clearing the
-gate: push the tested source/docs on the authorized feature branch, rebuild an
-immutable r5, and repeat the exact-image list-response test under the packaged
+`PYTHONPATH`; corrected it and reran cleanly. The tested source/docs are
+published on the authorized feature branch at `1e86b4b`, and GitHub Actions
+run 36506577393 is green. Remaining before clearing the gate: rebuild an
+immutable r5 and repeat the exact-image list-response test under the packaged
 systemd service limits. r4 remains rejected for reflash; do not copy it to the
 SD handoff or flash it. Hardware acceptance is still owner-prompt-gated.
 

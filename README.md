@@ -6,12 +6,13 @@ interface—not a general-purpose desktop. The app combines themed time, weather
 Google Calendar and tasks with optional local voice, phone presence, timers,
 sleep-aware display behavior and room automations.
 
-> **Project status: development / pre-release. This is not v1.** The working
-> software is on a feature branch; `main` is intentionally left at its initial
-> README until the owner has completed hardware testing and is happy to publish
-> v1. The Pi, display, touch, audio, campus network, phone and appliance paths
-> still require physical acceptance. Do not treat a successful software test
-> or an `UNVERIFIED` image as that acceptance.
+> **Project status: development / pre-release — not v1.** This is the proposed
+> GitHub landing-page README for the development branch. `main` remains the
+> untouched starter release until the owner has completed hardware testing,
+> reviewed the results, and approved publishing v1. The Pi, display, touch,
+> audio, campus network, phone and appliance paths still require physical
+> acceptance. Software tests and images marked `UNVERIFIED` do not satisfy
+> that gate.
 
 ## What it does
 
@@ -111,6 +112,14 @@ run on GitHub Actions for the backend (including Linux-only integration tests),
 frontend, production UI build and image-manifest tools. Required public assets
 are regenerated from checksum-pinned sources in CI. **CI has no updater signing
 private key and does not publish a trusted image or update bundle.**
+
+Latest published development commit: [`1e86b4b`](https://github.com/BrianBGoldshtein/LumaSmartHub/commit/1e86b4bc)
+with [GitHub Actions passing](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36506577393):
+943 Linux backend tests, frontend tests/build, pinned asset preparation and
+image-manifest checks. The current software fix removes a slow cold-start
+device-SDK import from the privileged USB backup service. The existing r4
+image still fails that service's QEMU response check; a new immutable image
+and exact-image pass are required before any reflash handoff.
 
 The feature branch currently under development is
 [`codex/luma-updater-ci-20260928`](https://github.com/BrianBGoldshtein/LumaSmartHub/tree/codex/luma-updater-ci-20260928).

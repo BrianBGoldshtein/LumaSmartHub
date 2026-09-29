@@ -2,6 +2,7 @@ import {useContext,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {Sunrise,Moon,Home,DoorOpen} from 'lucide-react';
 import {SetupActivity} from './setupActivity';
 import {scrollSetupToTop} from './setupScroll';
+import {useConfirmKeyboard} from './useConfirmKeyboard';
 import {emptyScenes,sampleScenes,sceneDraft,sceneKeys,sceneLabels,automaticLabels,actionLabel,resultLabel,remoteReauthorizationReady,type SceneKey,type SceneConfig,type SceneDefinition} from './sceneState';
 import './room.css';
 
@@ -13,6 +14,7 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
   const [remoteDraft,setRemoteDraft]=useState<SceneKey[]>([]);
   const [draft,setDraft]=useState<SceneDefinition>({enabled:false,automatic:false,actions:[]}),[baseline,setBaseline]=useState(''),[revision,setRevision]=useState('');
   const [choice,setChoice]=useState(''),[confirm,setConfirm]=useState<'discard'|'run'|'remote-reset'|null>(null);
+  const confirmPanel=useConfirmKeyboard(!!confirm,()=>{if(!busy)setConfirm(null);});
   const sceneDirty=!!selected&&JSON.stringify(draft)!==baseline;
   const remoteSaved=sceneKeys.filter(key=>config.remote.scenes[key].allowed||config.remote.scenes[key].needs_review);
   const remoteDirty=JSON.stringify([...remoteDraft].sort())!==JSON.stringify([...remoteSaved].sort());
@@ -144,7 +146,7 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
       {last&&<section className="scene-result"><h3>{sceneLabels[last.scene]} · last run</h3><p>{last.interrupted?'Interrupted · never resumed':last.finished?'Finished — see each result':'In progress · refresh for results'}</p><ul>{last.steps.map((item,index)=><li key={index}><span>{actionLabel(item.action,config.devices)}</span><strong>{resultLabel(item.status)}</strong></li>)}</ul></section>}
       {(runningScene||config.busy)&&<button disabled={stopping} onClick={()=>void stop()}>{stopping?'Stopping…':'Stop scene'}</button>}
     </>}
-    {confirm&&<div className="room-confirm" role="alertdialog" aria-label={confirm==='discard'?'Discard scene edits':confirm==='remote-reset'?'Reset remote permissions':'Run scene confirmation'}><p>{confirm==='discard'?'Discard these unsaved edits?':confirm==='remote-reset'?'Discard the unreadable remote allowlist? This turns remote appliance actions off. Local scene settings and saved accounts are not changed.':'Run the saved actions now? Some actions may turn devices on. Already-sent actions cannot be undone by cancelling.'}</p><button disabled={busy} onClick={()=>{if(confirm==='discard'){setSelected(null);setConfirm(null);}else if(confirm==='remote-reset')void run(resetRemote);else void run(execute,true);}}>{confirm==='discard'?'Discard edits':confirm==='remote-reset'?'Reset and turn remote actions off':'Run once'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>Keep reviewing</button></div>}
+    {confirm&&<div ref={confirmPanel} className="room-confirm" role="alertdialog" aria-modal="true" tabIndex={-1} aria-label={confirm==='discard'?'Discard scene edits':confirm==='remote-reset'?'Reset remote permissions':'Run scene confirmation'}><p>{confirm==='discard'?'Discard these unsaved edits?':confirm==='remote-reset'?'Discard the unreadable remote allowlist? This turns remote appliance actions off. Local scene settings and saved accounts are not changed.':'Run the saved actions now? Some actions may turn devices on. Already-sent actions cannot be undone by cancelling.'}</p><button disabled={busy} onClick={()=>{if(confirm==='discard'){setSelected(null);setConfirm(null);}else if(confirm==='remote-reset')void run(resetRemote);else void run(execute,true);}}>{confirm==='discard'?'Discard edits':confirm==='remote-reset'?'Reset and turn remote actions off':'Run once'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>Keep reviewing</button></div>}
     {message&&<p role="status" className="setup-message">{message}</p>}
   </div>;
 }

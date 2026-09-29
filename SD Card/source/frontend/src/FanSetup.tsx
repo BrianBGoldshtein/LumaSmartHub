@@ -3,6 +3,7 @@ import {Fan,Radio} from 'lucide-react';
 import {SetupActivity} from './setupActivity';
 import {TouchField} from './TouchField';
 import {scrollSetupToTop} from './setupScroll';
+import {useConfirmKeyboard} from './useConfirmKeyboard';
 import {emptyFans,demoAdapter,demoEligibility,fanButtons,fanStatus,fanOutcome,pendingObservation,type FanId,type FanConfig,type IrDevice} from './fanState';
 import './room.css';
 
@@ -18,6 +19,7 @@ export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(va
   const [expected,setExpected]=useState<boolean|null>(null),[other,setOther]=useState<boolean|null>(null),[receipt,setReceipt]=useState('');
   const [repeated,setRepeated]=useState<boolean|null>(null);
   const [confirm,setConfirm]=useState<'discard'|'remove'|null>(null),[now,setNow]=useState(Date.now());
+  const confirmPanel=useConfirmKeyboard(!!confirm,()=>{if(!busy)setConfirm(null);});
   const fan=config.fans.find(row=>row.id===fanId)!,button=fanButtons.find(row=>row.key===key)!;
   const selected=devices.find(row=>row.id===choice),input=devices.find(row=>row.id===receiver);
   const dirty=step==='output'&&!!choice||step==='observe';
@@ -115,7 +117,7 @@ export function FanSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(va
         <button disabled={busy||!input||!ack||(!input.measure_carrier&&(!/^\d+$/.test(frequency)||Number(frequency)<20000||Number(frequency)>60000))} onClick={()=>void run(record)}>{busy?'Recording…':'Start recording'}</button>{busy&&<button onClick={()=>request.current?.abort()}>Cancel recording</button>}<p className="setup-note">Relearning replaces only this saved button and clears its checks. No remote recordings leave the hub.</p></>}
       {step==='test'&&<><h3>{fan.name} · {button.label}</h3><p>Observe both fans. For a dedicated-state button, check that the intended state is reached; for a toggle, check the expected change. The other fan must remain unaffected.</p><label className="extras-toggle"><input type="checkbox" disabled={busy} checked={ack} onChange={event=>setAck(event.target.checked)}/><span>I am ready for one command and can observe both fans.</span></label><div className="room-actions"><button disabled={busy||!ack} onClick={()=>void run(()=>send(true))}>Send one test</button><button disabled={busy||!ack||!fan.buttons.find(item=>item.key===key)?.checks} onClick={()=>void run(()=>send(false))}>Send once · no test</button><button disabled={busy} onClick={()=>void run(forget)}>Forget this button</button></div><p className="setup-note">Every send is unconfirmed until you look at the fan. Absolute buttons require two successful tests, including from the already-selected state, before scene eligibility. Test/manual commands pause that fan’s scene changes for one hour.</p></>}
       {step==='observe'&&<><h3>What happened?</h3>{observing?<>{yesNo(`${fan.name}: expected state or change?`,expected,setExpected)}{yesNo('Other fan stayed unchanged?',other,setOther)}{repeatCheck&&yesNo('Was this fan already in the requested state, and did it stay there?',repeated,setRepeated)}<button disabled={busy||expected===null||other===null||!!(repeatCheck&&expected&&other&&repeated!==true)} onClick={()=>void run(observe)}>Save observation</button><p className="setup-note">Answer within two minutes. A failed check clears independence checks so an unsafe setup cannot become automatic.</p></>:<><p>This observation window ended or the command outcome is unknown. Run a fresh test when ready.</p><button disabled={busy} onClick={()=>reset('buttons')}>Back to buttons</button></>}</>}
-      {confirm&&<div className="room-confirm" role="alertdialog" aria-label={confirm==='remove'?'Remove fan':'Discard unsaved setup'}><p>{confirm==='remove'?'Remove this fan’s learned buttons and reset both-direction checks? The physical fan is not changed.':'Leave without saving these edits or test observations? Previously saved buttons remain.'}</p><div className="room-actions"><button disabled={busy} onClick={()=>confirm==='remove'?void run(remove):reset('overview')}>{confirm==='remove'?'Remove fan':'Discard and leave'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>Keep working</button></div></div>}
+      {confirm&&<div ref={confirmPanel} className="room-confirm" role="alertdialog" aria-modal="true" tabIndex={-1} aria-label={confirm==='remove'?'Remove fan':'Discard unsaved setup'}><p>{confirm==='remove'?'Remove this fan’s learned buttons and reset both-direction checks? The physical fan is not changed.':'Leave without saving these edits or test observations? Previously saved buttons remain.'}</p><div className="room-actions"><button disabled={busy} onClick={()=>confirm==='remove'?void run(remove):reset('overview')}>{confirm==='remove'?'Remove fan':'Discard and leave'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>Keep working</button></div></div>}
       {message&&<p className="setup-message" role="status">{message}</p>}
     </>}
   </div>;

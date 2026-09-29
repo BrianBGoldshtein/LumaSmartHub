@@ -3,6 +3,7 @@ import {Wind} from 'lucide-react';
 import {SetupActivity} from './setupActivity';
 import {TouchField} from './TouchField';
 import {scrollSetupToTop} from './setupScroll';
+import {useConfirmKeyboard} from './useConfirmKeyboard';
 import {emptyRoom,sampleRoom,samplePurifier,purifierStatus,purifierFresh,supportsPurifier,commandStatus,type RoomConfig,type PurifierDevice,type PurifierAction} from './roomState';
 import './room.css';
 
@@ -23,6 +24,7 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
   const activity=useContext(SetupActivity),alive=useRef(true),working=useRef(false),panel=useRef<HTMLDivElement>(null);
   const [config,setConfig]=useState<RoomConfig>(emptyRoom),[ready,setReady]=useState(demo),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
   const [step,setStep]=useState<Step>('overview'),[confirm,setConfirm]=useState<Confirmation>(null);
+  const confirmPanel=useConfirmKeyboard(!!confirm,()=>{if(!busy)setConfirm(null);});
   const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[country,setCountry]=useState('US'),[reviewed,setReviewed]=useState(false);
   const [rows,setRows]=useState<PurifierDevice[]>([]),[discovered,setDiscovered]=useState(false),[choice,setChoice]=useState<PurifierDevice|null>(null),[name,setName]=useState('');
   const [now,setNow]=useState(Date.now());
@@ -123,7 +125,7 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
         <h3>Review your selection</h3><p>{choice?.name} · {choice?.model}</p><form onSubmit={event=>{event.preventDefault();void select();}}><TouchField label="Name on Luma" value={name} onChange={setName} maxLength={100} required disabled={busy}/><p>This saves the selection only after a successful status read. No control command or automation is sent.</p>{config.selected&&<p>Replaces “{config.selected.name}” on Luma only.</p>}<button disabled={busy||!name.trim()}>Select & check reported state</button></form>
       </>}
     </>}
-    {confirm&&<div className="room-confirm" role="alert"><p>{confirm==='discard'?'Discard unsaved room-device choices and credentials?':confirm==='disconnect'?'Remove the saved VeSync session and purifier selection? Luma will stop polling. This does not turn the purifier off.':'Remove the purifier selection from Luma? This does not turn it off.'}</p><div className="room-actions"><button disabled={busy} onClick={()=>void confirmAction()}>{confirm==='discard'?'Discard changes':'Confirm removal'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>Keep current settings</button></div></div>}
+    {confirm&&<div ref={confirmPanel} className="room-confirm" role="alertdialog" aria-modal="true" tabIndex={-1} aria-label={confirm==='discard'?'Discard room-device edits':confirm==='disconnect'?'Disconnect VeSync':'Remove purifier'}><p>{confirm==='discard'?'Discard unsaved room-device choices and credentials?':confirm==='disconnect'?'Remove the saved VeSync session and purifier selection? Luma will stop polling. This does not turn the purifier off.':'Remove the purifier selection from Luma? This does not turn it off.'}</p><div className="room-actions"><button disabled={busy} onClick={()=>void confirmAction()}>{confirm==='discard'?'Discard changes':'Confirm removal'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>Keep current settings</button></div></div>}
     {busy&&<p role="status">Checking…</p>}{message&&<p role="status">{message}</p>}
   </div>;
 }

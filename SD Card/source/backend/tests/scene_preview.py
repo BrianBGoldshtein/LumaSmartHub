@@ -76,9 +76,17 @@ async def main():
                 dispatch_gate.clear()
             elif value == {'mode': 'release'}:
                 dispatch_gate.set()
+            elif value == {'locked': True}:
+                service.update_settings({'onboarding_completed': True})
+                service.state.pin_unlocked_until = None
+                service.phone_disconnected()
+                service.publish('privacy.updated')
+            elif value == {'locked': False}:
+                service.unlock_with_pin()
             else:
-                raise HTTPException(422, 'Choose hold or release.')
-            return {'dispatch_held': not dispatch_gate.is_set()}
+                raise HTTPException(422, 'Choose hold, release, lock or unlock.')
+            return {'dispatch_held': not dispatch_gate.is_set(),
+                    'privacy_redacted': service.snapshot()['privacy_redacted']}
 
         @app.get('/_qa/reopen')
         async def reopen(request: Request):

@@ -2,6 +2,14 @@
 
 ## Latest checkpoint — September 29, 2026
 
+The next source overlay also passes a synthetic privacy-lock-during-dispatch
+check and three-theme scene keyboard confirmations, with sample fan/purifier
+keyboard confirmation checks. An existing WebSocket API test now explicitly
+closes its client connection after hosted CI exposed a teardown cancellation;
+the previous run had 995 backend passes and one test teardown error. A new
+hosted run is required. Real Pi touch/keyboard, phone timing and device
+behavior remain owner acceptance gates; these source changes are not in r11.
+
 Post-r11 source has closed one scene-editor recovery gap: separate remote
 permission drafts are protected from implicit navigation/refresh loss, and a
 cancelled or authorization-revoked scene now has a durable interrupted result

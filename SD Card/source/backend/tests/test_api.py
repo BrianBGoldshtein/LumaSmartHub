@@ -70,6 +70,9 @@ class ApiTests(unittest.TestCase):
     def test_websocket_starts_with_complete_snapshot(self) -> None:
         with self.client.websocket_connect("/api/v1/events") as websocket:
             message = websocket.receive_json()
+            # Complete the ASGI disconnect handshake before the TestClient
+            # context exits; newer Starlette can otherwise cancel its portal.
+            websocket.close()
 
         self.assertEqual(message["type"], "snapshot")
         self.assertIn("settings", message["data"])

@@ -1,6 +1,21 @@
 # Luma — current restart point
 
-## Current checkpoint — September 29: r11 image plus newer scene-recovery source
+## Current checkpoint — September 29: r11 image plus newer scene/keyboard source
+
+Further source-only verification covered an active scene during a synthetic
+privacy lock: private editor content vanished, the one already-dispatched
+action remained uncertain/interrupted in the saved journal, and unlocking did
+not replay it. Scene, fan and purifier confirmation islands now focus their
+safe choice first, keep Tab inside the confirmation and let Escape return to
+review; a real-rendered Chrome pass checked these paths at 390 px. Actual Pi
+touch/keyboard, iPhone presence timing and fan/purifier hardware remain open.
+
+The first hosted Linux CI run for the scene correction (`36643657617`) found
+one unrelated API WebSocket test teardown issue: 995 tests passed and the
+snapshot test hit a `CancelledError` when Starlette closed an unclosed test
+session. The test now sends an explicit disconnect; its six local API tests
+pass. Hosted CI must rerun on the next pushed commit before this source can be
+called Linux-green. The r11 image predates all post-r11 source changes.
 
 Source now has a **post-r11 scene-interruption correction**. A cancelled or
 authorization-revoked scene is durably recorded as interrupted, with an unknown
@@ -14,8 +29,8 @@ skips, 131 frontend tests and the production build passed. A disposable
 real-rendered Chrome pass checked dirty-edit navigation in three themes at
 390 px and stopped a held synthetic scene after one dispatch: no replay,
 durable interrupted journal and visible result. No real fan or Pi was touched.
-See [room-device status](docs/ROOM_DEVICES.md). Hosted CI is pending for this
-new source until its commit is pushed.
+See [room-device status](docs/ROOM_DEVICES.md). The next hosted CI run is
+pending for the WebSocket-test and keyboard/privacy follow-up.
 
 The newest Pi 4 image candidate is **r11**, from source commit `74d1f71`, in
 the user-visible `SD Card/image/r11-candidate-74d1f71-20260929` folder. Its

@@ -1,5 +1,16 @@
 # Room devices — purifier, fans and scenes source status
 
+Later September 29 source-only acceptance: a synthetic privacy transition
+during a held scene action hid the private editor immediately; the durable
+run was interrupted and did not replay on unlock. A shared keyboard handler
+for scene, fan and purifier confirmations now focuses the safe choice, contains
+Tab in both directions and lets Escape dismiss. Chrome checked all three
+themes for the scene confirmation and sample fan/purifier dialogs at 390 px.
+Physical touch, keyboard, Bluetooth timing and real device behavior are still
+untested. The prior scene commit's hosted Linux CI run failed only in an
+unclosed WebSocket test session (995 pass/1 teardown error); the test now
+closes it explicitly and awaits new CI. These changes are newer than r11.
+
 September 29 post-r11 scene correction: unsaved private iPhone scene
 permissions can no longer be dropped by opening a scene or refreshing; an
 explicit discard button is available. Stop scene appears only for a running

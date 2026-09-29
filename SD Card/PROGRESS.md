@@ -1,5 +1,25 @@
 # Luma implementation ledger
 
+## September 29 — privacy/keyboard acceptance and CI teardown repair
+
+The disposable scene fixture now permits a synthetic privacy lock while one
+fan dispatch is held. A real Chrome pass showed private scene details removed
+on lock, the run interrupted in durable storage, and no replay after unlock.
+The same script checked safe focus, forward/reverse Tab containment and Escape
+on scene confirmations in all three themes at 390 px, plus safe focus/Escape
+on fan and purifier sample confirmations. The shared confirmation hook does
+not focus the destructive choice by default. These are desktop/browser checks,
+not physical Pi touch or keyboard acceptance.
+
+Hosted CI run `36643657617` for the prior scene commit failed at the complete
+backend step with 995 passes and one WebSocket snapshot test teardown
+`CancelledError`; no scene test failed. A test-only explicit client disconnect
+was added and the six local API tests pass. This increment still requires a
+new hosted Linux CI pass. Frontend TypeScript/production build and all 131
+unit tests pass. r11 remains a preserved, hardware-unverified image and does
+not contain the post-r11 source; a new image or signed app-only deployment is
+required before Pi use.
+
 ## September 29 — scene edit/interruption correction after r11
 
 Review found private Shortcut-scene edits could be silently dropped by

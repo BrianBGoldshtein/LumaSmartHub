@@ -1,8 +1,8 @@
 """Bounded sequential scene runner with an injected device boundary.
 
-Not connected to physical adapters yet. The dispatch contract requires a final
-can_send() check immediately before device transmission, including after every
-asynchronous preflight. A return is a factual outcome, never optimistic state.
+The injected dispatch boundary requires a final can_send() check immediately
+before device transmission, including after every asynchronous preflight. A
+return is a factual outcome, never optimistic state.
 """
 import asyncio
 from datetime import UTC, datetime
@@ -56,6 +56,7 @@ class SceneExecutor:
                            and self._allowed(trigger, revision, generation, epoch, deadline))
         self.task = asyncio.current_task()
         self._notify()
+        completed = False
         try:
             async with asyncio.timeout(120):
                 for index in range(len(run['steps'])):
@@ -66,11 +67,13 @@ class SceneExecutor:
                     status = await self._dispatch(item, allowed)
                     self.store.finish_step(run['id'], index, status, generation=generation)
                     self._notify()
+                else:
+                    completed = allowed()
         finally:
             try:
                 # Unknown dispatched and untouched not_started steps remain
                 # distinguishable even on cancellation or failed storage.
-                self.store.finish(run['id'], generation=generation)
+                self.store.finish(run['id'], generation=generation, completed=completed)
             finally:
                 self.task = None
                 self._notify()

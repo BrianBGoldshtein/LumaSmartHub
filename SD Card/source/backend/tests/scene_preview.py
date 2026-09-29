@@ -42,11 +42,18 @@ async def main():
         service.fans._save(overrides=dict.fromkeys(('fan_1', 'fan_2')))
 
         commands = []
+        dispatch_gate = asyncio.Event()
+        dispatch_gate.set()
 
         async def synthetic_scene_command(fan, key, revision, *, can_send):
             if can_send() is not True:
                 return {'status': 'not_sent'}
             commands.append((fan, key))
+            # Hold a disposable, already-dispatched result so the browser can
+            # exercise cancellation and interrupted-run recovery deterministically.
+            await dispatch_gate.wait()
+            if can_send() is not True:
+                return {'status': 'unconfirmed'}
             return {'status': 'sent_unconfirmed'}
 
         app.state.fan_runtime.scene_command = synthetic_scene_command
@@ -58,7 +65,20 @@ async def main():
         @app.get('/_qa/status')
         async def status(request: Request):
             qa_loopback(request)
-            return {'fixture': 'synthetic-scenes', 'dispatches': len(commands)}
+            return {'fixture': 'synthetic-scenes', 'dispatches': len(commands),
+                    'dispatch_held': not dispatch_gate.is_set()}
+
+        @app.post('/_qa/control')
+        async def control(request: Request):
+            qa_loopback(request)
+            value = await request.json()
+            if value == {'mode': 'hold'}:
+                dispatch_gate.clear()
+            elif value == {'mode': 'release'}:
+                dispatch_gate.set()
+            else:
+                raise HTTPException(422, 'Choose hold or release.')
+            return {'dispatch_held': not dispatch_gate.is_set()}
 
         @app.get('/_qa/reopen')
         async def reopen(request: Request):

@@ -2,6 +2,15 @@
 
 ## Latest checkpoint — September 29, 2026
 
+Post-r11 source has closed one scene-editor recovery gap: separate remote
+permission drafts are protected from implicit navigation/refresh loss, and a
+cancelled or authorization-revoked scene now has a durable interrupted result
+instead of an incorrect finished label. Three-theme synthetic browser and
+full Windows backend/frontend checks passed; see [room-device status](ROOM_DEVICES.md).
+This correction is **not in r11**. Remaining fan/privacy/keyboard physical and
+synthetic paths, Linux hosted CI, new image/update delivery, and owner hardware
+qualification are still open.
+
 The current full-image candidate is **r11**, from source `74d1f71`. The local
 archive and receipts are in the user-visible
 `SD Card/image/r11-candidate-74d1f71-20260929` output folder; the

@@ -339,6 +339,7 @@ async def test_executor_revocation_during_preflight_cancels_and_skips_remaining(
     result = await asyncio.wait_for(task, 2)
     assert cancelled.is_set() and calls == []
     assert [step['status'] for step in result['steps']] == ['unconfirmed', 'not_started']
+    assert result['interrupted'] and not result['finished']
 
 
 @pytest.mark.asyncio
@@ -354,7 +355,8 @@ async def test_executor_shutdown_cancels_dispatch_and_preserves_unknown_without_
     with pytest.raises(SceneStopped): await engine.run(trigger(), revision=saved.revision)
     await engine.close()
     with pytest.raises(asyncio.CancelledError): await task
-    assert saved.runs[-1]['steps'][0]['status'] == 'unknown' and saved.runs[-1]['finished']
+    assert saved.runs[-1]['steps'][0]['status'] == 'unknown' and not saved.runs[-1]['finished']
+    assert Scenes(saved.storage).configuration()['runs'][-1]['interrupted']
     assert Scenes(saved.storage).active is None
     with pytest.raises(SceneStopped): await engine.run(trigger(), revision=saved.revision)
 

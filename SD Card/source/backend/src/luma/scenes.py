@@ -211,11 +211,15 @@ class Scenes:
             runs[run_index]['steps'][index]['status'] = status
             self._save(runs=runs)
 
-    def finish(self, identifier, *, generation):
+    def finish(self, identifier, *, generation, completed=True):
+        if type(completed) is not bool: raise ValueError('Invalid scene completion.')
         with self.lock:
             run_index, _ = self._run(identifier, generation)
             runs = deepcopy(self.runs)
-            runs[run_index]['finished'] = True
+            # A stopped/expired run is terminal but not finished: untouched
+            # actions must never be replayed, and the owner must see that the
+            # sequence was interrupted even after a process restart.
+            runs[run_index]['finished'] = completed
             self._save(runs=runs)
             self.active = None
 

@@ -1,5 +1,20 @@
 # Room devices — purifier, fans and scenes source status
 
+September 29 post-r11 scene correction: unsaved private iPhone scene
+permissions can no longer be dropped by opening a scene or refreshing; an
+explicit discard button is available. Stop scene appears only for a running
+scene, uses an independent cancellation request, and the editor re-reads
+durable local results rather than retrying the run. Backend cancellation and
+mid-run authorization loss now leave a terminal **interrupted** journal, not a
+misleading finished result. A three-theme 390 px Chrome fixture passed the
+draft/discard flow; a held synthetic fan action was dispatched once, stopped,
+and remained durably interrupted after reopening the store, with no replay.
+The full Windows backend suite passed 963 tests/33 expected Linux-only skips;
+131 frontend tests and production build passed. This source is **newer than
+r11** and has not been built into a Pi image or tested on hardware. Fan dirty,
+privacy transition, physical keyboard/touch, actual USB IR and appliance checks
+remain open.
+
 September 29 current addendum — source commit `9818b65` and
 [hosted CI run 36635445931](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36635445931)
 passed. A synthetic, real-rendered browser matrix now

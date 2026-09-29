@@ -1,5 +1,26 @@
 # Luma implementation ledger
 
+## September 29 — scene edit/interruption correction after r11
+
+Review found private Shortcut-scene edits could be silently dropped by
+opening a scene or refreshing, and Stop scene appeared for unrelated editor
+operations. The editor now blocks those transitions until the owner saves or
+discards the permission draft, restricts Stop to running scenes, sends a
+separate cancellation request and reads only durable local results after an
+interrupted run. The scene journal now keeps cancellation/revoked authorization
+as terminal **interrupted**, not falsely finished; already-sent actions remain
+unknown and no step is resumed. A test-only fixture can hold a synthetic
+dispatch to make the race deterministic.
+
+Verification: 83 targeted scene tests passed; all 963 runnable Windows backend
+tests passed (33 Linux-only skips), 131 frontend tests and production build
+passed. The synthetic Chrome script in
+`source/frontend/qa/scene-interactions.mjs` passed dirty-edit checks in Hearth,
+Luma Glass and Neon Grid at 390 px, then stopped a one-dispatch held scene and
+observed a durable interrupted result with no replay. This source is newer
+than r11 and needs a future image or signed app-only update before Pi use.
+Physical hardware and private-account acceptance remain outstanding.
+
 ## September 29 — r11 candidate assembled and audited
 
 Built r11 from `74d1f7172ab32e483481cffe29b52b6db5f9d994`, with staged

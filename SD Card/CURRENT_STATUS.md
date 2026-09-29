@@ -1,6 +1,21 @@
 # Luma — current restart point
 
-## Current checkpoint — September 29: r11 software-checked image
+## Current checkpoint — September 29: r11 image plus newer scene-recovery source
+
+Source now has a **post-r11 scene-interruption correction**. A cancelled or
+authorization-revoked scene is durably recorded as interrupted, with an unknown
+already-dispatched step and untouched later steps, rather than falsely marked
+finished. The local scene editor keeps private iPhone permission edits from
+being lost to scene navigation/refresh, shows an explicit discard path, exposes
+Stop only for a running scene, and re-reads saved results after a failed run
+without replaying it. The source is **not in r11**; rebuild before using this
+fix on the Pi. On Windows, 963 backend tests passed with 33 expected Linux-only
+skips, 131 frontend tests and the production build passed. A disposable
+real-rendered Chrome pass checked dirty-edit navigation in three themes at
+390 px and stopped a held synthetic scene after one dispatch: no replay,
+durable interrupted journal and visible result. No real fan or Pi was touched.
+See [room-device status](docs/ROOM_DEVICES.md). Hosted CI is pending for this
+new source until its commit is pushed.
 
 The newest Pi 4 image candidate is **r11**, from source commit `74d1f71`, in
 the user-visible `SD Card/image/r11-candidate-74d1f71-20260929` folder. Its

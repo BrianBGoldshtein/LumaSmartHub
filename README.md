@@ -138,6 +138,11 @@ Pi Connect setup brokers passed. The image manifest still says
 `boot_verified=false` and its audit says `hardware_qualified=false`: these are
 software checks, not physical Pi/campus/Levoit acceptance.
 
+Newer source fixes scene cancellation reporting and protects unsaved private
+Shortcut permissions in the editor. It is not in r11; see
+[`SD Card/CURRENT_STATUS.md`](SD%20Card/CURRENT_STATUS.md) before choosing an
+image for testing.
+
 The device checks signed releases targeted to `main`, not raw branch files;
 the private signing key stays on the Linux build machine and outside GitHub.
 Development changes are pushed to `codex/luma-r7-levoit`; `main` must remain

@@ -37,17 +37,19 @@ export function UpdateSetup({demo=false}:{demo?:boolean}){
       setMessage('Luma is still restarting. Give it another moment, then check the version here.');
     }catch(error){setMessage((error as Error).message);}finally{setBusy(false);}
   }
+  const installing=status?.state==='installing';
   return <section className="luma-update" aria-labelledby="luma-update-title">
     <h2 id="luma-update-title"><CloudDownload aria-hidden="true"/> Luma software</h2>
     <p className="setup-note">Current version: <strong>{status?.current_version??'Checking…'}</strong> · Signed releases from the Luma GitHub project</p>
     <p className="setup-note">Updates are checked, signature-verified and staged before installation. Settings, Google links and saved games stay on this Pi; failed health checks restore the previous release.</p>
-    {!candidate||candidate.state==='current'?<button disabled={busy||demo} onClick={()=>void check()}><RefreshCw aria-hidden="true"/>{busy?'Checking…':'Check for updates'}</button>:<div className="luma-update-review">
+    {!candidate||candidate.state==='current'?<button disabled={busy||installing||demo} onClick={()=>void check()}><RefreshCw aria-hidden="true"/>{installing?'Installing…':busy?'Checking…':'Check for updates'}</button>:<div className="luma-update-review">
       <h3>Luma {candidate.version}</h3>
       <p className="setup-note">Verified signed application release{candidate.published_at?` · Published ${new Date(candidate.published_at).toLocaleDateString()}`:''}</p>
       {candidate.release_notes&&<pre className="luma-update-notes">{candidate.release_notes}</pre>}
       <div className="luma-update-actions"><button disabled={busy} onClick={()=>void install()}><Check aria-hidden="true"/>{busy?'Installing…':'Review complete · Install update'}</button><button disabled={busy} onClick={()=>{setCandidate(null);setMessage('Update not installed.');}}>Cancel</button></div>
     </div>}
-    {status?.state==='installing'&&<p className="setup-note"><ShieldCheck aria-hidden="true"/> Installing verified release {status.target_version}…</p>}
+    {installing&&<p className="setup-note"><ShieldCheck aria-hidden="true"/> Installing verified release {status.target_version}…</p>}
+    {status?.state==='failed'&&<p className="setup-message" role="alert">{status.message||'The update failed. The previous release remains active.'}</p>}
     {message&&<p className="setup-message" role="status" aria-live="polite">{message}</p>}
   </section>;
 }

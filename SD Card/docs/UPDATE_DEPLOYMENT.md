@@ -126,6 +126,10 @@ the services that had been active, and requires the local health endpoint to
 report the exact new version with a healthy database. A failure triggers a
 second atomic switch to the previous release and service restart. Old releases
 are retained; this first implementation deliberately does not prune them.
+After a successful health check, the root update broker asks systemd to restart
+it from the newly active release, so future checks and installs use the updated
+broker code too. Its short-lived status returns to `idle` after that restart;
+the Settings screen confirms completion by matching the installed app version.
 After success, remove the uploaded archive yourself when convenient; Luma does
 not keep a copy or upload telemetry.
 

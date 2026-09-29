@@ -5,12 +5,14 @@ import json
 import base64
 import csv
 import io
+import os
 from pathlib import Path
 import subprocess
 import sys
 import zipfile
 
 import pytest
+from luma import update_agent
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -210,11 +212,13 @@ def test_github_release_requires_exact_tag_asset_checksum_and_luma_signature(tmp
 async def test_root_update_broker_accepts_only_signed_bundle_and_reports_health_result(tmp_path):
     bundle_path, public = make_bundle(tmp_path)
     installed = []
+    refreshed = []
 
     def install(path, *, public_key_path):
         installed.append(verify_bundle(path, public_key_path)["version"])
 
-    broker = UpdateBroker(installer=install, public_key_path=public)
+    broker = UpdateBroker(installer=install, public_key_path=public,
+                          refresh_service=lambda: refreshed.append(True))
     request = {"action": "install", "bundle": base64.b64encode(bundle_path.read_bytes()).decode()}
     accepted, bundle = await broker.accept(request)
     assert accepted == {"accepted": True, "version": "0.3.0"}
@@ -222,6 +226,7 @@ async def test_root_update_broker_accepts_only_signed_bundle_and_reports_health_
     await broker.install(bundle)
     assert installed == ["0.3.0"]
     assert broker.status()["state"] == "installed"
+    assert refreshed == [True]
 
     corrupt_dir = tmp_path / "corrupt"
     corrupt_dir.mkdir()
@@ -230,6 +235,24 @@ async def test_root_update_broker_accepts_only_signed_bundle_and_reports_health_
     rejected, no_bundle = await UpdateBroker(public_key_path=public).accept(corrupted)
     assert "error" in rejected
     assert no_bundle is None
+
+
+@pytest.mark.asyncio
+async def test_root_update_broker_does_not_refresh_after_failed_install(tmp_path):
+    bundle_path, public = make_bundle(tmp_path)
+    refreshed = []
+
+    def fail_install(_path, *, public_key_path):
+        raise UpdateError("simulated install failure")
+
+    broker = UpdateBroker(installer=fail_install, public_key_path=public,
+                          refresh_service=lambda: refreshed.append(True))
+    request = {"action": "install", "bundle": base64.b64encode(bundle_path.read_bytes()).decode()}
+    accepted, bundle = await broker.accept(request)
+    assert accepted == {"accepted": True, "version": "0.3.0"}
+    await broker.install(bundle)
+    assert broker.status()["state"] == "failed"
+    assert refreshed == []
 
 
 def test_verify_bundle_checks_signature_hashes_and_wheel_metadata(tmp_path):
@@ -298,6 +321,35 @@ def test_failed_health_check_restores_old_release_and_restarts(tmp_path):
     assert current.exists()
     assert not (releases / "0.3.0").exists()
     assert controller.actions == ["stop", "start", "stop", "start"]
+
+
+def test_directory_sync_failure_after_pointer_replace_rolls_back(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("the updater's atomic symlink switch is Linux-only")
+    bundle, public = make_bundle(tmp_path)
+    app, releases, current = installed_tree(tmp_path)
+    controller = FakeController()
+    original_open = update_agent.os.open
+    failed = False
+
+    def fail_first_pointer_sync(path, flags, *args, **kwargs):
+        nonlocal failed
+        if (Path(path) == app.parent and flags & getattr(os, "O_DIRECTORY", 0)
+                and not failed):
+            failed = True
+            raise OSError("simulated directory sync failure after pointer replacement")
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(update_agent.os, "open", fail_first_pointer_sync)
+    with pytest.raises(UpdateError, match="previous release was restored"):
+        apply_bundle(bundle, app_root=app, releases_root=releases,
+                     public_key_path=public, controller=controller,
+                     health_check=lambda _version: True, install_wheel=no_install)
+    assert failed
+    assert app.resolve() == current
+    assert current.exists()
+    assert not (releases / "0.3.0").exists()
+    assert controller.actions == ["stop", "stop", "start"]
 
 
 def test_dependency_change_requires_full_image_even_with_valid_signature(tmp_path):

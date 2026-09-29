@@ -4,10 +4,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import os
 from pathlib import Path
 import socket
 import struct
+import subprocess
 from contextlib import suppress
 
 from .update_agent import MAX_BUNDLE_BYTES, PUBLIC_KEY, UpdateError, apply_bundle, staged_bundle, verify_bundle
@@ -15,6 +17,7 @@ from .update_agent import MAX_BUNDLE_BYTES, PUBLIC_KEY, UpdateError, apply_bundl
 
 SOCKET = "/run/luma-update.sock"
 MAX_WIRE = ((MAX_BUNDLE_BYTES + 2) // 3) * 4 + 4096
+log = logging.getLogger(__name__)
 
 
 def validate_request(value):
@@ -50,9 +53,11 @@ def _peer_is_luma(writer):
 class UpdateBroker:
     """Verify requests as root, then install outside the API process lifetime."""
 
-    def __init__(self, *, installer=apply_bundle, public_key_path: Path = PUBLIC_KEY):
+    def __init__(self, *, installer=apply_bundle, public_key_path: Path = PUBLIC_KEY,
+                 refresh_service=None):
         self.installer = installer
         self.public_key_path = public_key_path
+        self.refresh_service = refresh_service
         self.state = "idle"
         self.version: str | None = None
         self.message = ""
@@ -96,6 +101,14 @@ class UpdateBroker:
                                         public_key_path=self.public_key_path)
             self.state = "installed"
             self.message = "The new release passed its health check."
+            if self.refresh_service is not None:
+                try:
+                    await asyncio.to_thread(self.refresh_service)
+                except Exception:
+                    # The application is already healthy and committed. Keep
+                    # that result truthful; a broker refresh failure is
+                    # recoverable by reboot and must not imply app rollback.
+                    log.exception("Could not refresh the Luma update broker after installation")
         except UpdateError as error:
             self.state = "failed"
             self.message = str(error)
@@ -141,7 +154,15 @@ async def serve():
             or os.environ.get("LISTEN_FDS") != "1"):
         raise RuntimeError("Start through luma-update.socket")
     listener = socket.socket(fileno=3)
-    await _serve_listener(listener, UpdateBroker())
+    await _serve_listener(listener, UpdateBroker(refresh_service=_restart_service))
+
+
+def _restart_service():
+    """Reload the broker from the newly selected app release after success."""
+    subprocess.run(
+        ["/usr/bin/systemctl", "--no-block", "restart", "luma-update.service"],
+        check=True, timeout=8, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
 
 
 async def update_request(request):

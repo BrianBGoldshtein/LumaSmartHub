@@ -438,7 +438,7 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
     except (OSError, subprocess.SubprocessError):
         raise UpdateError("Could not safely inspect active Luma services.") from None
     stage = Path(tempfile.mkdtemp(prefix=f".{verified['version']}.staging-", dir=releases_root))
-    switched = False
+    switch_attempted = False
     stopped = False
     promoted = False
     rollback_completed = False
@@ -488,14 +488,17 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
 
         stopped = True
         controller.stop()
+        # _atomic_link can replace the pointer successfully and then fail while
+        # syncing its parent directory. Treat the whole operation as a switch
+        # attempt before calling it so every post-replace error takes rollback.
+        switch_attempted = True
         _atomic_link(app_root, candidate)
-        switched = True
         controller.start()
         if not health_check(verified["version"]):
             raise UpdateError("The new release did not pass its local health check.")
         return candidate
     except Exception as exc:
-        if switched:
+        if switch_attempted:
             try:
                 controller.stop()
                 _atomic_link(app_root, current)
@@ -514,7 +517,7 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
     finally:
         if stage.exists():
             shutil.rmtree(stage)
-        if promoted and not switched and candidate.exists():
+        if promoted and not switch_attempted and candidate.exists():
             shutil.rmtree(candidate)
         elif rollback_completed and candidate.exists():
             shutil.rmtree(candidate)

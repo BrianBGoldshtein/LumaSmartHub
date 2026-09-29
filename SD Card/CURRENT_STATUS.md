@@ -1,5 +1,31 @@
 # Luma — current restart point
 
+Latest continuation checkpoint — September 28: the fresh r5 Raspberry Pi 4
+candidate has been built from current application inputs after the backup
+broker cold-import fix. Exact-image QEMU activated the shipped backup socket;
+the unprivileged installed `luma` client received `{"volumes":[]}` at 63.4 s.
+The bounded QEMU process then ended at its planned 180 s timeout (exit 124);
+the test's response assertion passed. The raw root partition matched its
+ext4 sidecar, all 161 audited shipped Luma files matched staged inputs,
+native ARM64 binaries passed architecture checks, source fingerprint
+`7db318e9bd32d031842bf6c68c538f0ebdef2a9e39b5b7a7a0a091b2a8779241` matched,
+and XZ/checksum verified (SHA-256
+`63de5c349abc1a76031fe6e8e07b067ff103ca82c80c5e810f08f29ac122c57c`). The
+Windows handoff copy is `SD Card/image/luma-pi4-r5-UNVERIFIED.img.xz`; the
+older r4 file was preserved. This is ready for owner-directed hardware
+bring-up, not a hardware-qualified or v1 release: manifest correctly retains
+`boot_verified=false`, `hardware_qualified=false`. Owner will flash with
+Raspberry Pi Imager. Run `docs/HARDWARE_VALIDATION.md`; capture first-boot,
+display/touch/audio/network and recovery findings before changing or replacing
+the candidate.
+
+Requested animation backlog additions are recorded in `docs/EXPANSION_PLAN.md`:
+Space Invaders across themes with persistent natural play; align Arcade Snake
+to its master grid or show aligned subdivisions; make the Pong ball slightly
+faster without changing its paddle tempo. Tetris must retain its existing
+gradual score-based speed ramp and current curve. Roadmap commit `d28ea21` is
+on the approved feature branch.
+
 Latest continuation checkpoint — September 28: resolved the mystery behind
 the r4 backup-broker timeout with an exact-image faulthandler capture. The
 root broker was spending its cold start importing `backup_media →

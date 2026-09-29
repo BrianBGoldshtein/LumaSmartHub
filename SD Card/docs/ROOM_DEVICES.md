@@ -9,7 +9,9 @@ themes for the scene confirmation and sample fan/purifier dialogs at 390 px.
 Physical touch, keyboard, Bluetooth timing and real device behavior are still
 untested. The prior scene commit's hosted Linux CI run failed only in an
 unclosed WebSocket test session (995 pass/1 teardown error); the test now
-closes it explicitly and awaits new CI. These changes are newer than r11.
+closes it explicitly and hosted Linux
+[run 36645184679](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36645184679)
+passed at `094d841`. These changes are newer than r11.
 
 September 29 post-r11 scene correction: unsaved private iPhone scene
 permissions can no longer be dropped by opening a scene or refreshing; an

@@ -14,8 +14,9 @@ not physical Pi touch or keyboard acceptance.
 Hosted CI run `36643657617` for the prior scene commit failed at the complete
 backend step with 995 passes and one WebSocket snapshot test teardown
 `CancelledError`; no scene test failed. A test-only explicit client disconnect
-was added and the six local API tests pass. This increment still requires a
-new hosted Linux CI pass. Frontend TypeScript/production build and all 131
+was added and the six local API tests pass. Hosted Linux CI
+[run 36645184679](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36645184679)
+passed for `094d841`. Frontend TypeScript/production build and all 131
 unit tests pass. r11 remains a preserved, hardware-unverified image and does
 not contain the post-r11 source; a new image or signed app-only deployment is
 required before Pi use.

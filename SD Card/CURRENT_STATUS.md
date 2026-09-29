@@ -14,8 +14,9 @@ The first hosted Linux CI run for the scene correction (`36643657617`) found
 one unrelated API WebSocket test teardown issue: 995 tests passed and the
 snapshot test hit a `CancelledError` when Starlette closed an unclosed test
 session. The test now sends an explicit disconnect; its six local API tests
-pass. Hosted CI must rerun on the next pushed commit before this source can be
-called Linux-green. The r11 image predates all post-r11 source changes.
+pass. [Hosted Linux CI run 36645184679](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36645184679)
+then passed for source commit `094d841`. The r11 image predates all post-r11
+source changes.
 
 Source now has a **post-r11 scene-interruption correction**. A cancelled or
 authorization-revoked scene is durably recorded as interrupted, with an unknown
@@ -29,8 +30,8 @@ skips, 131 frontend tests and the production build passed. A disposable
 real-rendered Chrome pass checked dirty-edit navigation in three themes at
 390 px and stopped a held synthetic scene after one dispatch: no replay,
 durable interrupted journal and visible result. No real fan or Pi was touched.
-See [room-device status](docs/ROOM_DEVICES.md). The next hosted CI run is
-pending for the WebSocket-test and keyboard/privacy follow-up.
+See [room-device status](docs/ROOM_DEVICES.md). The WebSocket-test and
+keyboard/privacy follow-up is Linux-green in source, not yet in an image.
 
 The newest Pi 4 image candidate is **r11**, from source commit `74d1f71`, in
 the user-visible `SD Card/image/r11-candidate-74d1f71-20260929` folder. Its

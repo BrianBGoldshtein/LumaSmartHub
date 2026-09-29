@@ -6,8 +6,9 @@ The next source overlay also passes a synthetic privacy-lock-during-dispatch
 check and three-theme scene keyboard confirmations, with sample fan/purifier
 keyboard confirmation checks. An existing WebSocket API test now explicitly
 closes its client connection after hosted CI exposed a teardown cancellation;
-the previous run had 995 backend passes and one test teardown error. A new
-hosted run is required. Real Pi touch/keyboard, phone timing and device
+the previous run had 995 backend passes and one test teardown error. Hosted
+[run 36645184679](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36645184679)
+passed the correction at `094d841`. Real Pi touch/keyboard, phone timing and device
 behavior remain owner acceptance gates; these source changes are not in r11.
 
 Post-r11 source has closed one scene-editor recovery gap: separate remote
@@ -16,7 +17,7 @@ cancelled or authorization-revoked scene now has a durable interrupted result
 instead of an incorrect finished label. Three-theme synthetic browser and
 full Windows backend/frontend checks passed; see [room-device status](ROOM_DEVICES.md).
 This correction is **not in r11**. Remaining fan/privacy/keyboard physical and
-synthetic paths, Linux hosted CI, new image/update delivery, and owner hardware
+synthetic paths, new image/update delivery, and owner hardware
 qualification are still open.
 
 The current full-image candidate is **r11**, from source `74d1f71`. The local

@@ -11,10 +11,12 @@ displayed “Preview only — no Bluetooth pairing or saved phone was changed.�
 No Pi, Bluetooth radio or real device was used. Build outputs stayed outside
 the read-only managed worktree.
 
-GitHub confirms `codex/luma-r7-levoit` is published at `f272c05`; no hosted
-workflow run exists for that checkpoint. The current fix and this note remain
-uncommitted. `main` is untouched. Do not treat the fix as available to the Pi
-until it is pushed and hosted CI passes.
+The fix is committed and pushed as `ce9dc1c` on
+`codex/luma-r7-levoit`. [GitHub Actions run 36609105394](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36609105394)
+passed the complete backend suite, frontend tests, TypeScript/production
+build, and image-builder/recovery/packaging checks. `main` is untouched. The
+fix is not yet in the r9 image or a signed app release, so it is not yet
+available to install on the Pi.
 
 ## Latest checkpoint — September 29: r9 host, CI and exact-image checks
 

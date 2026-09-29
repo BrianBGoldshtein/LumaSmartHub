@@ -36,11 +36,15 @@ complete hosted Linux backend, frontend/build and image-builder suites on
 commit 7a5a918. These checks do not prove physical boot, screen/touch/audio,
 removable-media, or live network/provider behavior. The build manifest says
 `boot_verified=false`; the exact raw-image audit says `hardware_qualified=false`.
+The later preview-only Bluetooth-removal regression is committed at `ce9dc1c`;
+[its hosted workflow](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36609105394)
+passed all backend, frontend, TypeScript/build and image-builder/recovery jobs.
+That UI-source update has not been rebuilt into the r9 image or signed as a
+`.lup` release.
 
-The feature branch is published through `f272c05`; GitHub confirms no workflow
-run for that commit. The current local UI fix and these status changes are not
-yet committed or pushed. `main` is unchanged. No GitHub Release was created
-and no Pi was updated or reflashed. The existing Pi state remains untouched.
+The feature branch includes `ce9dc1c`; `main` is unchanged. No GitHub Release
+was created and no Pi was updated or reflashed. The existing Pi state remains
+untouched.
 
 ### Remaining gates
 
@@ -54,9 +58,9 @@ and no Pi was updated or reflashed. The existing Pi state remains untouched.
 - Complete any remaining room-device/scene review and test the real purifier,
   independently controlled fans, phone, USB media, power-loss recovery,
   physical screen/touch/audio, memory and thermal behavior.
-- Commit and push the current preview-only Bluetooth fix and status update to
-  the already-published development branch; run hosted CI. Keep `main` untouched
-  until the agreed hardware acceptance and v1 approval. Preserve the
+- After owner-approved hardware acceptance, produce and publish the verified
+  signed `.lup` app release, then test the Settings updater's state preservation
+  and rollback on the Pi. Keep `main` untouched until v1 approval; preserve the
   release-signing key off GitHub.
 - Finish owner setup later: calendars and Google write consent, transit
   choices/token, Levoit model/enrollment, exact Woozoo models/remotes, scene

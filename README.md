@@ -113,7 +113,7 @@ frontend, production UI build and image-manifest tools. Required public assets
 are regenerated from checksum-pinned sources in CI. **CI has no updater signing
 private key and does not publish a trusted image or update bundle.**
 
-Latest published development commit: [`1e86b4b`](https://github.com/BrianBGoldshtein/LumaSmartHub/commit/1e86b4bc)
+The backup-broker startup fix is in commit [`1e86b4b`](https://github.com/BrianBGoldshtein/LumaSmartHub/commit/1e86b4bc),
 with [GitHub Actions passing](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36506577393):
 943 Linux backend tests, frontend tests/build, pinned asset preparation and
 image-manifest checks. The current software fix removes a slow cold-start

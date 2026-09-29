@@ -171,3 +171,11 @@ Owner's final-handoff addition: after development and software qualification are
 5. Publish the verified candidate and reflash/recovery instructions without writing a card. Perform physical display/audio/network/iPhone/device/USB/power/performance tests only after the owner explicitly prompts.
 
 Remaining owner inputs are configuration, not reasons to invent defaults: exact Woozoo labels, permitted purifier network and VeSync enrollment, transit favorites/token, selected calendars and travel buffers, dates, scene actions and backup passphrase. Enter credentials only on the device or official provider, never in chat.
+
+## Future arcade animation refinements
+
+These are additions to the animation backlog, not requirements for first hardware bring-up. Preserve the existing persistent game checkpoints, natural-looking play, gradual/smooth movement, bounded autonomous-player imperfections, and shared theme typography, colors, spacing and layout. Keep the Arcade theme on its single master pixel grid. Tetris must continue its existing gradual score-based speed ramp; this backlog request does not change its established timings or curve.
+
+- Add a Space Invaders-style autonomous game scene. Use recognizable classic formation movement, shots and player defense rather than decorative motion alone; keep its game state/score persistent between scene visits and reset only after a genuine loss. Scale its sprites and playfield to the Arcade master grid and recolor/re-skin consistently in every theme.
+- Fix Arcade Snake's playfield/background mismatch by either sizing the game board to whole master-grid cells or drawing clear, aligned subdivisions inside the playfield. Food, snake segments, walls, score and any overlays must share the same grid origin and scale.
+- Make Pong's ball a little faster, while retaining the current harmonic feel, coherent paddle tempo, smooth acceleration, natural turn-taking and scored rallies. Treat this as a small ball-only speed refinement; keep paddle speed and Tetris's established score-based speed curve unchanged.

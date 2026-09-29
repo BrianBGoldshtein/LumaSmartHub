@@ -1,5 +1,64 @@
 # Signed in-place application updates
 
+The release target is one final planned full OS image containing the complete
+system baseline, Pi Connect touchscreen recovery setup, and this signed
+application updater. After that image is installed and qualified, normal Luma
+feature releases use signed `.lup` bundles without another OS flash. OS-level
+components (packages, accounts, services, device rules and firmware) must be
+present in that final image; they are intentionally outside the app bundle.
+Future OS/security or hardware-platform maintenance may still require a new
+OS image.
+
+## Primary update path: GitHub Releases
+
+The on-device **Settings → Luma software → Check for updates** control checks
+the public `BrianBGoldshtein/LumaSmartHub` GitHub Releases feed. It does not
+execute `git pull`, install a branch checkout, or trust a branch archive. The
+Pi downloads only the exact `luma-update-X.Y.Z.lup` asset attached to a stable
+`vX.Y.Z` release whose target is `main`. It checks the release size/checksum,
+then verifies the image-pinned Ed25519 signature and every payload hash. Luma
+shows the signed release version and notes for review before the separate
+**Install update** confirmation. The protected installer checks the signature
+again, installs the app-only package into a fresh version directory, switches
+atomically, verifies the restarted health endpoint and rolls back if it fails.
+
+Development commits continue to go to the feature branch and run CI there.
+`main` remains the accepted-release channel, per the existing hardware-test
+gate: do not publish a `vX.Y.Z` update release from unaccepted code. After the
+owner accepts a version, bump the package version on the feature branch and
+pass CI before merging it to `main`; then create the matching stable release.
+The asset name and tag must match exactly
+(`v0.3.0` → `luma-update-0.3.0.lup`). Set the release target to `main` and add
+human-readable release notes; drafts and prereleases are not installed.
+
+The Ed25519 private key stays on the Linux build machine and is never placed in
+GitHub Actions, the repository, release notes, or the Pi. After the feature
+branch has passed CI and its code has been accepted into `main`, build the
+front end, create the signed bundle with the documented local key, then publish
+that file as the release asset using an authenticated GitHub CLI session:
+
+```sh
+(cd "SD Card/source/frontend" && pnpm install --frozen-lockfile && pnpm run build)
+python3 "SD Card/source/tools/build-update-bundle.py" "SD Card" \
+  --key /home/luma-build/keys/luma-update-ed25519.pem \
+  --output /home/luma-build/luma-update-0.3.0.lup
+gh release create v0.3.0 --target main --title "Luma 0.3.0" \
+  --notes-file release-notes.md /home/luma-build/luma-update-0.3.0.lup
+```
+
+Replace the example version and notes for each release; never reuse a version.
+The publishing account needs write permission to this repository, but the Pi
+uses no GitHub account, token, API key, or secret. If campus Wi-Fi has not
+completed its visitor sign-in or otherwise cannot reach GitHub, checking fails
+without changing the installed app; use the on-screen Wi-Fi setup and retry.
+
+This Settings feature and its root-owned `luma-update.socket` broker must be
+present in the newly qualified full image. The app-only updater deliberately
+cannot install that broker or add its systemd policy to an older image. Keep
+Pi Connect as the separate recovery path. A release with changed OS packages,
+system units, Python dependencies, durable-data schema or hardware rules is
+rejected for app-only installation and needs a newly qualified image.
+
 The next freshly built Luma image installs the application as a root-owned
 versioned release and pins the Ed25519 verification public key in
 `/etc/luma/luma-update-ed25519.pub`. The active version is selected through
@@ -94,7 +153,10 @@ assets from checksum-pinned sources before running tests; generated assets and
 the image itself are not committed. The workflow is active on the authorized
 feature branch. Its first hosted run exposed a Linux test-fixture mismatch
 between setup-python and the OS-managed interpreter used by the Pi; the fix is
-in the branch. The hosted workflow now passes end-to-end, including the complete
-backend suite, frontend tests/build, and image-manifest tests. The focused Linux
-updater suite also passes 8/8. The configured Debian build machine remains an
-independent full-suite gate.
+in the branch. The hosted workflow previously passed end-to-end, including the
+complete backend suite, frontend tests/build, and image-manifest tests. The
+focused Linux updater suite at that checkpoint passed 8/8. On September 29, the
+updated local source passed 977 backend tests, 124 frontend tests,
+TypeScript/production build, and the updater's systemd packaging checks. Hosted
+CI has not yet run on the new GitHub-update commit; the configured Debian build
+machine remains an independent full-suite gate.

@@ -79,5 +79,5 @@ jobs:
         working-directory: SD Card/source/frontend
         run: pnpm build
 
-      - name: Check image-builder Python sources
-        run: python -m pytest -q "SD Card/image-builder/test_source_manifest.py"
+      - name: Check image-builder and updater-broker packaging
+        run: python -m pytest -q "SD Card/image-builder/test_source_manifest.py" "SD Card/image-builder/test_update_broker_service.py"

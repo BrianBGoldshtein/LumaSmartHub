@@ -68,6 +68,20 @@ def main():
     permissions("/etc/luma", "755")
     permissions("/etc/luma/stanford-eduroam-ca.pem", "644")
     permissions("/etc/luma/luma-update-ed25519.pub", "644")
+    dpkg_status = inspect("cat /var/lib/dpkg/status").decode(errors="replace")
+    installed_packages = set()
+    for record in dpkg_status.split("\n\n"):
+        fields = {}
+        for line in record.splitlines():
+            if line and not line[0].isspace() and ": " in line:
+                key, value = line.split(": ", 1)
+                fields[key] = value
+        if fields.get("Status") == "install ok installed" and fields.get("Package"):
+            installed_packages.add(fields["Package"])
+    missing_packages = {"wpasupplicant", "rpi-connect", "qrencode", "gvfs-backends", "gvfs-daemons"} - installed_packages
+    if missing_packages:
+        raise ValueError("Required wireless/recovery package(s) are missing: " + ", ".join(sorted(missing_packages)))
+    inspect("stat /usr/lib/gvfs/gvfs-udisks2-volume-monitor")
     version = re.search(rb"(?m)^version = (\d+\.\d+)\.", inspect("cat /opt/luma/venv/pyvenv.cfg"))
     if not version:
         raise ValueError("Cannot identify installed Python version")
@@ -78,18 +92,25 @@ def main():
         package + "eduroam.py": "source/backend/src/luma/eduroam.py",
         package + "network.py": "source/backend/src/luma/network.py",
         package + "tailscale_setup.py": "source/backend/src/luma/tailscale_setup.py",
+        package + "pi_connect_setup.py": "source/backend/src/luma/pi_connect_setup.py",
         "/etc/luma/tailscale.nft": "source/system/luma-tailscale.nft",
         "/etc/systemd/system/luma-tailscaled.service": "source/system/luma-tailscaled.service",
         "/etc/systemd/system/luma-tailscale-firewall.service": "source/system/luma-tailscale-firewall.service",
         "/etc/systemd/system/luma-tailscale-setup.service": "source/system/luma-tailscale-setup.service",
         "/etc/systemd/system/luma-tailscale-setup.socket": "source/system/luma-tailscale-setup.socket",
+        "/etc/systemd/system/luma-pi-connect-setup.service": "source/system/luma-pi-connect-setup.service",
+        "/etc/systemd/system/luma-pi-connect-setup.socket": "source/system/luma-pi-connect-setup.socket",
         "/opt/luma/licenses/TAILSCALE-LICENSE.txt": "source/assets/licenses/TAILSCALE-LICENSE.txt",
         package + "api.py": "source/backend/src/luma/api.py",
+        package + "github_updates.py": "source/backend/src/luma/github_updates.py",
+        package + "update_api.py": "source/backend/src/luma/update_api.py",
+        package + "update_broker.py": "source/backend/src/luma/update_broker.py",
         package + "security.py": "source/backend/src/luma/security.py",
         package + "models.py": "source/backend/src/luma/models.py",
         package + "serde.py": "source/backend/src/luma/serde.py",
         package + "device_agent.py": "source/backend/src/luma/device_agent.py",
         package + "voice_agent.py": "source/backend/src/luma/voice_agent.py",
+        package + "voice_calibration.py": "source/backend/src/luma/voice_calibration.py",
         package + "voice.py": "source/backend/src/luma/voice.py",
         "/home/luma/.config/systemd/user/luma-voice.service": "source/system/luma-voice.service",
         "/home/luma/.config/pipewire/pipewire.conf.d/99-luma-echo-cancel.conf": "source/system/pipewire/99-luma-echo-cancel.conf",
@@ -102,6 +123,8 @@ def main():
         "/etc/systemd/system/luma-shortcut-gateway.service": "source/system/luma-shortcut-gateway.service",
         "/etc/systemd/system/luma-network.service": "source/system/luma-network.service",
         "/etc/systemd/system/luma-network.socket": "source/system/luma-network.socket",
+        "/etc/systemd/system/luma-update.service": "source/system/luma-update.service",
+        "/etc/systemd/system/luma-update.socket": "source/system/luma-update.socket",
         "/etc/ssh/sshd_config.d/10-luma-ssh.conf": "source/system/10-luma-ssh.conf",
         "/etc/systemd/system/luma-ssh-hostkeys.service": "source/system/luma-ssh-hostkeys.service",
         "/home/luma-admin/.ssh/authorized_keys": "source/system/luma-admin.pub",
@@ -124,8 +147,14 @@ def main():
     permissions("/etc/systemd/system/luma-tailscaled.service", "644")
     permissions("/etc/systemd/system/luma-tailscale-setup.service", "644")
     permissions("/etc/systemd/system/luma-tailscale-setup.socket", "644")
+    permissions("/etc/systemd/system/luma-update.service", "644")
+    permissions("/etc/systemd/system/luma-update.socket", "644")
+    permissions("/etc/systemd/system/luma-pi-connect-setup.service", "644")
+    permissions("/etc/systemd/system/luma-pi-connect-setup.socket", "644")
     permissions("/opt/luma/venv/bin/luma-tailscale-setup", "755")
     permissions("/opt/luma/venv/bin/luma-update", "755")
+    permissions("/opt/luma/venv/bin/luma-update-broker", "755")
+    permissions("/opt/luma/venv/bin/luma-pi-connect-setup", "755")
     permissions("/opt/luma/qualification", "755")
     permissions("/opt/luma/qualification/device_smoke.py", "644")
     permissions("/opt/luma/venv/bin/luma-shortcut-gateway", "755")
@@ -135,6 +164,12 @@ def main():
         raise ValueError("Tailscale must remain disabled pending device enrollment")
     if b"luma-tailscale-setup.socket" not in inspect("ls -l /etc/systemd/system/sockets.target.wants"):
         raise ValueError("Local Tailscale setup socket must be enabled")
+    if b"luma-pi-connect-setup.socket" not in inspect("ls -l /etc/systemd/system/sockets.target.wants"):
+        raise ValueError("Local Pi Connect setup socket must be enabled")
+    if b"luma-update.socket" not in inspect("ls -l /etc/systemd/system/sockets.target.wants"):
+        raise ValueError("The protected application-update socket must be enabled")
+    if b"luma-admin" not in inspect("ls -l /var/lib/systemd/linger"):
+        raise ValueError("The dedicated Pi Connect admin user must linger across reboot")
     # Never inspect identity contents: no daemon has run during image assembly.
     if b"luma-tailscale" in inspect("ls -l /var/lib"):
         raise ValueError("Fresh image must not contain Tailscale identity/state directories")
@@ -168,6 +203,9 @@ def main():
     print(json.dumps({"root_partition_sha256": raw_hash, "root_partition_matches_sidecar": True,
                       "verified_files": verified, "stanford_ca_root_owned": True,
                       "stanford_ca_not_in_system_trust": True, "wireless_country": "US",
+                      "wpasupplicant_installed": True, "rpi_connect_installed": True,
+                      "pi_connect_setup_broker_verified": True,
+                      "github_signed_update_broker_verified": True,
                       "gateway_shipped_disabled": True, "frontend_bundle_verified": True,
                       "tailscale_shipped_disabled": True, "tailscale_identity_absent": True,
                       "tailscale_binaries_verified": True, "tailscale_setup_socket_enabled": True,

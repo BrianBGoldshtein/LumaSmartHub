@@ -1,5 +1,31 @@
 # Requirements and remaining delivery work
 
+## September 29 GitHub-backed Settings updater
+
+The current source now provides a local-only Settings check for the latest
+stable GitHub Release. It downloads the exact versioned `.lup` asset, validates
+release metadata/checksum and the image-pinned Ed25519 signature, presents the
+release notes for review, then sends it to a root-owned socket broker that uses
+the existing atomic install/health-check/rollback path. It never installs raw
+branch files. The private signing key remains on WSL, not GitHub. `main` remains
+the accepted release channel after owner-approved hardware acceptance; CI on
+feature branches does not publish or sign releases. This new frontend/API and
+systemd broker are **not in the current Pi image** and require the planned
+fresh full image. Linux updater/API and native unit tests have been added; full
+backend and image qualification results are recorded in the current status
+checkpoint below. No GitHub Release was created and no Pi was updated.
+
+## September 29 Pi Connect recovery update
+
+The next full-image source now includes touch/mouse-based Pi Connect
+enrollment, with an owner-approved Raspberry Pi account, a local short-lived
+QR, explicit remote-shell opt-in, disabled screen sharing and a dedicated
+admin user. It is not in the card currently being tested, has not yet passed
+the fresh exact-image Linux/QEMU gates, and is not hardware-qualified. The
+signed app-only updater cannot add its required OS package/account/systemd
+units. See [PI_CONNECT.md](PI_CONNECT.md). Do not reflash until current
+settings can be recovered; USB backup has not yet been confirmed on the Pi.
+
 ## Current source and delivery state — September 28, 2026
 
 The complete selected feature set is present in the current source: guided

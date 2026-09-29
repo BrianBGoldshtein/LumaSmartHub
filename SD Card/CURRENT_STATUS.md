@@ -1,5 +1,120 @@
 # Luma — current restart point
 
+## Latest checkpoint — September 29: final-image feature scope and arcade completion
+
+Owner confirmed that this in-progress Luma release should include Pi Connect
+and be the final planned full OS flash. Treat this as the final *routine*
+image: include the Pi Connect recovery/enrollment UI and broker, GitHub-backed
+Settings updater and protected broker, current Wi-Fi fix, and all accepted
+Luma features together. Later ordinary feature releases should use signed
+`.lup` assets attached to stable GitHub Releases, preserving settings and
+enrollment; the Pi verifies the image-pinned key and never executes a raw Git
+branch checkout. The private signing key remains on WSL, outside GitHub. Do not
+flash until backup/restore and immutable-image qualification gates below pass.
+
+The source now has a Settings update card that checks the public repository's
+latest `main`-targeted stable release, verifies the downloaded bundle and
+shows release notes before explicit install confirmation. A root-owned
+socket-activated broker re-verifies and hands the bundle to the existing
+atomic/health-checked installer, surviving the dashboard restart. Added
+GitHub-release metadata, checksum, signature, downgrade, local-only API,
+review-token, broker, and systemd package tests. Verification: **977 backend
+tests passed**, **124 frontend tests passed**, TypeScript/production build
+passed, and the updater systemd packaging checks passed. This source must be
+included in the next fresh full image; no release was signed/published and
+nothing has been installed on the Pi.
+
+Completed the requested Space Invaders interlude as an autonomous classic game
+in all three themes. Its 55-invader formation reverses and descends, both sides
+fire, the ship glides at constant speed and turns only after a short cooldown,
+hits score by row, cleared waves preserve score, and a formation breach
+redeploys remaining invaders without spending lives. Only zero lives ends the
+run; a true loss restarts it while keeping best score. Bullet avoidance now
+checks each shot across the full vertical collision window and runs after
+ordinary steering, so a newly expired turn cannot send the ship into a bullet.
+It preserves a safe heading and rejects a needless reversal when both routes
+are equally threatened. Neon Grid uses a visible 32×20 subdivision and the
+same master-grid rules as the Arcade scenes. Game state is versioned and
+included in browser/portable encrypted backups. Frontend suite: **124 passed**;
+TypeScript and production Vite build passed. Rendered-browser checks and the
+fresh final-image build/boot checks remain release gates; no hardware has been
+flashed or tested by Codex.
+
+## Previous checkpoint — September 29: arcade continuity refinements
+
+Implemented the requested modest Pong speed increase as an **8% ball-only**
+change. Serve pace and the ball cap rise; receiving paddle speed, acceleration,
+reaction delay and turn-taking remain on the existing tempo. Checkpoint format
+advances to v4 and migrates v2/v3/older active games once, preserving rally
+score and paddle state. Tetris code/timing is untouched. Also made the Arcade
+Snake board's 32×20 motion cells visible as Neon Grid subdivisions. At that
+checkpoint the frontend suite had **114 passing tests** and TypeScript/build
+passed. The Snake board was checked at 1280×720, 2048×1536 and 390×844 with no
+horizontal overflow.
+
+## Latest checkpoint — September 29: Pi Connect in the final planned OS image
+
+Owner clarified that the currently prepared Luma update should be the final
+planned full OS flash—not that Pi Connect should be deferred to a later image.
+Release gate: build Pi Connect, its owner-controlled touchscreen enrollment,
+the recovery account, and the signed app updater into this same full image.
+Subsequent routine Luma features are intended to ship through signed app-only
+updates, preserving settings and Connect enrollment. A later OS/security or
+hardware-platform change could still require an OS image. The backup/restore
+gate remains mandatory before flashing anything over the current card.
+
+## Pi Connect implementation checkpoint — September 29
+
+The currently installed card still has **no supported on-screen Pi Connect
+enrollment**, and SSH is not usable on Stanford eduroam. Do not try to find a
+Pi Connect toggle on that old Luma screen. The upcoming full-image source now
+adds **Device setup → Connections → Raspberry Pi Connect**: the owner signs in
+through Raspberry Pi's one-time verification URL (shown as a local QR), then
+separately enables the dedicated `luma-admin` remote shell. Screen sharing is
+kept off; the setup broker accepts only fixed actions from the local Luma API;
+the Connect user lingers across kiosk logout/reboot. The owner must approve the
+link and shell explicitly. Pi Connect still needs working Internet, and a
+restrictive campus firewall could block it.
+
+This is **source only** so far, not a new image or hardware-tested recovery
+route. The signed app-only `.lup` cannot install base OS packages, accounts or
+systemd units, so it cannot add this capability to the currently installed
+image. A full OS reflash erases on-card settings; do not reflash until backup
+and restore are verified (the user's USB drive is not currently detected).
+The exact-file checker now compares `pi_connect_setup.py` in the installed
+release, and its receipt reports the broker verification. Native Debian
+`systemd-analyze verify` plus installer syntax tests pass (**3 passed**); the
+Windows image-builder suite passes **19**, with **13 Linux-only checks
+skipped**. This validates unit syntax, not activation under the packaged user
+or real `SO_PEERCRED` flow. Pi Connect focused backend tests: **40 passed**;
+frontend: **112 passed**, production TypeScript/Vite build passed. Next: run
+the Linux broker/socket peer-auth integration, build a fresh immutable image
+from the current sources, and perform exact-file/QEMU checks. Physical
+enrollment, eduroam compatibility and access are unverified.
+
+Latest hardware-driven diagnosis — September 28: the owner confirmed that
+stock Raspberry Pi OS on this same Pi sees nearby Wi-Fi networks, while the
+Luma image did not. The retained candidate SBOM contains NetworkManager and
+Broadcom firmware but not `wpasupplicant`; Debian marks the supplicant as a
+NetworkManager recommendation, and the minimal image drops recommendations.
+This is the leading concrete OS-level cause. The source image recipe now adds
+`wpasupplicant` explicitly and adds the official `rpi-connect` package for
+owner-authorized recovery access (left unlinked/off by default). The Wi-Fi
+scanner now waits for NetworkManager `LastScan` completion and reports radio,
+scan-timeout and empty-result cases separately. Historical candidate images
+are unchanged and should not be reflashed to test this fix. Focused tests:
+22 backend/image-package tests passed; frontend **112 passed** and production
+TypeScript/Vite build passed. Fresh candidate:
+`image/luma-pi4-wifi-fix-20260928-UNVERIFIED.img.xz` (SHA-256
+`ed988cc43b57f657575e1297f707af15a87c0879f48f57b57db4c132dc569d32`). Its
+raw root partition and all 162 audited Luma files match their staged inputs;
+the image contains both `wpasupplicant` and `rpi-connect`. Disposable QEMU
+reached the graphical target and Luma's API/database health check passed. This
+is not physical qualification: `boot_verified=false`, and the actual Pi Wi-Fi
+scan, touch/display and complete hardware acceptance remain for owner testing.
+Raspberry Pi Connect is packaged but still needs working Internet and owner
+enrollment; it cannot diagnose the offline Wi-Fi issue until connectivity works.
+
 Latest continuation checkpoint — September 28: the fresh r5 Raspberry Pi 4
 candidate has been built from current application inputs after the backup
 broker cold-import fix. Exact-image QEMU activated the shipped backup socket;
@@ -19,12 +134,11 @@ Raspberry Pi Imager. Run `docs/HARDWARE_VALIDATION.md`; capture first-boot,
 display/touch/audio/network and recovery findings before changing or replacing
 the candidate.
 
-Requested animation backlog additions are recorded in `docs/EXPANSION_PLAN.md`:
-Space Invaders across themes with persistent natural play; align Arcade Snake
-to its master grid or show aligned subdivisions; make the Pong ball slightly
-faster without changing its paddle tempo. Tetris must retain its existing
-gradual score-based speed ramp and current curve. Roadmap commit `d28ea21` is
-on the approved feature branch.
+The September 28 animation requests (all-theme persistent Space Invaders,
+visible Arcade Snake subdivisions, and a modest Pong ball-only speed increase)
+were recorded at that time. Those software changes are now complete; see the
+September 29 checkpoint above. Tetris retains its existing gradual score-based
+speed ramp and current curve.
 
 Latest continuation checkpoint — September 28: resolved the mystery behind
 the r4 backup-broker timeout with an exact-image faulthandler capture. The

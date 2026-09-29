@@ -28,7 +28,8 @@ apt-get install -y --no-install-recommends \
   pipewire-pulse python3 python3-venv wlr-randr ddcutil dbus-user-session \
   lightdm avahi-daemon i2c-tools pulseaudio-utils gcc python3-dev linux-libc-dev espeak-ng libportaudio2 alsa-utils \
   libwayland-dev libpango1.0-dev libxkbcommon-dev pkg-config make patch xz-utils nftables iptables \
-  udisks2 util-linux exfatprogs ntfs-3g
+  udisks2 gvfs-backends util-linux exfatprogs ntfs-3g
+apt-get install -y --no-install-recommends rpi-connect qrencode
 
 bash "${SOURCE_ROOT}/system/build-keyboard.sh" "${SOURCE_ROOT}/assets/keyboard/wvkbd_0.15.orig.tar.xz" \
   "${INSTALL_ROOT}/bin" "${INSTALL_ROOT}/third-party/wvkbd"
@@ -86,6 +87,7 @@ install -m 0644 "${SOURCE_ROOT}/system/luma-tailscaled.service" \
   "${SOURCE_ROOT}/system/luma-tailscale-setup.socket" /etc/systemd/system/
 install -m 0644 "${SOURCE_ROOT}/system/luma-network.service" "${SOURCE_ROOT}/system/luma-network.socket" /etc/systemd/system/
 install -m 0644 "${SOURCE_ROOT}/system/luma-backup.service" "${SOURCE_ROOT}/system/luma-backup.socket" /etc/systemd/system/
+install -m 0644 "${SOURCE_ROOT}/system/luma-update.service" "${SOURCE_ROOT}/system/luma-update.socket" /etc/systemd/system/
 install -m 0644 "${SOURCE_ROOT}/system/luma-ir.service" "${SOURCE_ROOT}/system/luma-ir.socket" /etc/systemd/system/
 install -d -m 0755 /etc/NetworkManager/conf.d
 install -m 0644 "${SOURCE_ROOT}/system/30-luma-connectivity.conf" /etc/NetworkManager/conf.d/
@@ -115,7 +117,7 @@ if [[ ${LUMA_IMAGE_BUILD:-0} != 1 && -S /run/systemd/private && -d /run/systemd/
 fi
 install -d -m 0755 /etc/lightdm/lightdm.conf.d
 install -m 0644 "${SOURCE_ROOT}/system/60-luma.conf" /etc/lightdm/lightdm.conf.d/
-systemctl --root=/ enable luma-api.service luma-network.socket luma-backup.socket luma-tailscale-setup.socket luma-ir.socket bluetooth.service lightdm.service avahi-daemon.service
+systemctl --root=/ enable luma-api.service luma-network.socket luma-backup.socket luma-update.socket luma-tailscale-setup.socket luma-ir.socket bluetooth.service lightdm.service avahi-daemon.service
 systemctl --root=/ set-default graphical.target
 
 # Owner-approved recovery route. Only the public key enters the appliance.
@@ -127,10 +129,20 @@ if [[ -f "${SOURCE_ROOT}/system/luma-admin.pub" ]]; then
   fi
   install -d -m 0700 -o luma-admin -g luma-admin /home/luma-admin/.ssh
   install -m 0600 -o luma-admin -g luma-admin "${SOURCE_ROOT}/system/luma-admin.pub" /home/luma-admin/.ssh/authorized_keys
+  install -d -m 0700 -o luma-admin -g luma-admin \
+    /home/luma-admin/.config/com.raspberrypi.connect /home/luma-admin/.config/systemd/user \
+    /home/luma-admin/.cache /home/luma-admin/.local/share
+  # Keep the dedicated Connect shell available across logout and reboot. It is
+  # still unlinked and disabled until the owner approves it on the touchscreen.
+  install -d -m 0755 /var/lib/systemd/linger
+  install -m 0644 -o root -g root /dev/null /var/lib/systemd/linger/luma-admin
   install -m 0440 "${SOURCE_ROOT}/system/luma-admin-sudoers" /etc/sudoers.d/luma-admin
   visudo -cf /etc/sudoers.d/luma-admin
   install -m 0644 "${SOURCE_ROOT}/system/10-luma-ssh.conf" /etc/ssh/sshd_config.d/
   install -m 0644 "${SOURCE_ROOT}/system/luma-ssh-hostkeys.service" /etc/systemd/system/
+  install -m 0644 "${SOURCE_ROOT}/system/luma-pi-connect-setup.service" \
+    "${SOURCE_ROOT}/system/luma-pi-connect-setup.socket" /etc/systemd/system/
+  systemctl --root=/ enable luma-pi-connect-setup.socket
   systemctl --root=/ enable ssh.service luma-ssh-hostkeys.service
 fi
 

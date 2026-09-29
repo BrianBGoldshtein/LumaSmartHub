@@ -32,9 +32,11 @@ sleep-aware display behavior and room automations.
   When the phone is away, the intended standby view is time and weather without
   private calendar/task information.
 - Keeps settings and integration tokens in local SQLite storage across normal
-  restarts. App-only releases use a signed updater with health checks and
-  automatic rollback; the updater does not replace the operating system or
-  database schema.
+  restarts. The Settings screen can check the latest stable GitHub Release,
+  verify its image-pinned signature and show release notes before install.
+  App-only releases use health checks and automatic rollback; they do not
+  replace the operating system or database schema. Pi Connect remains the
+  recovery route.
 - Includes software paths for scenes and supported room-device integrations.
   Actual Levoit model/API behavior and the exact Woozoo models, remotes and IR
   hardware must be confirmed and tested before promising appliance control.
@@ -94,6 +96,10 @@ For an owner setting up the appliance:
    Visitor, the owner accepts the network terms; Stanford eduroam uses the
    owner's SUNet identity. Follow
    [`SD Card/docs/CAMPUS_NETWORK.md`](SD%20Card/docs/CAMPUS_NETWORK.md).
+   The fresh OS recipe explicitly includes NetworkManager's Wi-Fi supplicant
+   backend; the final planned full-image update includes screen-based [Raspberry Pi Connect
+   recovery access](SD%20Card/docs/PI_CONNECT.md). It is not present on the
+   currently installed card and remains off until the owner enrolls it.
 5. Verify the assembled hardware with synthetic data first, then use the
    acceptance checklist in
    [`SD Card/docs/HARDWARE_VALIDATION.md`](SD%20Card/docs/HARDWARE_VALIDATION.md)
@@ -113,23 +119,28 @@ frontend, production UI build and image-manifest tools. Required public assets
 are regenerated from checksum-pinned sources in CI. **CI has no updater signing
 private key and does not publish a trusted image or update bundle.**
 
-The backup-broker startup fix is in commit [`1e86b4b`](https://github.com/BrianBGoldshtein/LumaSmartHub/commit/1e86b4bc),
-with [GitHub Actions passing](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36506577393):
-943 Linux backend tests, frontend tests/build, pinned asset preparation and
-image-manifest checks. The current software fix removes a slow cold-start
-device-SDK import from the privileged USB backup service. The existing r4
-image still fails that service's QEMU response check; a new immutable image
-and exact-image pass are required before any reflash handoff.
+The last recorded hosted run passed 943 Linux backend tests, frontend
+tests/build, pinned asset preparation and image-manifest checks. The latest
+recorded r5 QEMU check also passed the privileged USB backup socket response;
+that image is **not** the final candidate because it predates the later Wi-Fi
+fix and September 29 app work. The final planned image must be rebuilt from
+current source, include Pi Connect enrollment and the signed updater, and pass
+the exact-image qualification again before any handoff.
 
 The feature branch currently under development is
 [`codex/luma-updater-ci-20260928`](https://github.com/BrianBGoldshtein/LumaSmartHub/tree/codex/luma-updater-ci-20260928).
-`main` remains untouched. In-place update scope, signing-key custody,
-verification, rollback and recovery are documented in
+`main` remains untouched until hardware acceptance. The device checks signed
+releases targeted to `main`, not raw branch files; the private signing key
+stays on the Linux build machine and outside GitHub. In-place update scope,
+release publishing, verification, rollback and recovery are documented in
 [`SD Card/docs/UPDATE_DEPLOYMENT.md`](SD%20Card/docs/UPDATE_DEPLOYMENT.md).
 Build-host setup is in
 [`SD Card/docs/BUILDING_THE_IMAGE.md`](SD%20Card/docs/BUILDING_THE_IMAGE.md).
 
-The intended release sequence is: finish software and image checks → owner-led
-physical acceptance → resolve remaining issues and repeat checks → owner
-approves a v1 → merge the feature branch to `main` and tag that release. Until
-then, treat all builds as development/commissioning candidates, not production.
+The intended image sequence is: finish and qualify the current full image,
+then have the owner flash it once and complete hardware acceptance. Later
+ordinary application changes should use signed in-place updates, preserving
+settings and Pi Connect enrollment; OS/security or platform changes may still
+require an image. After the owner approves v1, merge the feature branch to
+`main` and tag that release. Until then, all builds remain development/
+commissioning candidates, not production.

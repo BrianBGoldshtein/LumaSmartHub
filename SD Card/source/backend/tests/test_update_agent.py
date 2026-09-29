@@ -17,6 +17,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from luma.update_agent import (
     UpdateError, _canonical, apply_bundle, dependency_fingerprint, verify_bundle,
 )
+from luma.github_updates import GitHubUpdateError, RELEASES_API, latest_release
+from luma.update_broker import UpdateBroker
 
 
 def make_bundle(tmp_path: Path, *, version: str = "0.3.0", corrupt: bool = False,
@@ -124,6 +126,110 @@ class FakeController:
 def no_install(release, wheel):
     assert (release / "venv/bin/python").is_file()
     assert wheel.is_file()
+
+
+class FakeHTTPResponse(io.BytesIO):
+    def __init__(self, content, url):
+        super().__init__(content)
+        self.headers = {}
+        self.url = url
+
+    def geturl(self):
+        return self.url
+
+
+class FakeReleaseOpener:
+    def __init__(self, metadata, bundle):
+        import hashlib
+        from urllib.parse import urlparse
+        asset_url = "https://github.com/BrianBGoldshtein/LumaSmartHub/releases/download/v0.3.0/luma-update-0.3.0.lup"
+        metadata["assets"] = [{"name": "luma-update-0.3.0.lup", "size": len(bundle),
+                               "digest": "sha256:" + hashlib.sha256(bundle).hexdigest(),
+                               "browser_download_url": asset_url}]
+        self.content = {RELEASES_API: json.dumps(metadata).encode(), asset_url: bundle}
+        self.calls = []
+
+    def open(self, request, timeout):
+        url = request.full_url
+        self.calls.append(url)
+        return FakeHTTPResponse(self.content[url], url)
+
+
+def release_metadata(**updates):
+    value = {"draft": False, "prerelease": False, "target_commitish": "main", "tag_name": "v0.3.0",
+             "body": "Fixes and improvements", "published_at": "2026-09-29T12:00:00Z",
+             "html_url": "https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.0"}
+    value.update(updates)
+    return value
+
+
+def test_github_release_is_downloaded_only_when_newer_and_its_signature_matches(tmp_path):
+    bundle_path, public = make_bundle(tmp_path)
+    bundle = bundle_path.read_bytes()
+    opener = FakeReleaseOpener(release_metadata(), bundle)
+    release = latest_release("0.2.0", public_key_path=public, opener=opener)
+    assert release["state"] == "available"
+    assert release["version"] == "0.3.0"
+    assert release["bundle"] == bundle
+    assert len(opener.calls) == 2
+    assert opener.calls[0] == RELEASES_API
+    assert opener.calls[1].endswith("luma-update-0.3.0.lup")
+
+
+def test_github_latest_release_cannot_be_used_to_downgrade(tmp_path):
+    bundle_path, public = make_bundle(tmp_path)
+    opener = FakeReleaseOpener(release_metadata(), bundle_path.read_bytes())
+    result = latest_release("0.3.0", public_key_path=public, opener=opener)
+    assert result == {"state": "current", "current_version": "0.3.0"}
+    assert opener.calls == [RELEASES_API]
+
+
+def test_github_release_requires_exact_tag_asset_checksum_and_luma_signature(tmp_path):
+    bundle_path, public = make_bundle(tmp_path)
+    bundle = bundle_path.read_bytes()
+    opener = FakeReleaseOpener(release_metadata(tag_name="v0.3.1"), bundle)
+    with pytest.raises(GitHubUpdateError, match="metadata"):
+        latest_release("0.2.0", public_key_path=public, opener=opener)
+
+    bad_hash = FakeReleaseOpener(release_metadata(), bundle)
+    bad_metadata = json.loads(bad_hash.content[RELEASES_API])
+    bad_metadata["assets"][0]["digest"] = "sha256:" + "0" * 64
+    bad_hash.content[RELEASES_API] = json.dumps(bad_metadata).encode()
+    with pytest.raises(GitHubUpdateError, match="checksum"):
+        latest_release("0.2.0", public_key_path=public, opener=bad_hash)
+
+    tampered = tmp_path / "tampered"
+    tampered.mkdir()
+    bad_signature_path, _ = make_bundle(tampered, corrupt=True)
+    bad_signature = FakeReleaseOpener(release_metadata(), bad_signature_path.read_bytes())
+    with pytest.raises(GitHubUpdateError, match="signature"):
+        latest_release("0.2.0", public_key_path=public, opener=bad_signature)
+
+
+@pytest.mark.asyncio
+async def test_root_update_broker_accepts_only_signed_bundle_and_reports_health_result(tmp_path):
+    bundle_path, public = make_bundle(tmp_path)
+    installed = []
+
+    def install(path, *, public_key_path):
+        installed.append(verify_bundle(path, public_key_path)["version"])
+
+    broker = UpdateBroker(installer=install, public_key_path=public)
+    request = {"action": "install", "bundle": base64.b64encode(bundle_path.read_bytes()).decode()}
+    accepted, bundle = await broker.accept(request)
+    assert accepted == {"accepted": True, "version": "0.3.0"}
+    assert broker.status()["state"] == "installing"
+    await broker.install(bundle)
+    assert installed == ["0.3.0"]
+    assert broker.status()["state"] == "installed"
+
+    corrupt_dir = tmp_path / "corrupt"
+    corrupt_dir.mkdir()
+    corrupted_path, _ = make_bundle(corrupt_dir, corrupt=True)
+    corrupted = {"action": "install", "bundle": base64.b64encode(corrupted_path.read_bytes()).decode()}
+    rejected, no_bundle = await UpdateBroker(public_key_path=public).accept(corrupted)
+    assert "error" in rejected
+    assert no_bundle is None
 
 
 def test_verify_bundle_checks_signature_hashes_and_wheel_metadata(tmp_path):

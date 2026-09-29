@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -28,6 +28,7 @@ from .room_api import install_room_api
 from .fan_api import install_fan_api
 from .scene_api import install_scene_api
 from .backup_api import install_backup_api
+from .update_api import install_update_api
 from .bluetooth_runtime import BluetoothRuntime
 from .security import SecurityManager
 from .service import LumaService
@@ -39,6 +40,7 @@ from .voice_calibration import VoiceCalibration
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
 from .tailscale_setup import tailscale_request, validate_request as validate_tailscale_request
+from .pi_connect_setup import pi_connect_request
 from .pairing import PairingFlow
 from .shortcut_protocol import command_token, read_command
 from .focus_timer import TIMER_COMMANDS
@@ -66,6 +68,16 @@ class PairingSelection(PairingSessionRequest):
 class PairingConfirmation(PairingSessionRequest):
     challenge: str = Field(min_length=36, max_length=36)
     accepted: bool = Field(strict=True)
+
+
+class ForgetPhoneRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    pin: str = Field(min_length=4, max_length=8, pattern=r"^\d+$")
+
+
+class PiConnectRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    action: Literal["status", "signin", "shell_on", "shell_off"]
 
 
 class DeviceReport(BaseModel):
@@ -103,6 +115,13 @@ class VoicePhase(BaseModel):
 class CalibrationSample(BaseModel):
     session: str = Field(max_length=64)
     text: str = Field(max_length=1000)
+    rms: float = Field(ge=0, le=1, allow_inf_nan=False)
+    peak: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+
+class CalibrationLevel(BaseModel):
+    model_config = {"extra": "forbid"}
+    session: str = Field(max_length=64)
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
 
@@ -178,6 +197,7 @@ def create_app(
     weather = WeatherRuntime(service, weather_client)
     bluetooth = BluetoothRuntime(service)
     calibration = VoiceCalibration()
+    voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle"}
     google_sync_lock = asyncio.Lock()
     google_status: dict[str, Any] = {"last_synced": None, "error": None}
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
@@ -300,6 +320,7 @@ def create_app(
     install_fan_api(app,service,local_only)
     install_scene_api(app,service,local_only,bluetooth)
     install_backup_api(app,service,storage,local_only)
+    install_update_api(app,local_only)
 
     @app.get("/api/v1/onboarding", dependencies=[Depends(local_only)])
     def onboarding_status():
@@ -386,6 +407,27 @@ def create_app(
         except ValueError as error:
             raise HTTPException(409, str(error)) from None
 
+    @app.post("/api/v1/bluetooth/forget", dependencies=[Depends(local_only)])
+    async def bluetooth_forget(payload: ForgetPhoneRequest) -> dict[str, bool]:
+        address = service.settings.phone_address
+        if not address:
+            raise HTTPException(409, "No iPhone is selected.")
+        if not security.pin_is_configured():
+            raise HTTPException(409, "Set a Luma PIN before forgetting the paired iPhone.")
+        if not security.verify_pin(payload.pin):
+            raise HTTPException(401, "Incorrect PIN, or too many attempts. After five failures, wait one minute.")
+        try:
+            bond_removed = await pairing.forget_phone(address)
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+        except Exception:
+            raise HTTPException(503, "Luma could not remove the iPhone pairing. No settings were cleared.") from None
+        service.update_settings({"phone_address": None})
+        service.phone_disconnected()
+        bluetooth.scene_authorized = None
+        bluetooth.status = "Not configured"
+        return {"forgotten": True, "bond_removed": bond_removed}
+
     @app.get("/api/v1/network/status", dependencies=[Depends(local_only)])
     def network_status() -> dict:
         return network.snapshot()
@@ -405,6 +447,14 @@ def create_app(
             raise HTTPException(422, "Invalid private connection request") from None
         try:
             result = await tailscale_request(payload)
+        except ValueError as error:
+            raise HTTPException(503, str(error)) from None
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/pi-connect", dependencies=[Depends(local_only)])
+    async def pi_connect_setup(payload: PiConnectRequest):
+        try:
+            result = await pi_connect_request({"action": payload.action})
         except ValueError as error:
             raise HTTPException(503, str(error)) from None
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
@@ -496,24 +546,51 @@ def create_app(
     async def voice_phase(payload: VoicePhase) -> dict[str, bool]:
         if not service.settings.voice_enabled:
             return {"accepted": False}
+        voice_agent_status["last_seen"] = monotonic()
+        voice_agent_status["phase"] = payload.phase.value
+        changed = service.state.assistant_phase != payload.phase
         service.state.assistant_phase = payload.phase
-        service.publish("voice.phase")
+        if changed:
+            service.publish("voice.phase")
         return {"accepted": True}
+
+    @app.post("/api/v1/voice/heartbeat", dependencies=[Depends(local_only)])
+    async def voice_heartbeat() -> dict[str, bool]:
+        if not service.settings.voice_enabled:
+            return {"accepted": False}
+        voice_agent_status["last_seen"] = monotonic()
+        return {"accepted": True}
+
+    def calibration_payload() -> dict[str, Any]:
+        result = calibration.status()
+        seen = voice_agent_status["last_seen"]
+        available = service.settings.voice_enabled and seen > 0 and monotonic() - seen <= 15
+        return {**result, "agent_available": available,
+                "agent_phase": voice_agent_status["phase"] if available else "unavailable"}
 
     @app.get("/api/v1/voice/calibration", dependencies=[Depends(local_only)])
     async def calibration_status() -> dict:
-        return calibration.status()
+        return calibration_payload()
 
     @app.post("/api/v1/voice/calibration/start", dependencies=[Depends(local_only)])
     async def calibration_start() -> dict:
         if not service.settings.voice_enabled:
             raise HTTPException(409, "Enable local voice first")
-        return calibration.start()
+        calibration.start()
+        return calibration_payload()
 
     @app.post("/api/v1/voice/calibration/cancel", dependencies=[Depends(local_only)])
     async def calibration_cancel() -> dict:
         calibration.cancel()
-        return calibration.status()
+        return calibration_payload()
+
+    @app.post("/api/v1/voice/calibration/level", dependencies=[Depends(local_only)])
+    async def calibration_level(payload: CalibrationLevel) -> dict:
+        try:
+            calibration.report_level(payload.session, payload.rms, payload.peak)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return calibration_payload()
 
     @app.post("/api/v1/voice/calibration/sample", dependencies=[Depends(local_only)])
     async def calibration_sample(payload: CalibrationSample) -> dict:
@@ -523,7 +600,7 @@ def create_app(
             raise HTTPException(409, str(exc)) from exc
         if result["passed"]:
             storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})
-        return result
+        return calibration_payload()
 
     @app.get('/api/v1/voice/library', dependencies=[Depends(local_only)])
     async def voice_library():
@@ -805,7 +882,7 @@ def create_app(
     @app.post('/api/v1/device/timer-chime', dependencies=[Depends(local_only)])
     async def timer_chime():
         service.timer_tick()
-        return JSONResponse({'play': service.timer.claim_chime(quiet=service.timer_quiet())},
+        return JSONResponse({'play': service.timer.claim_chime(muted=service.timer_muted())},
                             headers={'Cache-Control':'no-store'})
 
     @app.get("/api/v1/security/status", dependencies=[secured])

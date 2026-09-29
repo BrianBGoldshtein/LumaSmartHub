@@ -5,7 +5,9 @@ import {VoiceSetup} from "./VoiceSetup";
 import {NetworkSetup} from "./NetworkSetup";
 import {BluetoothSetup} from "./BluetoothSetup";
 import {TailscaleSetup} from "./TailscaleSetup";
+import {PiConnectSetup} from "./PiConnectSetup";
 import {TouchField,TouchInputProvider} from "./TouchField";
+import {UpdateSetup} from "./UpdateSetup";
 import {coordinates} from "./touchInput";
 import {setupTheme,setupLink} from "./setupTheme";
 
@@ -79,8 +81,10 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
         <button disabled={busy} onClick={()=>setConfirmTokenReset(false)}>Cancel</button>
       </>}
     </section>
+    <PiConnectSetup demo={demo}/>
+    <UpdateSetup demo={demo}/>
     <TailscaleSetup demo={demo}/>
-    <BluetoothSetup demo={demo}/>
+    <BluetoothSetup demo={demo} pinConfigured={pinConfigured}/>
     <VoiceSetup demo={demo}/>
     <section><h2>Device check</h2><button disabled={busy} onClick={()=>run(async()=>setDiagnostics(demo?{mode:"Preview",hardware:"Not connected",calendar:"Sample data",weather:"Sample data"}:await api("diagnostics")))}>Run diagnostics</button>{diagnostics && <pre className="setup-diagnostics">{JSON.stringify(diagnostics,null,2)}</pre>}</section>
     <a href={setupLink(demo,theme,"onboarding")}>Review guided setup →</a></>}

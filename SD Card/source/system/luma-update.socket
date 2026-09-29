@@ -1,0 +1,13 @@
+[Unit]
+Description=Luma protected application-update socket
+
+[Socket]
+ListenStream=/run/luma-update.sock
+SocketUser=root
+SocketGroup=luma
+SocketMode=0660
+RemoveOnStop=true
+Backlog=2
+
+[Install]
+WantedBy=sockets.target

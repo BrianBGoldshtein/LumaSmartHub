@@ -1,5 +1,191 @@
 # Luma implementation ledger
 
+## September 29 — final-image feature scope and arcade completion
+
+Owner confirmed that this active Luma update should be the final planned
+full-OS image, with Pi Connect included in the same image. Accordingly, the
+image release gate includes its official package, the owner-controlled local
+enrollment/recovery flow, the signed app-only updater, the Wi-Fi scan fix and
+the current Luma application. Routine future product work is meant to ship
+through signed `.lup` updates, preserving settings and enrollment. Do not claim
+that OS/security or platform changes can never require another image, and do
+not reflash until the encrypted backup/restore route and fresh image pass their
+qualification gates.
+
+The current source also adds the primary routine release path: a local-only
+Settings control checks the latest stable GitHub Release targeted to `main`,
+validates the named `.lup` asset, digest and image-pinned Ed25519 signature,
+and presents release notes before install confirmation. A root-owned
+socket-activated broker rechecks and invokes the existing atomic switch and
+health rollback without being stopped by the app restart. No raw branch files
+are executed, the private key stays on the Linux build machine, and feature
+branch CI does not sign or publish releases. The UI/API/systemd changes are
+source-only and must be included in the fresh final image. Verification:
+**977 backend tests passed**, **124 frontend tests passed**, TypeScript and the
+production build passed, and updater systemd packaging checks passed. No signed
+release was published and nothing was installed on the Pi.
+
+Completed the requested Space Invaders-style autoplay scene across Neon Grid,
+Luma Glass and Hearth. It has a reversing/descending five-row formation,
+player and enemy projectiles, constant-speed ship travel with a turn cooldown,
+threat dodges, and per-row scoring. Evasion now compares both directions over
+each shot's full ship-height crossing window, after the ordinary steering
+decision, so a newly expired cooldown cannot steer into a bullet; it also
+avoids pointless reversals when both paths are equally threatened. A formation
+breach now redeploys only the survivors and player ship without spending lives
+or resetting score; only zero lives ends the run, and the genuine-loss reset
+keeps the best score. Arcade renders its 32×20 subdivision over the same
+master-grid playfield; other themes keep their shared layout and theme-palette
+treatment. Added engine, collision-path, loss/wave, persistence and portable
+backup validation. Frontend suite: **124 passed**; TypeScript and production
+build pass. The layout was rendered in all three themes at phone, HD landscape
+and large-landscape sizes without overflow. Next is integration into the final
+OS-image build; physical testing remains owner-controlled.
+
+## September 29 — arcade continuity refinements
+
+The roadmap asked for a slightly livelier Pong ball without making the paddles
+less harmonic. Added a separate 1.08 ball tempo: serve pace and the ball ceiling
+increase 8%, while `PONG_TEMPO` and its paddle speed/acceleration/reaction
+remain unchanged. Bumped rally checkpoint tempo to v4; v2, v3 and older saves
+receive a capped one-time ball conversion, with scores and paddle motion
+preserved. Added deterministic serve/paddle-pace and migration regressions.
+Also fixed Arcade Snake's grid mismatch by drawing the exact 31 internal
+vertical and 19 internal horizontal cell lines over its 32×20 Neon Grid
+playfield; its food, snake and boundary share that origin and scale. Rendered
+checks at 1280×720, 2048×1536 and 390×844 found no horizontal overflow. Pong
+was inspected in a Neon Grid ambient view. Frontend suite: **114 passed**;
+TypeScript/production build passed.
+
+At this historical checkpoint, the remaining arcade item was persistent,
+genuinely playable Space Invaders. It is now implemented across themes; the
+current status above records its tests and remaining release gates.
+
+## September 29 — Pi Connect image packaging and native service validation
+
+Followed the owner request about SSH being blocked on eduroam. Reconciled the
+current image limitation: the flashed card lacks screen-side enrollment, and
+the signed `.lup` is intentionally app-only, so it cannot add the OS package,
+Linux account or systemd broker. The full-image source already contains the
+owner-approved local QR flow; updated the campus-image exact-file checker to
+compare `pi_connect_setup.py` and record broker verification, and clarified in
+the guides that the feature is not on the current card. Do not reflash before
+the USB settings backup/restore path is verified.
+
+Added `image-builder/test_pi_connect_service.py` to protect the service
+identity/sandbox, root:luma socket ACL, socket-only activation, no image-time
+enrollment and exact image-map entries. Windows image-builder tests: **19
+passed, 13 Linux-only skipped**. In approved Debian WSL, native
+`systemd-analyze verify` and shell-syntax tests: **3 passed**. The first raw
+native validation exposed only that the image-only installed executable is
+absent from the Windows-mounted workspace; the test now substitutes the real
+test interpreter for syntax validation, mirroring existing package tests.
+Pi Connect API/backend: **40 passed**; frontend: **112 passed** and production
+build. No image built or Pi touched. Remaining: actual Linux broker socket
+activation/peer-UID integration, fresh immutable image/package/QEMU checks,
+and owner-deferred hardware/eduroam enrollment.
+
+The r4 USB-broker timeout was diagnosed/fixed; the newer r5 exact-image QEMU
+check returned `{"volumes":[]}`. The r5 artifact still predates this Pi
+Connect UI and is not a hardware-qualified final image.
+
+## September 29 — Pi Connect recovery access needs a screen-side enrollment
+
+Owner reported SSH is not available on Stanford eduroam and asked for Pi
+Connect setup directly on the Pi. Confirmed the running commissioning image
+predates an enrollment screen, so it cannot currently link the device without
+a usable local terminal/SSH path. Source now adds an owner-controlled
+**Device setup → Connections → Raspberry Pi Connect** flow for the next full
+OS image: it starts the official client, displays its short-lived one-time
+verification URL as a locally generated QR, polls for approval, and requires a
+separate explicit action to turn on remote shell for a dedicated sudo-capable
+`luma-admin` account. Screen sharing remains disabled; owner consent is not
+baked into the image. Systemd user lingering preserves the approved Connect
+identity through kiosk logout/reboot. The local broker exposes only
+`status/signin/shell_on/shell_off`, accepts its Unix socket only from Luma's API
+UID, and never accepts arbitrary commands. The verification URL is held only
+in memory for ten minutes.
+
+Focused checks: **40 backend tests**, **112 frontend tests**, production
+TypeScript/Vite build, **3 image package tests**, and installer Bash syntax all
+pass. Official docs confirm the CLI verification-link flow, status fields,
+Remote shell dashboard path, and that restrictive networks can block Connect.
+No full image has yet been rebuilt for this flow; no remote sign-in or hardware
+testing was performed. The app-only signed `.lup` intentionally cannot install
+packages/accounts/systemd units. A full reflash erases settings, so preserve
+the current card until the backup/restore path is proven (USB is currently
+undetected). Next: exact-image audit, Linux peer-credential/socket/service
+integration, fresh immutable image and QEMU checks; then hardware only on
+owner prompt.
+
+## September 28 — USB/voice recovery image BUILDING
+
+Owner's current board checks found USB storage absent from Chromium's OAuth
+file picker and Hey Luma calibration gave no useful indication that its
+service or mic had started. Root cause confirmed in package inventory: prior
+image had `udisks2` but omitted GVFS's desktop volume-monitor package. Source
+now explicitly installs `gvfs-backends` (which brings `gvfs-daemons`) and the
+exact-image checker requires the package and UDisks monitor executable. Voice
+calibration now has a local-only, ephemeral service heartbeat and numeric
+level meter only while a calibration is active; no audio/transcripts are
+stored. Source regressions: backend **946 passed**, frontend **112 passed**
+plus production build, image-builder **29 passed**. Tailscale QR enrollment
+was confirmed working by owner; DNS MagicDNS/HTTPS enablement instructions
+given from current official docs, and a first Apple Shortcut recipe was given.
+
+Fresh immutable Linux staging: `/home/luma-build/luma-usb-voice-fix-20260928`.
+Isolated generator/output: `/home/luma-build/build-work-usb-voice-20260928`.
+Image build is RUNNING in desktop exec session **59333**; continue polling that
+session (do not start a duplicate). All older images and the currently flashed
+card remain untouched. After successful generation, run the exact-image/package
+and source-file audits plus disposable QEMU API/Tailscale checks; then copy the
+new candidate into its own versioned Windows `SD Card/image/` subfolder with
+checksum/evidence. Hardware behavior remains owner-tested; do not flash or
+write any card. Candidate must stay marked UNVERIFIED / not hardware-qualified.
+
+Apple Shortcut first test: add URL action with the Pi's exact HTTPS `/command`
+address, then Get Contents of URL → POST → JSON body Key `name`, Text
+`show_brightness`; separate Headers dictionary Key `X-Luma-Token`, Text/value
+the private 43-character Luma token displayed locally under Connections. Owner
+received `Command authentication required` from the private endpoint: route was
+reached, but auth header is absent/invalid or token is stale. Guided to correct
+the separate header, not disclose it. Do not request or record the token. Other
+command examples and full validation remain for handoff.
+
+## September 28 — Wi-Fi backend omitted from minimal image; Pi Connect added
+
+Owner's A/B test established that stock Raspberry Pi OS sees nearby networks
+on the same Pi while Luma did not. Inspection of the retained candidate SBOMs
+found NetworkManager and Broadcom firmware installed but no `wpasupplicant`.
+Debian marks `wpasupplicant` as a *Recommends* dependency; the image build
+deliberately disables recommends, so Luma omitted the software NetworkManager
+needs for Wi-Fi. The custom image also did not contain `rpi-connect`.
+
+Added explicit `wpasupplicant` and `rpi-connect` packages to the Pi image
+layer. Pi Connect is shipped but never signed in, started, or enrolled during
+build; owner setup and limitations are recorded in `docs/PI_CONNECT.md`. The
+campus-image audit now verifies both packages in the generated OS. Hardened
+the Wi-Fi scanner to wait for NetworkManager's documented `LastScan` change
+instead of sleeping a fixed two seconds and silently treating request errors
+as a definitive empty list; the UI now distinguishes missing radio, unfinished
+scan, and a completed empty scan. Added scanner/package regressions and
+documented the hardware diagnosis. Focused source/package tests: **22 passed**;
+frontend **112 passed** and TypeScript/Vite build passed.
+
+Built the fresh `luma-pi4-wifi-fix-20260928-UNVERIFIED.img.xz` candidate and
+copied it to `SD Card/image/` without overwriting earlier candidates. XZ
+integrity passed; SHA-256 is
+`ed988cc43b57f657575e1297f707af15a87c0879f48f57b57db4c132dc569d32`.
+The raw Linux partition matched its ext4 sidecar (`6527b2f0…c5ccb6`), the
+exhaustive shipped-file audit matched **162 files** to the staged sources, and
+the image audit confirmed `wpasupplicant` and `rpi-connect` are installed. A
+disposable QEMU run reached `graphical.target`; Luma's local health endpoint
+returned `status=ok`, `database=ok`, version `0.2.0`. QEMU was intentionally
+bounded at 180 seconds (exit 124 after the health assertion succeeded), and
+does not emulate the Pi's physical Wi-Fi radio, screen, or touchscreen. The
+manifest correctly says `boot_verified=false`; hardware qualification and the
+owner's real Pi Wi-Fi rescan remain pending.
+
 ## September 28 — exact-image broker startup bottleneck identified
 
 Captured the live Python stack from the failing, immutable r4 image after its

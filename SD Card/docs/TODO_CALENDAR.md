@@ -1,6 +1,6 @@
 # Calendar-backed to-dos
 
-September 26, 2026 owner clarification, implemented in source/preview. Not yet in the historical Pi image; no real Google account or physical device has been tested.
+September 26, 2026 owner clarification, implemented in source and included in the r9 development-image candidate. No real Google account or physical device has been tested.
 
 ## Your calendar is the task database
 

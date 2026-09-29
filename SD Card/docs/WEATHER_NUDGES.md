@@ -1,6 +1,6 @@
 # Weather hints — implementation checkpoint
 
-September 26, 2026. Implemented in source and local preview; not yet packaged in a new Pi image. Hardware testing remains owner-deferred.
+September 26, 2026. Implemented in source and included in the r9 development-image candidate. Hardware testing remains owner-deferred.
 
 ## Setup and behavior
 

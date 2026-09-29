@@ -1,23 +1,24 @@
 # Raspberry Pi Connect recovery access
 
-## Requirement for the final planned OS image
+## Current inclusion and validation
 
-Pi Connect is part of the **same final planned full-image update** as the
-touchscreen enrollment UI and signed Luma application updater. It is not a
-follow-up image or a feature deferred to a later flash. The image must ship the
-official `rpi-connect` client, QR encoder, dedicated `luma-admin` account and
-linger configuration, local fixed-action enrollment broker, and the
-**Device setup → Connections → Raspberry Pi Connect** UI before it is
-considered ready to hand off. The owner will enroll and opt in to remote shell
-after first boot. Later ordinary Luma feature releases should use the signed
-application updater and preserve settings and the enrolled Pi Connect state.
+Pi Connect is included in the r9 development-image candidate alongside its
+touchscreen enrollment UI, official client/QR encoder, dedicated `luma-admin`
+account, linger configuration and fixed-action local broker. A disposable
+QEMU overlay of the exact r9 raw image passed API/database health and returned
+fresh-device status to the authorized Luma user: `available=true`,
+`signed_in=false`, `state=off`. No account was enrolled and remote shell was
+not enabled. The emulator ended at its planned 180-second timeout; this is a
+targeted package/broker check, not a complete or physical boot qualification.
+The candidate still reports `boot_verified=false` and `hardware_qualified=false`.
 
-This means the current old card cannot receive this capability through its
-app-only update path. The final planned OS image still needs to be built and
-qualified as a complete update before it is flashed. Do not flash until the
-existing settings have a verified backup/restore route. No separate future OS
-flash is planned for delivering Pi Connect or routine Luma feature work; a
-future OS/security or hardware-platform change could still require one.
+The already-running older card predates this OS-level client/account/broker
+setup and cannot gain all of it from an app-only release. The owner will handle
+the eventual one-time candidate flash after reviewing the full acceptance
+checklist and preserving current settings. No Pi or SD was changed here. The
+intended update path after that base image is the signed Luma application
+updater; Pi Connect remains the troubleshooting/recovery path. A later OS,
+security or hardware-platform change could still require another OS image.
 
 Preview-only visual QA on September 29 checked the setup entry in Hearth, Luma
 Glass and Neon Grid at 320×568, 390×844, 720×1280, 1280×720 and 2048×1536.
@@ -26,12 +27,10 @@ horizontally. Demo mode correctly showed a non-actionable preview state. This
 is rendered-layout evidence only—not enrollment, broker, network or hardware
 acceptance.
 
-The final planned full-image source includes a physical-screen enrollment
-flow for Raspberry Pi Connect. That image has **not yet been rebuilt or
-installed**; the card currently being tested predates this screen. In a fresh
-image, the service is **not signed in or remotely enabled**. The owner links
-the Pi and explicitly enables remote shell on its screen. No account password,
-auth key, or sign-in link is placed in the image or project files.
+In the r9 candidate, the service is **not signed in or remotely enabled**. The
+owner links the Pi and explicitly enables remote shell on its screen. No
+account password, auth key, or sign-in link is placed in the image or project
+files. Physical enrollment and remote-shell access remain untested.
 
 ## Set up from the Luma touchscreen
 

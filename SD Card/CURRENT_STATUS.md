@@ -1,21 +1,31 @@
 # Luma — current restart point
 
-## Latest checkpoint — September 29: r9 candidate and fresh host regression
+## Latest checkpoint — September 29: r9 host, CI and exact-image checks
 
 Current candidate: `image/r9-campus-network-20260929/luma-pi4-UNVERIFIED.img.xz`;
 see its [handoff and receipts](image/r9-campus-network-20260929/README.md).
 SHA-256 `77de4675402120626c167a7b393d595398d5facb44d5b23e0170626b9f0ba147`;
 source fingerprint `42fbff0042504530c6dc0651a82fe30ef893009c2f059dca4390c330d8052`.
-The image and exact 170-file/package/partition audits passed; r9 has no new
-QEMU or hardware boot assertion. Backend regression: 957 Windows passed, 32
-Linux-only skipped; the earlier full Linux result is 989 passed. Frontend:
-124 passed and production build passed. Image-builder on Windows: 25 passed,
-14 skipped for native Linux/systemd/symlink requirements.
+The exact 170-file/package/partition audits passed. The preserved compressed
+archive matches its Linux raw disk build byte-for-byte. The r9 raw image then
+passed two disposable QEMU-overlay checks: the installed `luma` user received
+`{"volumes":[]}` from the peer-authorized backup socket; the Pi Connect setup
+broker returned fresh-device status (`available=true`, `signed_in=false`,
+`state=off`) after API/database health returned `ok`. Both emulators stopped
+at the script's 180-second cap; these are targeted software checks, not proof
+of complete or physical boot. `boot_verified=false` and
+`hardware_qualified=false` remain correct. Backend regression: 957 Windows
+passed, 32 Linux-only skipped; the full hosted Linux suite passed all 989.
+Frontend: 124 passed and production build passed. Image-builder on Windows:
+25 passed, 14 skipped for native Linux/systemd/symlink requirements.
 
-The current host no longer has the `luma-build` WSL distribution, so packaged
-backup-socket and live-WebSocket QEMU checks remain open. All-theme room-device
-and scene interaction review is still incomplete. No Pi, SD or USB media was
-touched; owner-directed physical/provider tests and flashing remain deferred.
+GitHub Actions `Luma software checks` passed on commit
+[`7a5a918`](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36603151064),
+including the complete Linux backend suite, frontend tests/build and image
+builder/recovery tests. The hosted result does not cover r9 QEMU; those two
+checks were run separately in Debian WSL. All-theme room-device and scene
+interaction review is still incomplete. No Pi, SD or USB media was touched;
+owner-directed physical/provider tests and flashing remain deferred.
 The Levoit hotspot is opt-in, requires a second compatible USB Wi-Fi radio, and
 must not be enabled on Stanford/venue Wi-Fi without explicit network-owner
 approval. See [network policy and limits](docs/CAMPUS_NETWORK.md).

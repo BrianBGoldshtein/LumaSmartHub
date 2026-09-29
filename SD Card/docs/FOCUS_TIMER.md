@@ -1,6 +1,6 @@
 # Focus timer — source implementation
 
-September 29, 2026. Available in source, preview and the r8 development image candidate. Earlier Tailscale/commissioning images do not contain the timer chime. Physical audio checks remain deferred.
+September 29, 2026. Available in source, preview and the r9 development image candidate. Earlier Tailscale/commissioning images do not contain the timer chime. Physical audio checks remain deferred.
 
 ## Use
 
@@ -39,7 +39,7 @@ The alarm is synthesized in memory and sent to the already-installed `paplay` ut
 - Automated timer tests cover pause/resume, monotonic vs wall time, reboot trust/expiration, reanchoring, no periodic writes, stale replacement IDs, bounds, corrupt cache, label privacy, quiet/expired sound claims, API restrictions, voice/Shortcut grammar, failed playback deduplication and demo arithmetic.
 - Timer checkpoint: 297 backend tests (including real TCP transport) and 75 frontend tests pass. TypeScript and production build pass. End-to-end local browser checks used isolated `runtime/timer-ui-qa` storage, no owner accounts and no hardware bridge/audio process; pushed completion without reload verified after the dependency fix. Both isolated API sessions were stopped. Later feature increments increase the suite counts in `CURRENT_STATUS.md`.
 
-The timer and one-shot alarm are included in r8. Remaining delivery gates: confirm the packaged audio bridge and selected speaker on the physical Pi, then verify audibility, volume and recovery behavior during the owner's hardware test. Never replay a completion after reboot; scheduled display sleep does not silence an alarm from a timer the owner started.
+The timer and one-shot alarm are included in r9. Remaining delivery gates: confirm the packaged audio bridge and selected speaker on the physical Pi, then verify audibility, volume and recovery behavior during the owner's hardware test. Never replay a completion after reboot; scheduled display sleep does not silence an alarm from a timer the owner started.
 
 ### Real transport regression discovered during UI testing
 
@@ -47,4 +47,4 @@ The existing minimal `uvicorn` dependency did not install a WebSocket transport.
 
 Also fixed server-side disconnect handling: the event route now waits for connection closure as well as queued state, cancels its tasks and unsubscribes promptly. The real transport test checks bounded server shutdown. This dependency is required for all live dashboard updates, not only timers. [Uvicorn documents WebSocket transport as optional in a minimal install](https://uvicorn.dev/installation/).
 
-**Do not treat earlier images' HTTP/QEMU smoke pass as proof of live WebSocket delivery.** The source has a real TCP/WebSocket regression test, and the r8 exact-image smoke checks its packaged API/database; physical long-lived dashboard delivery still needs owner testing. Earlier images are retained as historical candidates, not current releases.
+**Do not treat earlier images' HTTP/QEMU smoke pass as proof of live WebSocket delivery.** The source has a real TCP/WebSocket regression test, and the r9 exact-image smoke checks its packaged API/database; physical long-lived dashboard delivery still needs owner testing. Earlier images are retained as historical candidates, not current releases.

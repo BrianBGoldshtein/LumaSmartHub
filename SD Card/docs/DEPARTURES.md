@@ -1,6 +1,6 @@
 # Leave-soon reminders
 
-Source and preview implementation, September 26, 2026. Not yet packaged into a qualified Pi image. Real-account and physical tests remain unperformed.
+Implemented in source and included in the r9 development-image candidate. This is not a hardware-qualified image; real Google-account and physical-device tests remain unperformed.
 
 ## Setup
 

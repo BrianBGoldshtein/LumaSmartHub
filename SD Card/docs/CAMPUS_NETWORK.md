@@ -8,7 +8,7 @@ The image configuration now explicitly sets the pinned generator's `ieee80211.re
 
 The first Luma candidate's SBOM confirmed that it included NetworkManager and Broadcom firmware but omitted `wpasupplicant`. Debian lists that Wi-Fi backend as a **recommended**, not required, NetworkManager package; Luma's minimal image intentionally disables recommended packages. This is the leading, source-evidenced cause of the Pi OS-versus-Luma difference: Raspberry Pi OS could see the networks, while the Luma scan returned none. The image recipe now installs `wpasupplicant` explicitly. The Luma scanner also now waits for NetworkManager's `LastScan` timestamp to advance before reporting an empty result; earlier it suppressed scan-request failures and waited a fixed two seconds. See the upstream [NetworkManager wireless D-Bus API](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Device.Wireless.html).
 
-This explains the software-image defect but is not a physical retest. The r8 candidate contains the supplicant and scan-timing fixes; the already-written commissioning card does not gain packages from source edits. On an owner-authorized r8 hardware test, use **Device setup → Wi-Fi → Find networks** and compare Stanford Visitor/eduroam visibility and scan completion against Raspberry Pi OS.
+This explains the software-image defect but is not a physical retest. The current r9 candidate contains the supplicant and scan-timing fixes; the already-written commissioning card does not gain packages from source edits. On an owner-authorized r9 hardware test, use **Device setup → Wi-Fi → Find networks** and compare Stanford Visitor/eduroam visibility and scan completion against Raspberry Pi OS.
 
 ## Stanford Visitor
 
@@ -28,7 +28,7 @@ The API reads NetworkManager's cached status every 30 seconds without scanning W
 
 [Stanford's eduroam guide](https://uit.stanford.edu/service/wirelessnet/eduroam) specifies `SUNetID@stanford.edu` and the SUNet password as an alternative to Cardinal Key. It identifies `radius-cert.stanford.edu` for server authentication. The [Android guide](https://uit.stanford.edu/service/wirelessnet/eduroam/Android) additionally documents certificate/domain handling, but is **not a complete Linux configuration specification**.
 
-Source and the r8 candidate implement **Device setup → Wi-Fi → Find networks → eduroam** for Stanford SUNet accounts. Enter your full `SUNetID@stanford.edu` and SUNet password **only on the Pi**, then choose **Join network**. The touch keyboard supports both fields. Successful activation saves credentials in NetworkManager's local root-managed profile, not Luma's database/backups. Field values clear after submission/cancel. Other institutions remain unsupported; never enter another university's credentials here. Actual campus RADIUS authentication/reconnection is still unverified.
+Source and the current r9 candidate implement **Device setup → Wi-Fi → Find networks → eduroam** for Stanford SUNet accounts. Enter your full `SUNetID@stanford.edu` and SUNet password **only on the Pi**, then choose **Join network**. The touch keyboard supports both fields. Successful activation saves credentials in NetworkManager's local root-managed profile, not Luma's database/backups. Field values clear after submission/cancel. Other institutions remain unsupported; never enter another university's credentials here. Actual campus RADIUS authentication/reconnection is still unverified.
 
 ### Verified profile and trust scope
 
@@ -53,7 +53,7 @@ Keep the Pi's clock correct. Before the intermediate expires in January 2028—o
 
 The API now binds to loopback (`127.0.0.1`) by default. The display, device bridge, voice and Bluetooth integrations continue locally. This intentionally prevents unencrypted API/token traffic on campus Wi-Fi. Do not set `LUMA_LISTEN_HOST=0.0.0.0` on Stanford Visitor or eduroam.
 
-Siri Shortcut remote commands use the optional owner-approved [Tailscale private connection](TAILSCALE.md). The enrollment UI and broker are in r8; owner enrollment remains. Campus port restrictions and possible device isolation must be tested rather than assuming the iPhone can reach the Pi. Bluetooth presence does not require phone-to-Pi Wi-Fi reachability; a VPN connection never unlocks privacy. No account has been enrolled, HTTPS certificate issued or campus-network exception created during development.
+Siri Shortcut remote commands use the optional owner-approved [Tailscale private connection](TAILSCALE.md). The enrollment UI and broker are in the current r9 candidate; owner enrollment remains. Campus port restrictions and possible device isolation must be tested rather than assuming the iPhone can reach the Pi. Bluetooth presence does not require phone-to-Pi Wi-Fi reachability; a VPN connection never unlocks privacy. No account has been enrolled, HTTPS certificate issued or campus-network exception created during development.
 
 ## Wi-Fi implementation and test limits
 

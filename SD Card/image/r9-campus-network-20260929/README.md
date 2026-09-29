@@ -20,8 +20,14 @@ sidecar; required wireless/recovery packages are installed; all **170** mapped
 Luma application, frontend, model, license and system files match the staged
 source. Windows independently hashed the copied archive to the same SHA-256.
 Receipts: `source-manifest.json`, `raw-image-check-20260929.json`, and
-`image-audit-20260929.json`. The r8 QEMU checks are historical evidence only;
-no new QEMU or physical boot assertion is claimed for r9.
+`image-audit-20260929.json`. The compressed candidate was compared against its
+preserved Linux raw build output byte-for-byte. On that exact raw image, two
+disposable QEMU-overlay checks passed: the authorized backup broker returned
+an empty inventory, and the Pi Connect broker returned fresh-device status
+after API/database health. Both VMs ended at the planned 180-second timeout;
+the assertions are targeted integration evidence, not a complete or physical
+boot pass. The manifest remains `boot_verified=false`; no physical boot
+assertion is claimed for r9.
 
 ## Levoit internet-forwarding network
 
@@ -68,4 +74,3 @@ VeSync enrollment, recovery and power-loss behavior remain unverified.
 
 Do not treat a successful build or emulator result as hardware acceptance.
 The older r8 archive and its receipts remain preserved separately.
-

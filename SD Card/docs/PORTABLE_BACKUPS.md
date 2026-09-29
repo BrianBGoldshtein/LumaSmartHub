@@ -1,10 +1,10 @@
 # Portable settings backups — source checkpoint
 
-Current Windows recheck (2026-09-29): backend **957 passed, 32 Linux-only
-skipped**; frontend **124 passed** and production build passed. The r9 source
-fingerprint remains unchanged. This host no longer has the Linux build
-distribution, so packaged QEMU and real Unix-socket checks still need a Linux
-runner. No physical USB media, Pi or SD card was used.
+Current verification (2026-09-29): backend **957 Windows passed, 32
+Linux-only skipped**; the hosted full Linux suite passed. Frontend **124
+passed** and production build passed. GitHub Actions image-builder/recovery
+tests passed. The r9 candidate's exact raw/archive comparison and disposable
+QEMU backup-socket check passed; no physical USB media, Pi or SD card was used.
 
 The portable backup is a separate format from `luma-maintenance backup`. The
 maintenance command copies the private live SQLite database, including account
@@ -22,7 +22,10 @@ including unmounted sibling partitions. The current Linux backend suite passed
 passed 957 with 32 Linux-only tests skipped. The r8 candidate's checksum/XZ,
 root-partition, package, 170-file audit and empty-inventory QEMU smoke passed.
 The newer r9 candidate includes the change and has independent checksum/XZ,
-partition/package and exact-source checks, but no new QEMU assertion. See the
+partition/package and exact-source checks. Its exact raw image also passed the
+empty-inventory response through the packaged authorized backup socket in a
+disposable QEMU overlay. This does not prove physical USB enumeration, export,
+restore or power-loss recovery. See the
 [r9 handoff](../image/r9-campus-network-20260929/README.md). Physical USB
 insertion/export/restore and power-loss recovery still need owner-directed
 device testing.

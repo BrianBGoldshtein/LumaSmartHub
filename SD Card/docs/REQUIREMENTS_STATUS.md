@@ -23,15 +23,17 @@ and SHA-256
 `77de4675402120626c167a7b393d595398d5facb44d5b23e0170626b9f0ba147`.
 Windows independently hashed the artifact. XZ integrity, raw partition and
 wireless/recovery package checks, and all **170** mapped application/configuration
-file hashes passed. The r8 QEMU backup-socket and Pi Connect checks are
-historical and were not repeated for r9. These checks do not prove physical
-boot, screen/touch/audio, removable-media, or live network/provider behavior.
-The build manifest says `boot_verified=false`; the exact raw-image audit says
-`hardware_qualified=false`.
+file hashes passed. Exact r9 archive/raw byte comparison and disposable QEMU
+overlay assertions passed for the authorized backup socket and fresh-device
+Pi Connect broker (including API/database health). GitHub Actions passed the
+complete hosted Linux backend, frontend/build and image-builder suites on
+commit 7a5a918. These checks do not prove physical boot, screen/touch/audio,
+removable-media, or live network/provider behavior. The build manifest says
+`boot_verified=false`; the exact raw-image audit says `hardware_qualified=false`.
 
-An isolated feature branch is prepared for publication; hosted CI has not run.
-No GitHub Release was created and no Pi was updated or reflashed. The existing
-Pi state remains untouched.
+The feature branch is published at commit 7a5a918; `main` is unchanged. No
+GitHub Release was created and no Pi was updated or reflashed. The existing Pi
+state remains untouched.
 
 ### Remaining gates
 

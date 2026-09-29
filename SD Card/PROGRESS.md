@@ -1,6 +1,6 @@
 # Luma implementation ledger
 
-## September 29 — r9 source/image verification and next acceptance gates
+## September 29 — r9 hosted CI and exact-image QEMU validation
 
 The latest candidate is `image/r9-campus-network-20260929/luma-pi4-UNVERIFIED.img.xz`;
 see the [candidate receipt](image/r9-campus-network-20260929/README.md).
@@ -10,13 +10,24 @@ the setup now requires explicit network-owner approval; a second USB Wi-Fi
 radio is required while built-in Wi-Fi stays upstream. Do not enable it on
 Stanford/venue networking without actual administrator approval.
 
-Fresh tests: backend 957 passed, 32 Linux-only skipped on Windows; frontend
-124 passed and `pnpm build` passed; image-builder 25 passed, 14 skipped for
-native Linux tooling. The r9 input fingerprint still matches its manifest.
-The current host lacks the WSL build distro, so the r9 packaged backup broker
-and live-WebSocket QEMU checks have not been repeated. All-theme Room-device/
-scene interaction coverage remains open. No physical hardware, accounts, SD or
-USB media were touched. The owner deferred flashing and physical tests.
+Hosted GitHub Actions `Luma software checks` passed on commit `7a5a918`
+(run [36603151064](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36603151064)):
+the full Linux backend suite, frontend tests and production build, and
+image-builder/recovery/packaging suite all succeeded. Local Windows regression
+also passed: backend 957 passed/32 Linux-only skipped, frontend 124 passed and
+`pnpm build` passed; Windows image-builder 25 passed/14 skipped for native
+Linux tooling.
+
+Debian WSL and the saved `luma-build` environment were present and idle. The
+compressed r9 candidate matched its preserved raw build output byte-for-byte.
+Using temporary qcow2 overlays, `qemu-smoke.sh --backup-check` passed the
+authorized empty-inventory response; `--pi-connect-check` passed API/database
+health and the real local broker response `available=true, signed_in=false,
+state=off`. Each QEMU run ended at the script's planned 180-second timeout;
+that timeout is not a full-boot pass. The candidate still says
+`boot_verified=false` and `hardware_qualified=false`. All-theme room-device/
+scene interaction review remains open. No physical hardware, account, SD or
+USB media was touched; physical tests and flashing remain owner-deferred.
 
 ## September 29 — r8 full-image rebuild and exact-candidate verification
 

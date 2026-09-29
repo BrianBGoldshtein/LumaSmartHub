@@ -6,8 +6,10 @@ Fan Test now exposes a saved unknown IR result before navigation and requires
 another acknowledgement before any repeat. Three-theme synthetic real-browser
 checks also covered privacy lock during a held learn and durable cancellation
 without a late button. Focused backend fan tests: 30 pass; frontend 131 tests
-and build pass. Hosted CI and image delivery are pending for this newest fan
-increment. Physical USB/fans/touch and owner acceptance remain open.
+and build pass. Hosted Linux
+[run 36647356822](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36647356822)
+passed for this newest fan increment. Image delivery, physical USB/fans/touch
+and owner acceptance remain open.
 
 Room onboarding now respects its provider setup cooldown with a visible
 discovery countdown. Disposable real-browser checks covered fan/purifier

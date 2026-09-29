@@ -11,8 +11,10 @@ immediate repeat. The disposable browser script
 temporary SQLite with fake IR: three-theme 390 px unknown receipts, disabled
 repeat and no sentinel leak; one held learning operation was cancelled on
 privacy lock without changing the saved button. Focused backend fan tests:
-30 pass. Frontend 131 tests and production build pass. No physical fan/USB
-or Pi was tested; hosted CI and image packaging for this increment remain.
+30 pass. Frontend 131 tests and production build pass. Hosted Linux
+[run 36647356822](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36647356822)
+passed for `822fdc5`. No physical fan/USB or Pi was tested; image packaging
+for this increment remains.
 
 The previous purifier-onboarding source increment `c3aa6d8` passed
 [hosted Linux CI run 36646429234](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36646429234).

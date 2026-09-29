@@ -9,7 +9,9 @@ repeat, no secret/sentinel leak and no horizontal overflow. A held learn was
 cancelled by a synthetic privacy lock; the private view disappeared and the
 saved button revision did not change. Focused fan backend tests: 30 pass;
 frontend 131 tests and production build pass. No actual USB IR/fans/touch or
-owner account was used; hosted CI and next image remain outstanding.
+owner account was used; hosted Linux
+[run 36647356822](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36647356822)
+passed for `822fdc5`, but the next image remains outstanding.
 
 Newest September 29 source follow-up: the purifier now displays a short,
 disabled discovery countdown after successful login, matching the service's

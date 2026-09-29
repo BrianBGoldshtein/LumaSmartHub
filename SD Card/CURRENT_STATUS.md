@@ -11,7 +11,9 @@ cancelled and no late button was saved. The focused 30 fan backend tests and
 131 frontend tests/build passed. No actual USB IR or Woozoo was contacted.
 The preceding purifier-onboarding increment passed
 [hosted Linux CI run 36646429234](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36646429234).
-The new fan source still needs hosted CI and a rebuilt image.
+The fan source passed
+[hosted Linux CI run 36647356822](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36647356822)
+at `822fdc5`; it still needs a rebuilt image.
 
 Newest source-only room-setup increment: after a successful VeSync login, the
 purifier discovery button now shows the service's brief setup cooldown instead

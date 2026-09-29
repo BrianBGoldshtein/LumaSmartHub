@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {applyGameCheckpoints,readGameCheckpoints,restoreGame,saveGame,validateGameCheckpoints} from "../src/gameCheckpoint.ts";
-import {SnakeGame,BreakerGame,RallyGame,PONG_TEMPO} from "../src/classics.ts";
+import {SnakeGame,BreakerGame,RallyGame,PONG_BALL_TEMPO,PONG_TEMPO,PONG_TEMPO_VERSION} from "../src/classics.ts";
 import {BlocksGame} from "../src/blocks.ts";
+import {SpaceInvadersGame} from "../src/spaceInvaders.ts";
 const store=()=>{const values=new Map<string,string>();return {getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value);},removeItem:(key:string)=>{values.delete(key);}};};
 test("all games restore their exact paused run into fresh engines",()=>{
-  for(const key of ["snake","breaker","rally","blocks"] as const){
-    const create=()=>key==="snake"?new SnakeGame():key==="breaker"?new BreakerGame():key==="rally"?new RallyGame():new BlocksGame();
+  for(const key of ["snake","breaker","rally","blocks","invaders"] as const){
+    const create=()=>key==="snake"?new SnakeGame():key==="breaker"?new BreakerGame():key==="rally"?new RallyGame():key==="blocks"?new BlocksGame():new SpaceInvadersGame(1);
     const before=create(),storage=store();
     for(let i=0;i<65;i++){if(before instanceof SnakeGame || before instanceof BlocksGame)before.step();else before.step(.032);}
     saveGame(key,before,storage);const json=storage.getItem(`luma-game-v1-${key}`);assert.ok(json);
@@ -72,34 +73,46 @@ test("breaker restores filtered aim and seeds older saves from the current paddl
   storage.setItem("luma-game-v1-breaker",JSON.stringify(old));const restored=restoreGame("breaker",new BreakerGame(),storage);
   assert.equal(restored.paddleAim,300);assert.equal(restored.score,170);
 });
-test("new game pacing survives saves and legacy Pong slows down exactly once",()=>{
+test("new game pacing survives saves and legacy Pong migrates once with its gentle ball lift",()=>{
   const storage=store(),blocks=new BlocksGame(()=>.5);blocks.decisionTicks=3;saveGame("blocks",blocks,storage);
   assert.equal(restoreGame("blocks",new BlocksGame(),storage).decisionTicks,3);
   const game=new RallyGame(()=>.5);game.vx=400;game.vy=100;game.score=[4,2];saveGame("rally",game,storage);
   const old=JSON.parse(storage.getItem("luma-game-v1-rally")!);delete old.tempoVersion;
   storage.setItem("luma-game-v1-rally",JSON.stringify(old));const restored=restoreGame("rally",new RallyGame(),storage);
-  assert.ok(Math.abs(restored.vx-336*PONG_TEMPO)<1e-8);assert.ok(Math.abs(restored.vy-84*PONG_TEMPO)<1e-8);assert.deepEqual(restored.score,[4,2]);assert.equal(restored.x,game.x);
+  assert.ok(Math.abs(restored.vx-336*PONG_TEMPO*PONG_BALL_TEMPO)<1e-8);assert.ok(Math.abs(restored.vy-84*PONG_TEMPO*PONG_BALL_TEMPO)<1e-8);assert.deepEqual(restored.score,[4,2]);assert.equal(restored.x,game.x);assert.equal(restored.tempoVersion,PONG_TEMPO_VERSION);
   saveGame("rally",restored,storage);const again=restoreGame("rally",new RallyGame(),storage);
   assert.equal(again.vx,restored.vx);assert.equal(again.vy,restored.vy);
 });
 test("version-two Pong saves migrate ball and paddle tempo once without losing points",()=>{
   const storage=store(),game=new RallyGame(()=>.5);game.tempoVersion=2;game.vx=220;game.vy=80;game.leftVelocity=200;game.receiverSpeed=250;game.score=[2,7];saveGame("rally",game,storage);
   const restored=restoreGame("rally",new RallyGame(),storage);
-  assert.equal(restored.vx,220*PONG_TEMPO);assert.equal(restored.leftVelocity,200*PONG_TEMPO);assert.equal(restored.receiverSpeed,250*PONG_TEMPO);assert.equal(restored.tempoVersion,3);assert.deepEqual(restored.score,[2,7]);
+  assert.ok(Math.abs(restored.vx-220*PONG_TEMPO*PONG_BALL_TEMPO)<1e-9);assert.ok(Math.abs(restored.vy-80*PONG_TEMPO*PONG_BALL_TEMPO)<1e-9);assert.equal(restored.leftVelocity,200*PONG_TEMPO);assert.equal(restored.receiverSpeed,250*PONG_TEMPO);assert.equal(restored.tempoVersion,PONG_TEMPO_VERSION);assert.deepEqual(restored.score,[2,7]);
   saveGame("rally",restored,storage);assert.equal(restoreGame("rally",new RallyGame(),storage).vx,restored.vx);
 });
-test("portable backups capture, validate and restore the four actual game checkpoint schemas",()=>{
+test("version-three Pong checkpoints lift only the ball and migrate exactly once",()=>{
+  const storage=store(),game=new RallyGame(()=>.5);game.tempoVersion=3;game.x=221;game.y=113;game.vx=180;game.vy=-90;game.left=90;game.right=377;game.leftVelocity=23;game.rightVelocity=-31;game.receiverSpeed=201;game.reactionDelay=.08;game.score=[6,4];saveGame("rally",game,storage);
+  const restored=restoreGame("rally",new RallyGame(),storage);
+  assert.equal(restored.vx,game.vx*PONG_BALL_TEMPO);assert.equal(restored.vy,game.vy*PONG_BALL_TEMPO);assert.equal(restored.left,game.left);assert.equal(restored.right,game.right);assert.equal(restored.leftVelocity,game.leftVelocity);assert.equal(restored.rightVelocity,game.rightVelocity);assert.equal(restored.receiverSpeed,game.receiverSpeed);assert.equal(restored.reactionDelay,game.reactionDelay);assert.equal(restored.tempoVersion,PONG_TEMPO_VERSION);assert.deepEqual(restored.score,[6,4]);
+  saveGame("rally",restored,storage);const again=restoreGame("rally",new RallyGame(),storage);assert.equal(again.vx,restored.vx);assert.equal(again.vy,restored.vy);
+});
+test("portable backups capture, validate and restore all five actual game checkpoint schemas",()=>{
   const source=store();
   saveGame("snake",new SnakeGame(()=>.5),source);
   saveGame("breaker",new BreakerGame(()=>.5),source);
   saveGame("rally",new RallyGame(()=>.5),source);
   saveGame("blocks",new BlocksGame(()=>.5),source);
-  const games=readGameCheckpoints(source);assert.equal(Object.keys(games).length,4);assert.equal(validateGameCheckpoints(games),true);
+  const invaders=new SpaceInvadersGame(5);invaders.phase="redeploy";invaders.pause=.6;invaders.alive.fill(false);invaders.alive[7]=true;invaders.score=330;invaders.wave=2;invaders.lives=1;
+  saveGame("invaders",invaders,source);
+  const games=readGameCheckpoints(source);assert.equal(Object.keys(games).length,5);assert.equal(validateGameCheckpoints(games),true);
   const target=store();applyGameCheckpoints(games,target);
   assert.equal(restoreGame("snake",new SnakeGame(),target).score,0);
   assert.equal(restoreGame("breaker",new BreakerGame(),target).level,1);
   assert.deepEqual(restoreGame("rally",new RallyGame(),target).score,[0,0]);
   assert.equal(restoreGame("blocks",new BlocksGame(),target).points,0);
+  const restoredInvaders=restoreGame("invaders",new SpaceInvadersGame(8),target);
+  assert.equal(restoredInvaders.score,330);assert.equal(restoredInvaders.wave,2);assert.equal(restoredInvaders.lives,1);assert.equal(restoredInvaders.phase,"redeploy");assert.equal(restoredInvaders.alive.filter(Boolean).length,1);
+  const invalid=structuredClone(games);invalid.invaders!.phase="play";invalid.invaders!.lives=0;
+  assert.equal(validateGameCheckpoints(invalid),false);
 });
 test("portable game checkpoints reject extra fields and roll back browser storage failures",()=>{
   const source=store();saveGame("snake",new SnakeGame(),source);saveGame("blocks",new BlocksGame(),source);const games=readGameCheckpoints(source);

@@ -46,10 +46,20 @@ def main() -> None:
             pass  # Bounded memory, even if TTS or the backend stalls.
 
     with httpx.Client(base_url="http://127.0.0.1:8742", timeout=8) as client:
+        current_phase = "idle"
+
         def phase(value):
+            nonlocal current_phase
+            current_phase = value
             leds.phase(value)
             try:
                 client.post("/api/v1/voice/phase", json={"phase": value}).raise_for_status()
+            except httpx.HTTPError:
+                pass
+
+        def heartbeat():
+            try:
+                client.post("/api/v1/voice/heartbeat").raise_for_status()
             except httpx.HTTPError:
                 pass
 
@@ -57,10 +67,16 @@ def main() -> None:
             phase("idle")
             calibration = {"active": False, "session": ""}
             next_check = 0.0
+            next_heartbeat = time.monotonic() + 5
+            next_meter = 0.0
             energy = count = peak = 0
+            meter_energy = meter_count = meter_peak = 0
             while True:
                 chunk = chunks.get()
                 now = time.monotonic()
+                if now >= next_heartbeat:
+                    heartbeat()
+                    next_heartbeat = now + 5
                 if now >= next_check:
                     next_check = now + 2
                     try:
@@ -71,15 +87,34 @@ def main() -> None:
                             recognizer.Reset()
                             gate.until = 0
                             energy = count = peak = 0
+                            meter_energy = meter_count = meter_peak = 0
+                            next_meter = now
                             phase("listening" if fresh["active"] else "idle")
                         calibration = fresh
                     except httpx.HTTPError:
                         # Preserve calibration suppression if the API becomes unreachable.
                         pass
                 samples = array("h", chunk)
-                energy += sum(value * value for value in samples)
+                squared = sum(value * value for value in samples)
+                chunk_peak = max((abs(value) for value in samples), default=0)
+                energy += squared
                 count += len(samples)
-                peak = max(peak, max((abs(value) for value in samples), default=0))
+                peak = max(peak, chunk_peak)
+                if calibration["active"]:
+                    meter_energy += squared
+                    meter_count += len(samples)
+                    meter_peak = max(meter_peak, chunk_peak)
+                    if now >= next_meter and meter_count:
+                        level_rms = math.sqrt(meter_energy / meter_count) / 32768
+                        level_peak = meter_peak / 32768
+                        try:
+                            client.post("/api/v1/voice/calibration/level", json={
+                                "session": calibration["session"], "rms": level_rms, "peak": level_peak
+                            }).raise_for_status()
+                        except httpx.HTTPError:
+                            pass
+                        meter_energy = meter_count = meter_peak = 0
+                        next_meter = now + 1
                 if gate.until and time.monotonic() >= gate.until:
                     gate.until = 0
                     phase("idle")

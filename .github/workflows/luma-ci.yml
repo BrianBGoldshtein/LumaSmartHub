@@ -80,4 +80,4 @@ jobs:
         run: pnpm build
 
       - name: Check image-builder and updater-broker packaging
-        run: python -m pytest -q "SD Card/image-builder/test_source_manifest.py" "SD Card/image-builder/test_update_broker_service.py"
+        run: python -m pytest -q "SD Card/image-builder/test_source_manifest.py" "SD Card/image-builder/test_update_broker_service.py" "SD Card/image-builder/test_pi_connect_service.py" "SD Card/image-builder/test_wireless_packages.py"

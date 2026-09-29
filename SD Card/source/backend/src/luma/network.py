@@ -18,6 +18,8 @@ from . import eduroam
 NM = "org.freedesktop.NetworkManager"
 ROOT = "/org/freedesktop/NetworkManager"
 SOCKET = "/run/luma-network.sock"
+SCAN_TIMEOUT_SECONDS = 12
+SCAN_POLL_SECONDS = 0.25
 
 
 def validate_request(data: object) -> dict:
@@ -109,6 +111,17 @@ class NetworkManager:
         proxy = await self.interface(path, "org.freedesktop.DBus.Properties")
         return {key: value.value for key, value in (await asyncio.wait_for(proxy.call_get_all(name), 5)).items()}
 
+    async def wait_for_scan(self, device, previous_scan):
+        """Wait for NetworkManager's LastScan to advance, not an arbitrary delay."""
+        deadline = asyncio.get_running_loop().time() + SCAN_TIMEOUT_SECONDS
+        while asyncio.get_running_loop().time() < deadline:
+            current = await self.properties(device, NM + ".Device.Wireless")
+            last_scan = current.get("LastScan", -1)
+            if last_scan >= 0 and last_scan != previous_scan:
+                return True
+            await asyncio.sleep(SCAN_POLL_SECONDS)
+        return False
+
     async def status(self, recheck=False):
         if recheck:
             manager = await self.interface(ROOT, NM)
@@ -126,16 +139,23 @@ class NetworkManager:
         manager = await self.interface(ROOT, NM)
         state = await self.properties(ROOT, NM)
         networks = []
+        wifi_devices = 0
+        scan_complete = False
         for device in await manager.call_get_devices():
             props = await self.properties(device, NM + ".Device")
             if props.get("DeviceType") != 2:
                 continue
+            wifi_devices += 1
             wireless = await self.interface(device, NM + ".Device.Wireless")
             if refresh and state.get("WirelessEnabled"):
+                before = await self.properties(device, NM + ".Device.Wireless")
+                previous_scan = before.get("LastScan", -1)
                 with suppress(Exception):
                     await asyncio.wait_for(wireless.call_request_scan({}), 5)
-                # Bounded wait for fresh AP results; Scan may be rate-limited.
-                await asyncio.sleep(2)
+                # RequestScan is asynchronous. Do not tell the owner the radio
+                # saw no networks until NetworkManager reports completion.
+                with suppress(Exception):
+                    scan_complete = scan_complete or await self.wait_for_scan(device, previous_scan)
             wifi = await self.properties(device, NM + ".Device.Wireless")
             for path in await wireless.call_get_access_points():
                 ap = await self.properties(path, NM + ".AccessPoint")
@@ -144,7 +164,7 @@ class NetworkManager:
                     continue
                 networks.append({"device": device, "access_point": path, "ssid": ssid.decode("utf-8", errors="replace"), "security": security_kind(ap), "strength": ap.get("Strength", 0), "connected": wifi.get("ActiveAccessPoint") == path})
         networks.sort(key=lambda ap: (not ap["connected"], -ap["strength"]))
-        return {"wifi_enabled": bool(state.get("WirelessEnabled")), "hardware_enabled": bool(state.get("WirelessHardwareEnabled")), "connectivity": state.get("Connectivity", 0), "networks": networks[:80]}
+        return {"wifi_enabled": bool(state.get("WirelessEnabled")), "hardware_enabled": bool(state.get("WirelessHardwareEnabled")), "connectivity": state.get("Connectivity", 0), "wifi_device_count": wifi_devices, "scan_complete": scan_complete, "networks": networks[:80]}
 
     async def connect(self, request):
         from dbus_next import Variant

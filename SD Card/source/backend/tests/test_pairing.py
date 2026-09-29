@@ -46,6 +46,23 @@ class FakeDriver:
         self.props["Trusted"] = True
 
 
+class FakeForgetDriver(FakeDriver):
+    def __init__(self):
+        super().__init__(paired=True, trusted=True)
+        self.props["Connected"] = True
+        self.device_proxy = Mock(call_disconnect=AsyncMock())
+        self.adapter_proxy = Mock(call_remove_device=AsyncMock())
+
+        async def interface(path, name):
+            if name == "org.bluez.Device1":
+                return self.device_proxy
+            if name == "org.bluez.Adapter1":
+                return self.adapter_proxy
+            raise AssertionError("unexpected BlueZ interface")
+
+        self.interface = AsyncMock(side_effect=interface)
+
+
 async def until(predicate):
     for _ in range(200):
         if predicate():
@@ -135,6 +152,26 @@ async def test_trusted_existing_bond_can_be_selected_without_repairing():
     await flow.task
     assert flow.phase == "complete" and driver.pair_calls == 0
     save.assert_called_once_with(ADDRESS)
+
+
+@pytest.mark.asyncio
+async def test_forget_removes_only_the_selected_bond_and_disconnects_first():
+    driver = FakeForgetDriver()
+    flow = PairingFlow(Mock(), lambda: driver)
+    assert await flow.forget_phone(ADDRESS)
+    driver.device_proxy.call_disconnect.assert_awaited_once_with()
+    driver.adapter_proxy.call_remove_device.assert_awaited_once_with(DEVICE)
+    driver.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_forget_never_removes_a_different_device():
+    driver = FakeForgetDriver()
+    driver.props["Address"] = "11:22:33:44:55:66"
+    flow = PairingFlow(Mock(), lambda: driver)
+    assert not await flow.forget_phone(ADDRESS)
+    driver.adapter_proxy.call_remove_device.assert_not_awaited()
+    driver.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -229,6 +266,36 @@ def test_pairing_routes_reject_lan_and_cross_origin(tmp_path, path, body):
     assert remote.request(method, url, json=body, headers={"X-Luma-Token": token}).status_code == 403
     assert local.request(method, url, json=body, headers={"Origin": "https://attacker.example"}).status_code == 403
     assert app.state.pairing.session is None
+
+
+def test_forget_endpoint_requires_pin_is_local_and_preserves_private_state(tmp_path):
+    app = create_app(data_dir=tmp_path)
+    driver = FakeForgetDriver()
+    app.state.pairing.driver_factory = lambda: driver
+    app.state.pairing.save_phone(ADDRESS)
+    app.state.security.set_pin("1234")
+    local = TestClient(app)
+    token = app.state.security.get_or_create_lan_token()
+    remote = TestClient(app, client=("192.0.2.8", 4200))
+    assert remote.post("/api/v1/bluetooth/forget", json={"pin": "1234"},
+                       headers={"X-Luma-Token": token}).status_code == 403
+    assert local.post("/api/v1/bluetooth/forget", json={"pin": "0000", "address": ADDRESS}).status_code == 422
+    assert local.post("/api/v1/bluetooth/forget", json={"pin": "0000"}).status_code == 401
+    driver.adapter_proxy.call_remove_device.assert_not_awaited()
+    response = local.post("/api/v1/bluetooth/forget", json={"pin": "1234"})
+    assert response.status_code == 200 and response.json() == {"forgotten": True, "bond_removed": True}
+    assert app.state.luma.settings.phone_address is None
+    assert not app.state.luma.state.phone_connected
+    assert app.state.luma.snapshot()["privacy_redacted"]
+    assert driver.adapter_proxy.call_remove_device.await_args.args == (DEVICE,)
+
+
+def test_forget_endpoint_requires_configured_pin_and_selected_phone(tmp_path):
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+    assert client.post("/api/v1/bluetooth/forget", json={"pin": "1234"}).status_code == 409
+    app.state.pairing.save_phone(ADDRESS)
+    assert client.post("/api/v1/bluetooth/forget", json={"pin": "1234"}).status_code == 409
 
 
 def test_successful_pairing_selection_does_not_itself_unlock_private_data(tmp_path):

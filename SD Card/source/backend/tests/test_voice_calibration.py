@@ -34,6 +34,17 @@ def test_calibration_rejects_wrong_wake_quiet_clipped_and_expired_samples():
         calibration.submit("old-session", PHRASES[0], .1, .5, 101)
 
 
+def test_calibration_level_is_live_ephemeral_and_expires():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)["session"]
+    live = calibration.report_level(session, .04, .3, 101)
+    assert live["signal_available"] and live["signal_rms"] == .04 and live["signal_peak"] == .3
+    assert not live["results"]
+    assert not calibration.status(105)["signal_available"]
+    with pytest.raises(ValueError):
+        calibration.report_level("old-session", .1, .4, 102)
+
+
 def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp_path):
     app = create_app(data_dir=tmp_path)
     client = TestClient(app)
@@ -41,7 +52,14 @@ def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp
     assert client.post("/api/v1/voice/calibration/start").status_code == 409
     assert client.patch("/api/v1/settings", json={"voice_enabled": True}).status_code == 200
     before = app.state.luma.settings.brightness
-    session = client.post("/api/v1/voice/calibration/start").json()["session"]
+    started = client.post("/api/v1/voice/calibration/start").json()
+    session = started["session"]
+    assert not started["agent_available"]
+    assert client.post("/api/v1/voice/phase", json={"phase": "listening"}).json()["accepted"]
+    health = client.get("/api/v1/voice/calibration").json()
+    assert health["agent_available"] and health["agent_phase"] == "listening"
+    level = client.post("/api/v1/voice/calibration/level", json={"session": session, "rms": .04, "peak": .3}).json()
+    assert level["signal_available"] and level["signal_rms"] == .04
     assert not client.post("/api/v1/voice/command", json={"text": "brightness zero"}).json()["accepted"]
     for phrase in PHRASES:
         result = client.post("/api/v1/voice/calibration/sample", json={"session": session, "text": phrase, "rms": .1, "peak": .6})
@@ -54,6 +72,7 @@ def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp
     headers = {"X-Luma-Token": app.state.security.get_or_create_lan_token()}
     assert remote.patch("/api/v1/settings", json={"voice_enabled": True}, headers=headers).status_code == 403
     assert remote.get("/api/v1/voice/calibration", headers=headers).status_code == 403
+    assert remote.post("/api/v1/voice/calibration/level", json={"session": session, "rms": .1, "peak": .5}, headers=headers).status_code == 403
 
 
 def test_command_grammar_covers_supported_controls_and_unknown_audio():

@@ -20,7 +20,7 @@ The [Personal plan](https://tailscale.com/pricing) is currently $0 for personal/
 
 ## Apple Shortcuts recipes
 
-In Shortcuts on iPhone, create one shortcut per phrase. Add **Get Contents of URL**, paste the private HTTPS `/command` address from Luma, choose **POST**, set **Request Body → JSON**, and add header **X-Luma-Token** with the displayed token. JSON field `name` is Text; percentage values are Number; theme/page values are Text. Do not add `source`. Run it once manually to grant iOS permissions, then use its name with Siri. Apple's [API request guide](https://support.apple.com/guide/shortcuts/request-your-first-api-apd58d46713f/ios) explains the POST/JSON controls.
+In Shortcuts on iPhone, create one shortcut per phrase. Add **Get Contents of URL**, paste the exact private HTTPS `/command` address displayed by Luma, choose **POST**, and set **Request Body → JSON**. Add one JSON field for a brightness-slider test: **Key** `name`, type **Text**, value `show_brightness`. In the action's separate **Headers** dictionary add **Key** `X-Luma-Token`, with **Text/value** set to the private token shown on Luma under **All settings → Connections → Show Shortcut token**. The token is not the Tailscale QR, sign-in URL, or account password; never put it in the JSON body or URL. Percentage values are **Number**; theme/page values are **Text**. Do not add `source`. Run it once manually to grant iOS permissions, then use its name with Siri. Apple's [API request guide](https://support.apple.com/guide/shortcuts/request-your-first-api-apd58d46713f/ios) explains the POST/JSON controls.
 
 | Shortcut name / Siri phrase | JSON body |
 | --- | --- |

@@ -45,14 +45,14 @@ def test_sleep_is_clock_only_private_and_quiet_then_exact_scheduled_ramp(tmp_pat
     assert state['display']['mode']=='night-clock' and state['state']['display_power']=='on'
     assert state['privacy_redacted'] and state['calendar']==[] and state['notifications']==[] and state['departure'] is None
     assert state['agenda'] is None
-    assert service.timer_quiet()
+    assert not service.timer_muted()
     end=NOW+timedelta(hours=1)
     assert service.snapshot(end-timedelta(seconds=1))['display']['mode']=='night-clock'
     state=service.snapshot(end)
-    assert state['display']['ramp']['duration_seconds']==300 and service.timer_quiet()
+    assert state['display']['ramp']['duration_seconds']==300 and not service.timer_muted()
     clock.advance(300)
     assert service.snapshot(end+timedelta(seconds=300))['display']['mode']=='day'
-    assert not service.timer_quiet()
+    assert not service.timer_muted()
 
 
 def test_commands_use_explicit_ramp_dedupe_and_do_not_unlock(tmp_path):
@@ -125,15 +125,16 @@ def test_handoff_api_is_local_strict_generation_scoped_and_frame_gated(tmp_path)
     assert client.get('/api/v1/state').json()['display']['handoff']['reference_brightness']==100
 
 
-def test_old_hardware_loop_cannot_compete_with_handoff_and_night_chime_is_silent(tmp_path):
+def test_timer_alarm_remains_audible_during_sleep_and_display_off(tmp_path):
     service,clock=configured(tmp_path);sleep(service)
     state=service.snapshot(NOW)
     display,audio=Mock(),Mock();DeviceBridge(display,audio).apply(state,0)
     display.set_brightness.assert_not_called();display.power.assert_not_called()
     display.set_orientation.assert_called_once()
     played=Mock();state['timer']={'status':'complete','id':'sample'}
-    assert TimerChimeBridge(played).apply(state,lambda:True)=='silent'
-    played.assert_not_called()
+    state['state']['display_power']='off';state['display']['quiet']=True
+    assert TimerChimeBridge(played).apply(state,lambda:True)=='played'
+    played.assert_called_once()
 
 
 def test_off_and_wake_voice_shortcuts_are_explicit():

@@ -6,8 +6,8 @@ import {SystemKeyboardControl} from "./SystemKeyboardControl";
 import {networkDescription,type NetworkStatus} from "./networkStatus";
 
 type Network={device:string;access_point:string;ssid:string;security:string;strength:number;connected:boolean};
-type Scan={wifi_enabled:boolean;hardware_enabled:boolean;connectivity:number;networks:Network[]};
-const sample:Scan={wifi_enabled:true,hardware_enabled:true,connectivity:2,networks:[{device:"preview",access_point:"visitor",ssid:"Stanford Visitor",security:"open",strength:91,connected:false},{device:"preview",access_point:"eduroam",ssid:"eduroam",security:"stanford-eduroam",strength:88,connected:false}]};
+type Scan={wifi_enabled:boolean;hardware_enabled:boolean;connectivity:number;wifi_device_count:number;scan_complete:boolean;networks:Network[]};
+const sample:Scan={wifi_enabled:true,hardware_enabled:true,connectivity:2,wifi_device_count:1,scan_complete:true,networks:[{device:"preview",access_point:"visitor",ssid:"Stanford Visitor",security:"open",strength:91,connected:false},{device:"preview",access_point:"eduroam",ssid:"eduroam",security:"stanford-eduroam",strength:88,connected:false}]};
 
 export function NetworkSetup({demo}:{demo:boolean}){
   const [scan,setScan]=useState<Scan>(),[selected,setSelected]=useState<Network>(),[password,setPassword]=useState("");
@@ -69,7 +69,9 @@ export function NetworkSetup({demo}:{demo:boolean}){
     <div className="network-list">{scan?.networks.map(n=><button key={`${n.device}-${n.access_point}`} disabled={busy || n.security==="unsupported"} aria-pressed={selected?.access_point===n.access_point} onClick={()=>{setSelected(n);setPassword("");setIdentity("");setMessage("");}}>
       {n.connected?<Check/>:n.security==="open"?<Wifi/>:<LockKeyhole/>}<span>{n.ssid}<small>{n.connected?"Connected":n.security==="unsupported"?"Advanced setup required":n.security==="stanford-eduroam"?"Stanford SUNet · verified profile":n.security==="open"?"Open network":n.security==="sae"?"WPA3":"WPA2"}</small></span><small>{n.strength}%</small>
     </button>)}</div>
-    {scan?.wifi_enabled && scan.networks.length===0 && <p>No visible networks yet. Try scanning again or use Ethernet.</p>}
+    {scan?.wifi_enabled && scan.networks.length===0 && scan.wifi_device_count===0 && <p>NetworkManager cannot see a Wi-Fi radio. Check the Pi Wi-Fi driver and supplicant installation.</p>}
+    {scan?.wifi_enabled && scan.networks.length===0 && scan.wifi_device_count>0 && !scan.scan_complete && <p>The Wi-Fi scan did not finish. Try again; if it persists, the Wi-Fi scanning backend may be missing or unavailable.</p>}
+    {scan?.wifi_enabled && scan.networks.length===0 && scan.wifi_device_count>0 && scan.scan_complete && <p>No networks were reported by the completed scan. Try scanning again or check the radio and regulatory region.</p>}
     {selected && !selected.connected && <form onSubmit={e=>{e.preventDefault();void connect();}}>
       <p>Join <strong>{selected.ssid}</strong></p>
       {selected.security==="stanford-eduroam" && <><p className="setup-note">Stanford accounts only. Uses Stanford’s official eduroam certificate profile; server verification cannot be skipped. Joining saves your Wi-Fi credentials locally on this Pi, outside dashboard backups.</p><TouchField label="SUNetID@stanford.edu" placeholder="yourid@stanford.edu" value={identity} onChange={setIdentity} maxLength={77} required disabled={busy}/></>}

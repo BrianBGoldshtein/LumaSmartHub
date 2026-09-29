@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {SnakeGame,BreakerGame,RallyGame,brickLayout,BRICK_LAYOUTS,smoothPaddle,PONG_TEMPO,PONG_MAX_SPEED} from "../src/classics.ts";
+import {SnakeGame,BreakerGame,RallyGame,brickLayout,BRICK_LAYOUTS,smoothPaddle,PONG_BALL_TEMPO,PONG_TEMPO,PONG_MAX_SPEED} from "../src/classics.ts";
 test("Snake runs more slowly, with bounded variable reaction timing and interpolated motion",()=>{
   let seed=57;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   const game=new SnakeGame(random),first=game.head;game.advance(.1);assert.equal(game.head,first);
@@ -154,11 +154,17 @@ test("Pong hands over after smooth follow-through without moving both paddles at
 const pongRandom=(seed:number)=>()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
 test("Pong serves vary by run and shot choices stay stable between collisions",()=>{
   const serves=Array.from({length:20},(_,i)=>new RallyGame(pongRandom(i+1)));
-  serves.forEach(game=>assert.ok(Math.hypot(game.vx,game.vy)>=220*PONG_TEMPO && Math.hypot(game.vx,game.vy)<=240*PONG_TEMPO));
+  serves.forEach(game=>assert.ok(Math.hypot(game.vx,game.vy)>=220*PONG_TEMPO*PONG_BALL_TEMPO && Math.hypot(game.vx,game.vy)<=240*PONG_TEMPO*PONG_BALL_TEMPO));
   assert.equal(new Set(serves.map(g=>`${g.y},${g.vx},${g.vy}`)).size,20);
   let calls=0;const game=new RallyGame(()=>{calls++;return .5;});
   const before=calls,offset=game.shotOffset;game.step(.1);
   assert.equal(calls,before);assert.equal(game.shotOffset,offset);
+});
+test("Pong's ball-only pace rises 8% without changing paddle tempo",()=>{
+  const game=new RallyGame(()=>.5);
+  assert.ok(Math.abs(Math.hypot(game.vx,game.vy)-230*PONG_TEMPO*PONG_BALL_TEMPO)<1e-9);
+  assert.equal(game.receiverSpeed,255*PONG_TEMPO);
+  assert.equal(PONG_MAX_SPEED,380*PONG_TEMPO*PONG_BALL_TEMPO);
 });
 test("Pong produces varied legal rallies and real points during sustained seeded play",()=>{
   for(const seed of [7,83,191]){

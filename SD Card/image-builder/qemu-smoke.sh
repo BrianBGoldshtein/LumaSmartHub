@@ -5,7 +5,7 @@ set -euo pipefail
 IMAGE_DIR=$(realpath "${1:?Path to completed image-luma-pi4 directory}")
 [[ -f "${IMAGE_DIR}/luma-pi4.img" && -f "${IMAGE_DIR}/boot.vfat" ]] || exit 1
 [[ ${2:-} == '' || ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check ]] || { echo 'Optional second argument: --api-check, --gateway-check, --tailscale-check or --backup-check' >&2; exit 1; }
-[[ $# -le 3 && ( ${3:-} == '' || ${3:-} == --diagnostics ) ]] || { echo 'Optional third argument: --diagnostics (fresh, unprovisioned images only)' >&2; exit 1; }
+[[ $# -le 3 && ( ${3:-} == '' || ${3:-} == --diagnostics || ${3:-} == --diagnostics-unconfined || ${3:-} == --diagnostics-stack ) ]] || { echo 'Optional third argument: --diagnostics, --diagnostics-unconfined or --diagnostics-stack (fresh, unprovisioned images only)' >&2; exit 1; }
 SMOKE_SECONDS=180
 KERNEL_ARGS='console=ttyAMA1,115200 root=/dev/disk/by-slot/system fsck.repair=yes rootwait systemd.show_status=yes'
 if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check ]]; then
@@ -30,18 +30,42 @@ if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscal
     # No removable device is attached; the authorized luma client must get an
     # empty inventory from the root-owned broker over the packaged socket.
     KERNEL_ARGS+=' systemd.wants=luma-backup.socket'
+    if [[ ${3:-} == --diagnostics-stack ]]; then
+      # Disposable VM only: register SIGUSR1 with faulthandler and export the
+      # temporary sitecustomize path before the activated broker starts.
+      KERNEL_ARGS+=' systemd.run="/usr/bin/python3 -c exec(bytes([105,109,112,111,114,116,32,111,115,59,112,61,39,47,114,117,110,47,108,117,109,97,45,100,101,98,117,103,39,59,111,115,46,109,97,107,101,100,105,114,115,40,112,44,101,120,105,115,116,95,111,107,61,84,114,117,101,41,59,111,112,101,110,40,112,43,39,47,115,105,116,101,99,117,115,116,111,109,105,122,101,46,112,121,39,44,39,119,39,41,46,119,114,105,116,101,40,39,105,109,112,111,114,116,32,102,97,117,108,116,104,97,110,100,108,101,114,44,115,105,103,110,97,108,59,102,97,117,108,116,104,97,110,100,108,101,114,46,114,101,103,105,115,116,101,114,40,115,105,103,110,97,108,46,83,73,71,85,83,82,49,44,97,108,108,95,116,104,114,101,97,100,115,61,84,114,117,101,41,39,41]))"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl set-environment PYTHONPATH=/run/luma-debug"'
+    fi
+    if [[ ${3:-} == --diagnostics-unconfined ]]; then
+      # A VM-only differential probe: clear only SystemCallFilter in /run on
+      # the qcow2 overlay to identify whether that sandbox prevents accept().
+      KERNEL_ARGS+=' systemd.run="/usr/bin/python3 -c exec(bytes([105,109,112,111,114,116,32,111,115,59,112,61,39,47,114,117,110,47,115,121,115,116,101,109,100,47,115,121,115,116,101,109,47,108,117,109,97,45,98,97,99,107,117,112,46,115,101,114,118,105,99,101,46,100,39,59,111,115,46,109,97,107,101,100,105,114,115,40,112,44,101,120,105,115,116,95,111,107,61,84,114,117,101,41,59,111,112,101,110,40,112,43,39,47,111,118,101,114,114,105,100,101,46,99,111,110,102,39,44,39,119,39,41,46,119,114,105,116,101,40,39,91,83,101,114,118,105,99,101,93,92,110,83,121,115,116,101,109,67,97,108,108,70,105,108,116,101,114,61,92,110,39,41]))"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl daemon-reload"'
+    fi
     KERNEL_ARGS+=' systemd.run="-/usr/sbin/runuser -u luma -- /opt/luma/venv/bin/python -c s=__import__(bytes([115,111,99,107,101,116]).decode()).socket(1,1);s.settimeout(60);s.connect(bytes([47,114,117,110,47,108,117,109,97,45,98,97,99,107,117,112,46,115,111,99,107]).decode());s.sendall(bytes([123,34,97,99,116,105,111,110,34,58,34,108,105,115,116,34,125,10]));print(s.makefile(bytes([114,98]).decode()).readline().decode().strip())"'
+    if [[ ${3:-} == --diagnostics-stack ]]; then
+      KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl kill --signal=SIGUSR1 luma-backup.service"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/journalctl -u luma-backup.service -n 40 --no-pager"'
+    fi
     if [[ ${3:-} == --diagnostics ]]; then
       # Repeated systemd.run= commands are later ExecStart lines in the same
       # oneshot; '-' lets these read-only diagnostics run after a probe timeout.
-      KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl show luma-backup.service -p ActiveState -p SubState -p ExecMainStatus"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl show luma-backup.service -p ActiveState -p SubState -p MainPID -p CPUUsageNSec -p TasksCurrent -p ControlGroup"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/journalctl -u luma-backup.service -n 25 --no-pager"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl show luma-backup.service -p MainPID -p CPUUsageNSec -p TasksCurrent -p ControlGroup"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/cat /sys/fs/cgroup/system.slice/luma-backup.service/cpu.stat"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/sleep 5"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/cat /sys/fs/cgroup/system.slice/luma-backup.service/cpu.stat"'
+      KERNEL_ARGS+=' systemd.run="/usr/bin/ss -xlpn"'
+    elif [[ ${3:-} == --diagnostics-unconfined ]]; then
+      KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl show luma-backup.service -p ActiveState -p SubState -p MainPID -p CPUUsageNSec"'
       KERNEL_ARGS+=' systemd.run="/usr/bin/journalctl -u luma-backup.service -n 25 --no-pager"'
     fi
   else
     KERNEL_ARGS+=' systemd.run="/usr/bin/curl --fail --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 2 http://127.0.0.1:8742/api/v1/health"'
   fi
 fi
-if [[ ${3:-} == --diagnostics ]]; then
+if [[ ${3:-} == --diagnostics || ${3:-} == --diagnostics-unconfined || ${3:-} == --diagnostics-stack ]]; then
   # Keep the failed normal run. This longer diagnostic is not a normal-boot
   # timing pass; console journal output is only appropriate for fresh images.
   SMOKE_SECONDS=360

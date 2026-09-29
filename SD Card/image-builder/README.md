@@ -6,6 +6,8 @@ Luma uses Raspberry Pi's official `rpi-image-gen` project to build a 64-bit Rasp
 
 The generated image intentionally contains no account tokens, Wi-Fi password, Google client secret, PIN, location, or personal data. Those are collected during onboarding.
 
+The minimal image disables package recommendations, so hardware/network backends that Debian only recommends must be listed explicitly. The Wi-Fi image regression was a missing `wpasupplicant`; the base layer now includes it explicitly. The official `rpi-connect` client, QR encoder and owner-controlled screen-side enrollment broker must all be in the final planned image. No Connect account is linked and remote shell stays off until the owner approves it on the Luma screen. See [campus networking](../docs/CAMPUS_NETWORK.md) and [Pi Connect recovery setup](../docs/PI_CONNECT.md).
+
 After public-asset preparation, the builder writes `image/source-manifest.json`, containing hashes of the packaged source/configuration/assets and an aggregate digest. It checks those inputs again after filesystem assembly and refuses packaging if they changed. The aggregate also appears in `build-manifest.txt`. Use fresh staging for each candidate; neither an existing image nor its provenance is overwritten. This records source bytes, not a claim of bit-for-bit reproducibility: package repositories, build timestamps and generated filesystem identifiers can still vary. `test_source_manifest.py` covers deterministic hashes, change detection, excluded host environments/bytecode, missing inputs, symlink rejection and output overwrite protection.
 
 ## Offline Stanford profile qualification

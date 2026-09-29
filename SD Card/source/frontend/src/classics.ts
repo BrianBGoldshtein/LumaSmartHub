@@ -151,12 +151,16 @@ export function smoothPaddle(position:number,velocity:number,target:number,dt:nu
 }
 const reflect=(value:number,min:number,max:number)=>{const span=max-min,t=((value-min)%(span*2)+span*2)%(span*2);return min+(t>span?2*span-t:t);};
 export const PONG_TEMPO=.78;
-export const PONG_MAX_SPEED=380*PONG_TEMPO;
+// Keep the established paddle tempo; this small ball-only lift is the requested
+// livelier rally feel and is versioned separately for checkpoint migration.
+export const PONG_BALL_TEMPO=1.08;
+export const PONG_TEMPO_VERSION=4;
+export const PONG_MAX_SPEED=380*PONG_TEMPO*PONG_BALL_TEMPO;
 const PONG_ACCELERATION=1200*PONG_TEMPO*PONG_TEMPO;
 export class RallyGame {
   x=350;y=230;vx=240;vy=125;left=230;right=230;score=[0,0];rallies=0;pause=0;matchOver=false;
   leftVelocity=0;rightVelocity=0;
-  shotOffset=0;reactionDelay=0;receiverSpeed=250*PONG_TEMPO;tempoVersion=3;
+  shotOffset=0;reactionDelay=0;receiverSpeed=250*PONG_TEMPO;tempoVersion=PONG_TEMPO_VERSION;
   readonly random:()=>number;
   constructor(random=Math.random){this.random=random;this.serve(this.random()<.5?-1:1);}
   private prepareReturn(){
@@ -169,7 +173,7 @@ export class RallyGame {
   }
   private serve(direction:number){
     this.x=350;this.y=150+this.random()*160;
-    const angle=(this.random()<.5?-1:1)*(.25+this.random()*.4),speed=(220+this.random()*20)*PONG_TEMPO;
+    const angle=(this.random()<.5?-1:1)*(.25+this.random()*.4),speed=(220+this.random()*20)*PONG_TEMPO*PONG_BALL_TEMPO;
     this.vx=direction*speed*Math.cos(angle);this.vy=speed*Math.sin(angle);this.prepareReturn();
   }
   step(dt:number){

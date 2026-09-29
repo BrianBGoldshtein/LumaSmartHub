@@ -72,7 +72,7 @@ class FocusTimer:
         self.chime_until = self.clock()+10 if sound else None
         self._save(now)
 
-    def tick(self, now=None, *, trusted=None, quiet=False):
+    def tick(self, now=None, *, trusted=None):
         now = now or datetime.now(UTC)
         if trusted is not None:
             self.trusted = bool(trusted)
@@ -97,7 +97,7 @@ class FocusTimer:
         remaining = self.remaining()
         if remaining <= 0:
             self.note = ''
-            self._complete(now, sound=not quiet)
+            self._complete(now, sound=True)
             return True
         # NTP correction: keep monotonic countdown, repair only its recovery anchor.
         deadline = now+timedelta(seconds=remaining)
@@ -165,6 +165,6 @@ class FocusTimer:
         self._save(now)
         return CommandResult(True, 'Timer updated.', True)
 
-    def claim_chime(self, *, quiet=False):
+    def claim_chime(self, *, muted=False):
         pending, self.chime_until = self.chime_until, None  # At most once, even across bridge retries.
-        return bool(not quiet and pending is not None and self.clock() <= pending and self.data['status']=='complete')
+        return bool(not muted and pending is not None and self.clock() <= pending and self.data['status']=='complete')

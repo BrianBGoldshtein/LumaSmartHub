@@ -109,13 +109,13 @@ def test_invalid_timer_inputs_do_not_start(timer,value):
     assert t.snapshot()['status']=='idle'
 
 
-def test_label_privacy_quiet_completion_and_sound_expiry(timer):
+def test_label_privacy_completion_alarm_and_sound_expiry(timer):
     t,c=timer
     t.execute('start_timer',{'minutes':1,'label':'Private appointment'},now=NOW)
     assert t.snapshot(private=True)['label']=='Timer'
     c.return_value=160
-    t.tick(NOW,quiet=True)
-    assert not t.claim_chime()
+    t.tick(NOW)
+    assert t.claim_chime()  # display sleep does not suppress an explicitly started timer alarm
     t.execute('start_timer',1,now=NOW)
     c.return_value=220
     t.tick(NOW)
@@ -172,4 +172,17 @@ def test_chime_claim_and_bridge_failures_do_not_repeat():
     assert bridge.apply(snapshot,claim) is None
     claim.assert_called_once()
     play.assert_called_once()
-    assert len(chime_pcm())==26400
+    assert len(chime_pcm())==24000*2*2080//1000
+
+
+def test_timer_alarm_plays_with_display_off_but_obeys_explicit_mute():
+    snapshot={'timer':{'id':'one','status':'complete'},'state':{'display_power':'off'},
+              'settings':{'volume':55},'display':{'quiet':True}}
+    play=Mock()
+    bridge=TimerChimeBridge(play)
+    assert bridge.apply(snapshot,lambda:True)=='played'
+    play.assert_called_once()
+    snapshot['timer']['id']='two'
+    snapshot['settings']['volume']=0
+    assert bridge.apply(snapshot,lambda:True)=='silent'
+    play.assert_called_once()

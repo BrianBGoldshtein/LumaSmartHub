@@ -1,4 +1,4 @@
-"""Short local tone; at-most-once claim from the timer owner, no saved audio."""
+"""Distinct synthesized timer alarm; at-most-once claim, no saved audio."""
 import math
 import struct
 import subprocess
@@ -6,14 +6,24 @@ import subprocess
 
 def chime_pcm():
     rate = 24000
-    return b''.join(struct.pack('<h', round(5000 * math.sin(2*math.pi*(660 if i < rate*.22 else 880)*i/rate)
-                                           * min(1, i/(rate*.015)) * max(0, 1-i/(rate*.55))))
-                    for i in range(round(rate*.55)))
+    sequence = ((740, 360), (0, 120), (880, 360), (0, 120),
+                (1047, 360), (0, 160), (1047, 600))
+    samples = []
+    for frequency, milliseconds in sequence:
+        frames = rate * milliseconds // 1000
+        for frame in range(frames):
+            if not frequency:
+                samples.append(struct.pack('<h', 0))
+                continue
+            envelope = min(1, frame/(rate*.012), (frames-frame)/(rate*.025))
+            value = round(10000 * math.sin(2*math.pi*frequency*frame/rate) * envelope)
+            samples.append(struct.pack('<h', value))
+    return b''.join(samples)
 
 
 def play_chime():
     subprocess.run(['paplay','--raw','--rate=24000','--channels=1','--format=s16le'], input=chime_pcm(),
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=3)
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=5)
 
 
 class TimerChimeBridge:
@@ -28,7 +38,8 @@ class TimerChimeBridge:
         self.seen = timer['id']
         if not claim():
             return 'silent'
-        if snapshot['state']['display_power'] == 'off' or snapshot['settings']['volume'] == 0 or (snapshot.get('display') or {}).get('quiet'):
+        # Sleep/display-off is not mute: the timer alarm remains audible.
+        if snapshot['settings']['volume'] == 0:
             return 'silent'
         try:
             self.play()

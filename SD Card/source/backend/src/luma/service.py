@@ -148,8 +148,10 @@ class LumaService:
         self._sync_sleep(now or datetime.now(UTC))
         self.publish("clock.tick")
 
-    def timer_quiet(self):
-        return self.state.display_power == 'off' or self.settings.volume == 0 or bool(self.display_state and self.display_state['quiet'])
+    def timer_muted(self):
+        # Timer alarms remain audible through scheduled sleep/display-off;
+        # only the owner's explicit zero-volume setting suppresses playback.
+        return self.settings.volume == 0
 
     def timer_tick(self, now=None, *, trusted=None):
         self._sync_sleep(now or datetime.now(UTC))
@@ -159,7 +161,7 @@ class LumaService:
         if self.display_state != self._display_tick_sample:
             self._display_tick_sample = self.display_state
             self.publish('display.updated')
-        if self.timer.tick(now, trusted=trusted, quiet=self.timer_quiet()):
+        if self.timer.tick(now, trusted=trusted):
             self.publish('timer.updated')
 
     def _persist_runtime(self) -> None:

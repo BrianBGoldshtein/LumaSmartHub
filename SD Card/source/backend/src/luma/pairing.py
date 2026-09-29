@@ -121,6 +121,35 @@ class PairingFlow:
         if self.task and not self.task.done():
             await self.cancel(self.session)
 
+    async def forget_phone(self, address):
+        """Remove only the exact currently selected BlueZ phone bond."""
+        if not isinstance(address, str) or not ADDRESS.fullmatch(address):
+            raise ValueError("No valid selected phone")
+        if self.task and not self.task.done():
+            raise ValueError("Finish or cancel the current pairing session first")
+        driver = self.driver_factory()
+        try:
+            await driver.open()
+            objects = await driver.objects()
+            path = next((path for path, interfaces in objects.items()
+                         if path.startswith(driver.adapter + "/dev_")
+                         and interfaces.get("org.bluez.Device1", {}).get("Address", "").casefold() == address.casefold()), None)
+            if path is None:
+                return False
+            props = await driver.properties(path)
+            if props.get("Address", "").casefold() != address.casefold():
+                raise ValueError("The selected phone changed during removal")
+            if props.get("Connected") is True:
+                device = await driver.interface(path, "org.bluez.Device1")
+                with suppress(Exception):
+                    await asyncio.wait_for(device.call_disconnect(), 5)
+            adapter = await driver.interface(driver.adapter, "org.bluez.Adapter1")
+            await asyncio.wait_for(adapter.call_remove_device(path), 10)
+            return True
+        finally:
+            with suppress(Exception):
+                await asyncio.wait_for(driver.close(), 10)
+
     async def run(self):
         driver = self.driver_factory()
         path = None

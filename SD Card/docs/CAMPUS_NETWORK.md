@@ -4,6 +4,12 @@ The intended location has **Stanford Visitor** or **eduroam**, not an assumed ho
 
 The image configuration now explicitly sets the pinned generator's `ieee80211.regdom` to `US` for Stanford, California. Its wireless-regulatory layer writes `options cfg80211 ieee80211_regdom=US` in `/etc/modprobe.d/cfg80211_regdomain.conf`; older candidates used the worldwide `00` default. Confirm the effective radio domain on the real Pi before testing campus channels. This is not a bypass of firmware/regulatory limits. Before deploying outside the US, rebuild with the actual installation country's setting.
 
+## Wi-Fi scanning image defect found during hardware testing
+
+The first Luma candidate's SBOM confirmed that it included NetworkManager and Broadcom firmware but omitted `wpasupplicant`. Debian lists that Wi-Fi backend as a **recommended**, not required, NetworkManager package; Luma's minimal image intentionally disables recommended packages. This is the leading, source-evidenced cause of the Pi OS-versus-Luma difference: Raspberry Pi OS could see the networks, while the Luma scan returned none. The image recipe now installs `wpasupplicant` explicitly. The Luma scanner also now waits for NetworkManager's `LastScan` timestamp to advance before reporting an empty result; earlier it suppressed scan-request failures and waited a fixed two seconds. See the upstream [NetworkManager wireless D-Bus API](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Device.Wireless.html).
+
+This explains the software-image defect but is not a physical retest. The updated image must be built and flashed, then **Device setup → Wi-Fi → Find networks** should list the same visible networks as standard Raspberry Pi OS. Record whether Stanford Visitor and eduroam appear, and whether a scan completes. A previously built candidate does not gain packages from source edits.
+
 ## Stanford Visitor
 
 Stanford documents a browser terms page, a 12-hour session limit, limited bandwidth and restricted services. See [Wireless Access for Stanford Visitors](https://uit.stanford.edu/service/wirelessnet/access). A remembered Wi-Fi profile cannot prevent the university's portal session from expiring.

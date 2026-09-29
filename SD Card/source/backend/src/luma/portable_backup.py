@@ -54,6 +54,9 @@ GAME_FIELDS = {
               {"leftVelocity", "rightVelocity", "shotOffset", "reactionDelay", "receiverSpeed", "tempoVersion"}),
     "blocks": ({"board", "queue", "active", "lines", "points", "cleared", "phase", "ticks", "target"},
                {"pieceId", "decisionTicks", "fallProgress"}),
+    "invaders": ({"alive", "shots", "playerX", "playerVelocity", "turnCooldown", "aimX", "fleetX", "fleetY", "direction",
+                  "score", "best", "wave", "lives", "phase", "pause", "shield", "shootTimer", "enemyTimer",
+                  "thinkTimer", "rng"}, set()),
 }
 PIECES = {"I", "J", "L", "O", "S", "T", "Z"}
 
@@ -89,7 +92,7 @@ def _game_record(key, data):
         elif name == "fallProgress":
             if not _finite(value, 0, 1) or value == 1: return False
         elif name == "tempoVersion":
-            if value not in (2, 3) or type(value) is not int: return False
+            if value not in (2, 3, 4) or type(value) is not int: return False
         elif not _finite(value, .01 if name == "moveDelay" else -1000 if name.endswith("Velocity") else 0,
                          1 if name == "moveDelay" else 1e9):
             return False
@@ -118,6 +121,25 @@ def _game_record(key, data):
                 and _finite(data["left"], 52, 408) and _finite(data["right"], 52, 408)
                 and _integer(data["rallies"], 0, 1e9) and _finite(data["pause"], -1, 3)
                 and type(data["matchOver"]) is bool)
+    if key == "invaders":
+        return (isinstance(data["alive"], list) and len(data["alive"]) == 55
+                and all(type(value) is bool for value in data["alive"])
+                and isinstance(data["shots"], list) and len(data["shots"]) <= 4
+                and all(isinstance(shot, dict) and set(shot) == {"x", "y", "enemy"}
+                        and _finite(shot["x"], 0, 640) and _finite(shot["y"], 0, 400)
+                        and type(shot["enemy"]) is bool for shot in data["shots"])
+                and _finite(data["playerX"], 22, 618) and data["playerVelocity"] in (-120, 120)
+                and _finite(data["turnCooldown"], 0, 1)
+                and _finite(data["aimX"], 30, 610) and _finite(data["fleetX"], 8, 136)
+                and _finite(data["fleetY"], 42, 240) and type(data["direction"]) is int
+                and data["direction"] in (-1, 1) and _integer(data["score"], 0, 1e9)
+                and _integer(data["best"], 0, 1e9) and _integer(data["wave"], 1, 1e6)
+                and _integer(data["lives"], 0, 3) and data["phase"] in {"play", "wave", "redeploy", "lost"}
+                and ((data["phase"] == "lost" and data["lives"] == 0)
+                     or (data["phase"] != "lost" and data["lives"] > 0))
+                and _finite(data["pause"], 0, 2) and _finite(data["shield"], 0, 1)
+                and _finite(data["shootTimer"], -2, 2) and _finite(data["enemyTimer"], -3, 3)
+                and _finite(data["thinkTimer"], 0, 1) and _integer(data["rng"], 1, 0xFFFFFFFF))
     board, queue, active, target = (data["board"], data["queue"], data["active"], data["target"])
     return (isinstance(board, list) and len(board) == 20
             and all(isinstance(row, list) and len(row) == 10 and all(cell is None or isinstance(cell, str) and cell in PIECES for cell in row) for row in board)

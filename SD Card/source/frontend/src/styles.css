@@ -6,6 +6,14 @@
 .is-ambient .game-field .kinetic-scene,.is-ambient .game-field .blocks-game { position:absolute; inset:0; width:100%; height:100%; max-height:none; }
 .game-field .game-boundary { vector-effect:non-scaling-stroke; }
 .game-field .game-caption { font-family:var(--heading); font-weight:700; letter-spacing:0; }
+.theme-neon-grid .snake-subdivisions { fill:none; stroke:var(--accent); stroke-opacity:.3; stroke-width:1; vector-effect:non-scaling-stroke; shape-rendering:crispEdges; }
+.theme-neon-grid .invader-subdivisions { fill:none; stroke:var(--accent); stroke-opacity:.24; stroke-width:1; vector-effect:non-scaling-stroke; shape-rendering:crispEdges; }
+.invader-row-0 { fill:var(--game-T); }.invader-row-1 { fill:var(--game-I); }.invader-row-2 { fill:var(--game-J); }.invader-row-3 { fill:var(--game-O); }.invader-row-4 { fill:var(--game-S); }
+.invader-ship { fill:var(--accent); }.invader-player-shot { fill:var(--ink); }.invader-enemy-shot { fill:var(--game-Z); }
+.invader-loss,.invader-wave { fill:var(--ink); font:700 18px var(--heading); letter-spacing:2px; paint-order:stroke; stroke:var(--bg); stroke-width:5px; }
+.invader-sprite { filter:drop-shadow(0 0 3px color-mix(in srgb,var(--accent) 30%,transparent)); }
+.theme-neon-grid .invader-sprite { filter:none; shape-rendering:crispEdges; }
+.theme-neon-grid .invader-row,.theme-neon-grid .invader-ship,.theme-neon-grid .invader-player-shot,.theme-neon-grid .invader-enemy-shot { shape-rendering:crispEdges; }
 .ambient-visual { --game-I:#7fbfc6; --game-J:#91aac9; --game-L:#d4a584; --game-O:#d9c58c; --game-S:#a9cfb0; --game-T:#b6a4cd; --game-Z:#cb939b; }
 .theme-neon-grid .ambient-visual { --game-I:#71d8e0; --game-J:#839fe5; --game-L:#e6ae77; --game-O:#e4d48a; --game-S:#a1e8d8; --game-T:#c3a2e3; --game-Z:#e795a7; }
 .theme-hearth .ambient-visual { --game-I:#89b6ad; --game-J:#92a4ae; --game-L:#d59f76; --game-O:#e2c18a; --game-S:#b3bd8a; --game-T:#bb9ba9; --game-Z:#cf8e7d; }
@@ -25,6 +33,7 @@
 .theme-neon-grid .ambient-visual.is-game .scene-light { background:linear-gradient(to right,var(--line) 1px,transparent 1px),linear-gradient(to bottom,var(--line) 1px,transparent 1px); background-size:var(--arcade-cell) var(--arcade-cell); background-position:0 0; opacity:.7; }
 .theme-neon-grid .game-frame-blocks { position:absolute; width:calc(15*var(--arcade-cell)); left:round(nearest,calc((100% - 15*var(--arcade-cell))/2),var(--arcade-cell)); top:round(down,calc((100% - 21*var(--arcade-cell))/2),var(--arcade-cell)); gap:0; --game-hud-height:var(--arcade-cell); }
 .theme-neon-grid .game-frame:not(.game-frame-blocks) { --game-unit:round(down,min(calc((100dvw - 2*var(--arcade-cell))/var(--game-columns)),calc((100dvh - 3*var(--arcade-cell))/var(--game-rows))),var(--pixel)); width:calc(var(--game-columns)*var(--game-unit)); position:absolute; left:round(nearest,calc((100% - var(--game-columns)*var(--game-unit))/2),var(--pixel)); top:round(nearest,calc((100% - var(--game-rows)*var(--game-unit) - var(--arcade-cell) - 4*var(--pixel))/2),var(--pixel)); --game-hud-height:var(--arcade-cell); gap:calc(4*var(--pixel)); }
+.theme-neon-grid .game-frame-invaders { --game-unit:round(down,min(var(--arcade-cell),calc((100dvw - 2*var(--arcade-cell))/32),calc((100dvh - 3*var(--arcade-cell))/20)),var(--pixel)); width:calc(32*var(--game-unit)); left:round(nearest,calc((100% - 32*var(--game-unit))/2),var(--arcade-cell)); top:round(nearest,calc((100% - 20*var(--game-unit) - var(--arcade-cell) - 4*var(--pixel))/2),var(--arcade-cell)); }
 .theme-neon-grid .game-field .kinetic-scene { overflow:visible; }
 .theme-neon-grid .block-preview-label { font-size:calc(6*var(--pixel)); line-height:var(--arcade-cell); }
 .theme-neon-grid .game-hud { font-size:calc(8*var(--pixel)); }.theme-neon-grid .game-hud span { font-size:calc(6*var(--pixel)); }

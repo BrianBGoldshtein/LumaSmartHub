@@ -42,12 +42,18 @@ def valid_games():
         "rally": {"x": 350, "y": 230, "vx": 180, "vy": 60, "left": 230, "right": 230,
                   "score": [1, 2], "rallies": 4, "pause": 0, "matchOver": False,
                   "leftVelocity": 0, "rightVelocity": 0, "shotOffset": 0,
-                  "reactionDelay": .1, "receiverSpeed": 195, "tempoVersion": 3},
+                  "reactionDelay": .1, "receiverSpeed": 195, "tempoVersion": 4},
         "blocks": {"board": [[None] * 10 for _ in range(20)], "queue": ["I", "O"],
                    "active": {"kind": "T", "x": 3, "y": 0, "rotation": 0}, "lines": 0,
                    "points": 0, "cleared": [], "phase": "move", "ticks": 0,
                    "target": {"x": 3, "rotation": 0, "value": 0}, "pieceId": 1,
                    "decisionTicks": 2, "fallProgress": 0},
+        "invaders": {"alive": [True] * 55, "shots": [], "playerX": 320, "playerVelocity": 120,
+                     "turnCooldown": .4,
+                     "aimX": 320, "fleetX": 40, "fleetY": 42, "direction": 1,
+                     "score": 10, "best": 10, "wave": 1, "lives": 3, "phase": "play",
+                     "pause": 0, "shield": .3, "shootTimer": .2, "enemyTimer": .9,
+                     "thinkTimer": .1, "rng": 7},
     }
 
 
@@ -219,15 +225,23 @@ def test_document_rejects_unknown_fields_bad_settings_and_unvalidated_game_saves
         validate_document(games)
 
 
-def test_all_four_browser_game_checkpoints_round_trip_only_after_schema_validation():
+def test_all_five_browser_game_checkpoints_round_trip_only_after_schema_validation():
     document = empty_document()
     document["games"] = valid_games()
     restored = decrypt(encrypt(document, PASSWORD), PASSWORD)
     assert restored["games"] == document["games"]
+    redeploying = deepcopy(document)
+    redeploying["games"]["invaders"].update(phase="redeploy", pause=.6, lives=1, score=330, wave=2)
+    assert validate_document(redeploying)["games"]["invaders"]["phase"] == "redeploy"
+    impossible = deepcopy(document)
+    impossible["games"]["invaders"].update(phase="play", lives=0)
+    with pytest.raises(PortableBackupError):
+        validate_document(impossible)
     for key, mutation in (("snake", lambda g: g.update(food=g["body"][0])),
                           ("breaker", lambda g: g.update(bricks=[True])),
                           ("rally", lambda g: g.update(score=[1, -1])),
-                          ("blocks", lambda g: g.update(board=[[{}] * 10] * 20))):
+                          ("blocks", lambda g: g.update(board=[[{}] * 10] * 20)),
+                          ("invaders", lambda g: g.update(alive=[True]))):
         bad = deepcopy(document)
         mutation(bad["games"][key])
         with pytest.raises(PortableBackupError):

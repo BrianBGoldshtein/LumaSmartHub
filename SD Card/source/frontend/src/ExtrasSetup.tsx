@@ -71,7 +71,7 @@ export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boo
           </>}
           <button disabled={busy}>{busy?'Saving…':task==='timer'?'Save timer defaults':'Save weather preferences'}</button>
         </form>
-        {task==='timer'?<><p className="setup-note">A short local chime marks completion; screen-off or muted audio stays silent. A reboot never replays an old chime.</p><p className="setup-note">Try “Hey Luma, start focus timer” or open Focus timer from dashboard controls. Custom labels stay hidden in private standby.</p></>:<p className="setup-note">Uses the same Open-Meteo forecast, refreshed about every 15 minutes. Convenience hints, not emergency alerts. No account required; your configured coordinates are sent to the weather provider.</p>}
+        {task==='timer'?<><p className="setup-note">A clear multi-tone local alarm sounds at completion, even during Sleep/display-off. Hub volume at zero stays silent; a reboot never replays an old alarm.</p><p className="setup-note">Try “Hey Luma, start focus timer” or open Focus timer from dashboard controls. Custom labels stay hidden in private standby.</p></>:<p className="setup-note">Uses the same Open-Meteo forecast, refreshed about every 15 minutes. Convenience hints, not emergency alerts. No account required; your configured coordinates are sent to the weather provider.</p>}
         </>}
       </section>}
       <details><summary>About optional features</summary><p className="setup-note">Room scenes remain off until you configure and explicitly enable them. USB backups include encrypted portable settings, not accounts, credentials, recordings or game scores. Backups are best tested before you rely on them.</p></details>

@@ -12,6 +12,59 @@ REQUEST = {"action": "connect", "device": DEVICE, "access_point": AP, "password"
 PROPS = {"Ssid": b"Home: Wi-Fi", "Mode": 2, "Flags": 1, "RsnFlags": 0x100}
 
 
+@pytest.mark.asyncio
+async def test_scan_waits_until_networkmanager_reports_scan_complete():
+    manager = NetworkManager(None)
+    root = AsyncMock()
+    root.call_get_devices.return_value = [DEVICE]
+    wifi = AsyncMock()
+    wifi.call_request_scan.return_value = None
+    wifi.call_get_access_points.return_value = [AP]
+    manager.interface = AsyncMock(side_effect=lambda path, name: root if path == ROOT else wifi)
+    manager.properties = AsyncMock(side_effect=[
+        {"WirelessEnabled": True, "WirelessHardwareEnabled": True, "Connectivity": 1},
+        {"DeviceType": 2},
+        {"LastScan": 100},
+        {"LastScan": 100},  # NetworkManager has not finished yet.
+        {"LastScan": 101},  # LastScan advances only after scan completion.
+        {"LastScan": 101, "ActiveAccessPoint": "/"},
+        {**PROPS, "Strength": 83},
+    ])
+
+    result = await manager.scan()
+
+    assert wifi.call_request_scan.await_count == 1
+    assert result["scan_complete"] is True
+    assert result["wifi_device_count"] == 1
+    assert result["networks"][0]["ssid"] == "Home: Wi-Fi"
+
+
+@pytest.mark.asyncio
+async def test_scan_reports_timeout_instead_of_claiming_it_saw_no_networks(monkeypatch):
+    from luma import network
+
+    monkeypatch.setattr(network, "SCAN_TIMEOUT_SECONDS", 0)
+    manager = NetworkManager(None)
+    root = AsyncMock()
+    root.call_get_devices.return_value = [DEVICE]
+    wifi = AsyncMock()
+    wifi.call_get_access_points.return_value = []
+    manager.interface = AsyncMock(side_effect=lambda path, name: root if path == ROOT else wifi)
+    manager.properties = AsyncMock(side_effect=[
+        {"WirelessEnabled": True, "WirelessHardwareEnabled": True, "Connectivity": 1},
+        {"DeviceType": 2},
+        {"LastScan": -1},
+        {"LastScan": -1},
+        {"LastScan": -1, "ActiveAccessPoint": "/"},
+    ])
+
+    result = await manager.scan()
+
+    assert result["scan_complete"] is False
+    assert result["wifi_device_count"] == 1
+    assert result["networks"] == []
+
+
 @pytest.mark.parametrize("payload", [None, {}, {"action": "shell"}, {"action": "scan", "command": "reboot"}, {**REQUEST, "device": "/etc/passwd"}, {**REQUEST, "access_point": ROOT + "/AccessPoint/1/../../"}, {**REQUEST, "password": "x\nsecret"}, {**REQUEST, "password": "x" * 65}])
 def test_wifi_rejects_unbounded_or_arbitrary_operations(payload):
     with pytest.raises(ValueError):

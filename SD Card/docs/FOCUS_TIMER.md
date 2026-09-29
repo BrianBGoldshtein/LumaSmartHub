@@ -28,9 +28,9 @@ Upstream basis: [systemd-timesyncd synchronization marker](https://github.com/sy
 
 ## Completion and audio
 
-A backend transition creates a ten-second, memory-only opportunity to play one 0.55-second local tone. The desktop bridge claims it once before playback. Claim failure, playback failure, process restart and bridge retries do not replay it. This deliberately favors a missed chime over repeated/unexpected sound. Screen-off and zero-volume modes suppress it. Future night-clock integration must extend this suppression to that display mode.
+A backend transition creates a ten-second, memory-only opportunity to play a clear, 2.08-second rising multi-tone alarm, ending with a sustained note. The desktop bridge claims it once before playback. Claim failure, playback failure, process restart and bridge retries do not replay it. Scheduled Sleep, display-off and night-clock quiet modes do **not** suppress a timer the owner explicitly started; setting hub volume to zero does. A timer already expired on reboot remains silent and is never replayed.
 
-The tone is synthesized in memory and sent to the already-installed `paplay` utility on the selected system sink. No audio file, browser autoplay exception or external sound asset is required. See [Debian paplay reference](https://manpages.debian.org/bookworm/pulseaudio-utils/paplay.1.en.html). Audio routes/volume/echo behavior still require the owner's eventual physical qualification.
+The alarm is synthesized in memory and sent to the already-installed `paplay` utility on the selected system sink. No audio file, browser autoplay exception or external sound asset is required. See [Debian paplay reference](https://manpages.debian.org/bookworm/pulseaudio-utils/paplay.1.en.html). Software verifies the playback request and at-most-once behavior; actual speaker audibility, output routing and volume still require the owner's physical qualification.
 
 ## Implementation and checks
 

@@ -75,24 +75,25 @@ USB export.
   distro user-group defaults. Static checks do not start a manager, provision
   the actual image account, or prove the final raw image contains these files.
 
-## Not physically or release qualified yet
+## Packaged evidence and remaining acceptance
 
-The source-level broker/API/UI tests pass, but the packaged exact-image gate is
-currently **failing**. On September 28, the r4 ARM64 image's disposable QEMU
-boot reported `luma-backup.socket` listening and activated the installed
-`luma-backup.service`. A request from the actual unprivileged `luma` account
-using the installed venv's Python client still timed out after a 60-second
-deadline; the service was active/running and its journal showed no error. This
-is not a pass for systemd activation or peer authorization. The test uses no
-USB device and changes only a qcow2 overlay, not the candidate image or SD
-card.
+The September 28 r4 timeout was diagnosed as cold imports through the VeSync
+SDK/Mashumaro graph before the backup socket handler started. The refactor
+split fixed-cost envelope validation into `backup_envelope.py`. On the newer
+immutable r5 candidate, disposable QEMU activated `luma-backup.socket`; the
+installed unprivileged `luma` client received `{"volumes":[]}` at 63.4 seconds.
+The QEMU run ended at its planned 180-second bound after the response
+assertion passed. This supersedes the r4 failure above; it is evidence for
+that exact r5 image only, not for sources added afterward. r5 remains marked
+`boot_verified=false` and `hardware_qualified=false`.
 
-Next software gate: find why the active packaged handler does not answer in
-QEMU, correct it, rebuild an immutable candidate from the verified source,
-then require both the empty-inventory socket response and an authenticated
-owner-local API round trip on the exact image. Only after the owner prompts may
-assembled-device tests exercise real USB media, restore and power-cut
-recovery. Keep the current card/image untouched meanwhile.
+Still required: exact-current-source image/file/package requalification,
+authenticated owner-local API/backup round trip on the exact image, packaged
+WebSocket delivery, then owner-authorized real USB discovery/export/restore
+and power-loss tests. The synthetic HTTP/socket integration and QEMU empty
+inventory test use no physical USB drive. Keep the current card/image
+untouched until the owner approves hardware testing and has a verified way to
+preserve current settings.
 
 Do not call feature 10 complete, do not write to arbitrary disks, and do not
 claim a tested USB backup/restore flow until those pieces and a real packaged

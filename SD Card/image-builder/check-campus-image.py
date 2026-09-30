@@ -78,7 +78,7 @@ def main():
                 fields[key] = value
         if fields.get("Status") == "install ok installed" and fields.get("Package"):
             installed_packages.add(fields["Package"])
-    missing_packages = {"wpasupplicant", "dnsmasq-base", "firmware-realtek", "rpi-connect", "qrencode", "gvfs-backends", "gvfs-daemons", "libpipewire-0.3-modules", "libspa-0.2-modules"} - installed_packages
+    missing_packages = {"wpasupplicant", "dnsmasq-base", "firmware-realtek", "rpi-connect", "qrencode", "gvfs-backends", "gvfs-daemons", "polkitd", "libpipewire-0.3-modules", "libspa-0.2-modules"} - installed_packages
     if missing_packages:
         raise ValueError("Required wireless/recovery package(s) are missing: " + ", ".join(sorted(missing_packages)))
     inspect("stat /usr/lib/aarch64-linux-gnu/pipewire-0.3/libpipewire-module-echo-cancel.so")

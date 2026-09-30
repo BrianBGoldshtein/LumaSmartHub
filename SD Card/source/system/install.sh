@@ -29,7 +29,7 @@ apt-get install -y --no-install-recommends \
   pipewire-pulse python3 python3-venv wlr-randr ddcutil dbus-user-session \
   lightdm avahi-daemon i2c-tools pulseaudio-utils gcc python3-dev linux-libc-dev espeak-ng alsa-utils \
   libwayland-dev libpango1.0-dev libxkbcommon-dev pkg-config make patch xz-utils nftables iptables \
-  udisks2 gvfs-backends util-linux exfatprogs ntfs-3g firmware-realtek dnsmasq-base
+  udisks2 polkitd gvfs-backends util-linux exfatprogs ntfs-3g firmware-realtek dnsmasq-base
 apt-get install -y --no-install-recommends rpi-connect qrencode
 
 bash "${SOURCE_ROOT}/system/build-keyboard.sh" "${SOURCE_ROOT}/assets/keyboard/wvkbd_0.15.orig.tar.xz" \

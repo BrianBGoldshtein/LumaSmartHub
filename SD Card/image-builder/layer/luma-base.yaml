@@ -51,6 +51,9 @@ mmdebstrap:
     # GTK/Chromium file chooser needs the desktop volume monitor to enumerate
     # USB media; udisks2 alone only provides the lower-level block service.
     - gvfs-backends
+    # udisks2 only Recommends polkitd. Without it, the file chooser can list a
+    # USB drive but a non-root desktop user cannot mount/open it.
+    - polkitd
     - gcc
     - python3-dev
     - linux-libc-dev

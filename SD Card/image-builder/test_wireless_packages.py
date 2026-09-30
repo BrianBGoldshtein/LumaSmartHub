@@ -62,8 +62,9 @@ class WirelessImagePackageTests(unittest.TestCase):
         installer = (ROOT / "source/system/install.sh").read_text()
         checker = (ROOT / "image-builder/check-campus-image.py").read_text()
         self.assertIn("- gvfs-backends", layer)
-        self.assertIn("udisks2 gvfs-backends", installer)
-        self.assertIn('"gvfs-backends", "gvfs-daemons"', checker)
+        self.assertIn("udisks2 polkitd gvfs-backends", installer)
+        self.assertIn("- polkitd", layer)
+        self.assertIn('"gvfs-backends", "gvfs-daemons", "polkitd"', checker)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@
 
 This candidate includes the optional Levoit purifier integration. Earlier image archives are obsolete for this source revision and remain only as recoverable historical candidates.
 
+**Known physical finding:** The r12 image omitted `polkitd`. The native file browser can list a USB stick but cannot mount/open it as the non-root kiosk user, blocking selection of a Google OAuth JSON on that stick. This is an OS-package omission, not evidence that the USB controller failed. After enrolling Pi Connect, install `polkitd` once on the Pi using the [first-boot repair](../../docs/FIRST_BOOT.md); this preserves Luma state and needs no reflash. The feature-branch image source now requires and audits the package, but this immutable r12 archive does **not** contain that fix. The encrypted-backup broker is a separate path and still requires physical USB testing.
+
 ## Checks completed
 
 - Fresh Linux test runs: 889 backend and 43 image-builder tests passed. Windows runs: 864 backend passed (25 skipped), 126 frontend tests passed, and the production frontend built.

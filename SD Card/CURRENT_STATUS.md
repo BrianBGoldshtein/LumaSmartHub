@@ -9,6 +9,7 @@ Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed
 - Optional Levoit Core 300S/300S-P setup and conservative VeSync control, subject to actual model/account/network qualification.
 - Morning, Night, Arrive and Away scenes, disabled by default, with purifier-only bound actions, durable one-shot execution, separate remote consent, and no startup replay.
 - Portable encrypted settings-only USB backup/restore and the signed, app-only updater design. The signing key remains offline.
+- r12 hardware finding: the native file chooser enumerates USB media but cannot mount it because `polkitd` was omitted by the minimal package install. An in-place Pi Connect admin repair is documented in [first boot](docs/FIRST_BOOT.md); future image source now requires and audits `polkitd`. This does not claim physical USB backup/export acceptance.
 - Full-screen themed ambient animations and game checkpoints. Existing Tetris timing and score ramp remain unchanged.
 
 ## Release gates

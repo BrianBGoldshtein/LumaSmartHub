@@ -64,3 +64,36 @@ handling from a small offline intent classifier. Keep recognition, answers and
 safety decisions local; reject uncertain or unauthorized actions. The
 pleasant offline female speech output is a separate pending dependency and
 hardware-audition task.
+
+## 3. Visible software-update progress and recovery
+
+Owner observation during the `0.2.2` live install: the hub went black with
+only a mouse pointer for several minutes. That may be a legitimate kiosk
+restart, but the absence of feedback is alarming. Starting with `0.2.3`, an
+update must never look like an unexplained dead screen.
+
+Plan a persistent, theme-matched progress surface **outside the application
+release being replaced**. The current installer stops the Luma user kiosk
+while it switches versions, so an overlay implemented only inside the React
+dashboard cannot cover the critical blank interval. First determine whether
+the existing user session can safely keep a minimal cached update view alive
+while API services restart; otherwise add a small independently supervised
+local progress display before relying on the new UI. If that needs a systemd
+unit/package change, qualify and schedule the required OS maintenance rather
+than pretending an app-only bundle can install it.
+
+Show honest named phases—verifying, copying, switching, restarting, checking,
+complete or restoring previous version—plus the target version, elapsed time
+and a clear **keep power connected** instruction. Do not invent a percentage
+for unbounded SD-card copy/fsync work. If the UI can only estimate, label it
+as an estimate. On failure, display whether rollback succeeded and a safe
+next step; persist a non-secret summary so reboot or kiosk restart does not
+erase the outcome. Keep credentials, private data and full logs off this
+screen. Block duplicate Install actions throughout the run.
+
+Acceptance: visible feedback throughout a deliberately slow install and a
+normal restart; success and rollback simulations; no dark interval longer
+than a short measured handoff; correct version/status after reboot; readable
+progress in each theme at wall distance; and a physical Pi 4/SD-card timing
+test. The update safety/rollback behavior must remain at least as strong as
+`0.2.2`.

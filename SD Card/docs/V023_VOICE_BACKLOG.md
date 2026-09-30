@@ -1,5 +1,8 @@
 # Luma 0.2.3 voice backlog (planning, not in 0.2.2)
 
+Part of the broader [0.2.3 feature backlog](V023_FEATURE_BACKLOG.md), which
+also plans the across-the-room typography and layout overhaul.
+
 Owner request: expand **Hey Luma** into a useful, forgiving, fully offline
 command interface. These are candidate requirements for the next feature
 release, not a claim that the microphone or voice pipeline has passed physical

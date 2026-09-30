@@ -284,6 +284,9 @@ def test_apply_stages_switches_and_keeps_prior_release(tmp_path):
         pytest.skip("the updater's atomic symlink switch is Linux-only")
     bundle, public = make_bundle(tmp_path)
     app, releases, current = installed_tree(tmp_path)
+    saved_state = tmp_path / "var/lib/luma/settings.sqlite"
+    saved_state.parent.mkdir(parents=True)
+    saved_state.write_bytes(b"owner's saved state")
     controller = FakeController()
     candidate = apply_bundle(bundle, app_root=app, releases_root=releases,
                              public_key_path=public, controller=controller,
@@ -293,6 +296,7 @@ def test_apply_stages_switches_and_keeps_prior_release(tmp_path):
     assert current.exists() and (candidate / "frontend/index.html").read_text() == "<main>new app</main>"
     assert json.loads((candidate / ".luma-release.json").read_text())["version"] == "0.3.0"
     assert controller.actions == ["stop", "start"]
+    assert saved_state.read_bytes() == b"owner's saved state"
 
 
 def test_apply_installs_wheel_and_repairs_venv_entrypoint_after_rename(tmp_path):
@@ -320,6 +324,9 @@ def test_failed_health_check_restores_old_release_and_restarts(tmp_path):
         pytest.skip("the updater's atomic symlink rollback is Linux-only")
     bundle, public = make_bundle(tmp_path)
     app, releases, current = installed_tree(tmp_path)
+    saved_state = tmp_path / "var/lib/luma/settings.sqlite"
+    saved_state.parent.mkdir(parents=True)
+    saved_state.write_bytes(b"owner's saved state")
     controller = FakeController()
     with pytest.raises(UpdateError, match="health check"):
         apply_bundle(bundle, app_root=app, releases_root=releases,
@@ -329,6 +336,7 @@ def test_failed_health_check_restores_old_release_and_restarts(tmp_path):
     assert current.exists()
     assert not (releases / "0.3.0").exists()
     assert controller.actions == ["stop", "start", "stop", "start"]
+    assert saved_state.read_bytes() == b"owner's saved state"
 
 
 def test_directory_sync_failure_after_pointer_replace_rolls_back(tmp_path, monkeypatch):

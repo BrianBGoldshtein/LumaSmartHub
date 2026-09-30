@@ -78,7 +78,7 @@ def main():
                 fields[key] = value
         if fields.get("Status") == "install ok installed" and fields.get("Package"):
             installed_packages.add(fields["Package"])
-    missing_packages = {"wpasupplicant", "dnsmasq-base", "firmware-realtek", "rpi-connect", "qrencode", "gvfs-backends", "gvfs-daemons", "polkitd", "libpipewire-0.3-modules", "libspa-0.2-modules"} - installed_packages
+    missing_packages = {"wpasupplicant", "dnsmasq-base", "firmware-realtek", "rpi-connect-lite", "qrencode", "gvfs-backends", "gvfs-daemons", "polkitd", "libpipewire-0.3-modules", "libspa-0.2-modules"} - installed_packages
     if missing_packages:
         raise ValueError("Required wireless/recovery package(s) are missing: " + ", ".join(sorted(missing_packages)))
     inspect("stat /usr/lib/aarch64-linux-gnu/pipewire-0.3/libpipewire-module-echo-cancel.so")
@@ -113,6 +113,7 @@ def main():
         package + "device_agent.py": "source/backend/src/luma/device_agent.py",
         package + "voice_agent.py": "source/backend/src/luma/voice_agent.py",
         package + "voice_calibration.py": "source/backend/src/luma/voice_calibration.py",
+        package + "mic_hardware.py": "source/backend/src/luma/mic_hardware.py",
         package + "voice.py": "source/backend/src/luma/voice.py",
         "/home/luma/.config/systemd/user/luma-voice.service": "source/system/luma-voice.service",
         "/home/luma/.config/pipewire/pipewire.conf.d/99-luma-echo-cancel.conf": "source/system/pipewire/99-luma-echo-cancel.conf",

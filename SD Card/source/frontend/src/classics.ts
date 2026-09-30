@@ -153,8 +153,8 @@ const reflect=(value:number,min:number,max:number)=>{const span=max-min,t=((valu
 export const PONG_TEMPO=.78;
 // Keep the established paddle tempo; this small ball-only lift is the requested
 // livelier rally feel and is versioned separately for checkpoint migration.
-export const PONG_BALL_TEMPO=1.08;
-export const PONG_TEMPO_VERSION=4;
+export const PONG_BALL_TEMPO=1.12;
+export const PONG_TEMPO_VERSION=5;
 export const PONG_MAX_SPEED=380*PONG_TEMPO*PONG_BALL_TEMPO;
 const PONG_ACCELERATION=1200*PONG_TEMPO*PONG_TEMPO;
 export class RallyGame {

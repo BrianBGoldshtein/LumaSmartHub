@@ -160,7 +160,7 @@ test("Pong serves vary by run and shot choices stay stable between collisions",(
   const before=calls,offset=game.shotOffset;game.step(.1);
   assert.equal(calls,before);assert.equal(game.shotOffset,offset);
 });
-test("Pong's ball-only pace rises 8% without changing paddle tempo",()=>{
+test("Pong's ball-only pace rises 12% without changing paddle tempo",()=>{
   const game=new RallyGame(()=>.5);
   assert.ok(Math.abs(Math.hypot(game.vx,game.vy)-230*PONG_TEMPO*PONG_BALL_TEMPO)<1e-9);
   assert.equal(game.receiverSpeed,255*PONG_TEMPO);

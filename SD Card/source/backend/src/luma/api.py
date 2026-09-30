@@ -36,6 +36,7 @@ from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
+from . import mic_hardware
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
 from .tailscale_setup import tailscale_request, validate_request as validate_tailscale_request
@@ -141,6 +142,11 @@ class CalibrationLevel(BaseModel):
     session: str = Field(max_length=64)
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+
+class MicGainRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    gain: int = Field(strict=True, ge=0, le=63)
 
 
 class SettingsPatch(BaseModel):
@@ -654,6 +660,17 @@ def create_app(
     @app.get("/api/v1/voice/calibration", dependencies=[Depends(local_only)])
     async def calibration_status() -> dict:
         return calibration_payload()
+
+    @app.get("/api/v1/voice/hardware", dependencies=[Depends(local_only)])
+    async def mic_hardware_status() -> dict:
+        return await asyncio.to_thread(mic_hardware.status)
+
+    @app.post("/api/v1/voice/hardware/gain", dependencies=[Depends(local_only)])
+    async def mic_hardware_gain(payload: MicGainRequest) -> dict:
+        try:
+            return await asyncio.to_thread(mic_hardware.save_and_apply, payload.gain)
+        except mic_hardware.MicHardwareError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/v1/voice/calibration/start", dependencies=[Depends(local_only)])
     async def calibration_start() -> dict:

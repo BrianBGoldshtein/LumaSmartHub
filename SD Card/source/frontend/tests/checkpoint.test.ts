@@ -95,6 +95,16 @@ test("version-three Pong checkpoints lift only the ball and migrate exactly once
   assert.equal(restored.vx,game.vx*PONG_BALL_TEMPO);assert.equal(restored.vy,game.vy*PONG_BALL_TEMPO);assert.equal(restored.left,game.left);assert.equal(restored.right,game.right);assert.equal(restored.leftVelocity,game.leftVelocity);assert.equal(restored.rightVelocity,game.rightVelocity);assert.equal(restored.receiverSpeed,game.receiverSpeed);assert.equal(restored.reactionDelay,game.reactionDelay);assert.equal(restored.tempoVersion,PONG_TEMPO_VERSION);assert.deepEqual(restored.score,[6,4]);
   saveGame("rally",restored,storage);const again=restoreGame("rally",new RallyGame(),storage);assert.equal(again.vx,restored.vx);assert.equal(again.vy,restored.vy);
 });
+test("version-four Pong checkpoints receive only the small new ball lift",()=>{
+  const storage=store(),game=new RallyGame(()=>.5);game.tempoVersion=4;game.vx=180;game.vy=90;game.leftVelocity=24;game.rightVelocity=-18;game.receiverSpeed=200;game.score=[8,6];saveGame("rally",game,storage);
+  const restored=restoreGame("rally",new RallyGame(),storage);
+  assert.ok(Math.abs(restored.vx-game.vx*PONG_BALL_TEMPO/1.08)<1e-9);
+  assert.ok(Math.abs(restored.vy-game.vy*PONG_BALL_TEMPO/1.08)<1e-9);
+  assert.equal(restored.leftVelocity,game.leftVelocity);assert.equal(restored.rightVelocity,game.rightVelocity);
+  assert.equal(restored.receiverSpeed,game.receiverSpeed);assert.deepEqual(restored.score,[8,6]);
+  saveGame("rally",restored,storage);
+  assert.equal(restoreGame("rally",new RallyGame(),storage).vx,restored.vx);
+});
 test("portable backups capture, validate and restore all five actual game checkpoint schemas",()=>{
   const source=store();
   saveGame("snake",new SnakeGame(()=>.5),source);

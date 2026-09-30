@@ -82,13 +82,15 @@ that document is research/compatibility guidance, not a verified purchase list.
 
 For an owner setting up the appliance:
 
-1. Read the [r11 candidate handoff](SD%20Card/docs/R11_HANDOFF.md), its
-   SHA-256 and build manifest. The source folder by itself is **not** a bootable
+1. Read the [current status](SD%20Card/CURRENT_STATUS.md) and the
+   [focused r13 checks](SD%20Card/docs/R13_TEST_SEQUENCE.md). Do not flash
+   until the new candidate's SHA-256 and build manifest are published. The
+   source folder by itself is **not** a bootable
    SD image. If the card already contains your Google/Tailscale setup, first
    make and verify a private full-card backup or explicitly accept setting up
    those accounts again; flashing does not migrate saved state.
 2. Use Raspberry Pi Imager → **Choose OS → Use Custom** and select the exact
-   `.img.xz` provided with that handoff. Select and verify the intended card
+   `.img.xz` provided with the current candidate handoff. Select and verify the intended card
    carefully: writing erases it. Skip Imager's OS customization; Luma has its
    own user and key-only administration setup. See
    [`SD Card/docs/FLASHING.md`](SD%20Card/docs/FLASHING.md).
@@ -102,7 +104,7 @@ For an owner setting up the appliance:
    Visitor, the owner accepts the network terms; Stanford eduroam uses the
    owner's SUNet identity. Follow
    [`SD Card/docs/CAMPUS_NETWORK.md`](SD%20Card/docs/CAMPUS_NETWORK.md).
-   The current r11 development image candidate includes NetworkManager's Wi-Fi
+   The current image design includes NetworkManager's Wi-Fi
    supplicant backend and screen-based [Raspberry Pi Connect recovery
    access](SD%20Card/docs/PI_CONNECT.md), which remains off until the owner
    enrolls it. It also includes the optional, PIN-gated `Luma-Devices` hotspot
@@ -128,20 +130,18 @@ frontend, production UI build and image-manifest tools. Required public assets
 are regenerated from checksum-pinned sources in CI. **CI has no updater signing
 private key and does not publish a trusted image or update bundle.**
 
-The newest full-image candidate is [r11](SD%20Card/docs/R11_HANDOFF.md),
-SHA-256 `585e06340ac8001de20d62ea71460ee8aac8073d09737d1df2e4beed0be00f62`.
-Its source passed [hosted CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36636971459):
-996 backend, 131 frontend and 47 image-builder checks, plus the production UI
-build. XZ/checksum, source fingerprint, raw partition and package checks, an
-exhaustive 171-file image audit, and disposable QEMU checks of the backup and
-Pi Connect setup brokers passed. The image manifest still says
-`boot_verified=false` and its audit says `hardware_qualified=false`: these are
-software checks, not physical Pi/campus/Levoit acceptance.
-
-Newer source fixes scene cancellation reporting and protects unsaved private
-Shortcut permissions in the editor. It is not in r11; see
-[`SD Card/CURRENT_STATUS.md`](SD%20Card/CURRENT_STATUS.md) before choosing an
-image for testing.
+The owner flashed and began testing [r12](SD%20Card/image/r12-current-916b5d7-20260930/README.md).
+That test found three unresolved platform issues: Pi Connect sign-in stopped
+before the verification QR, the native file browser could not mount USB media,
+and Hey Luma's input meter stayed near zero. The next r13 source corrects the
+Connect command order, packages the missing USB authorization service and
+adds a ReSpeaker V1 hardware check and saved capture-gain control. It also
+slightly raises Pong ball speed while preserving saved games. Source tests
+passed locally (900 backend, 127 frontend, 43 image-builder), but the r13
+image and physical retest are not yet accepted. See
+[`SD Card/CURRENT_STATUS.md`](SD%20Card/CURRENT_STATUS.md) for the current
+artifact and acceptance state. `boot_verified=false` and
+`hardware_qualified=false` remain true until actual Pi checks pass.
 
 The device checks signed releases targeted to `main`, not raw branch files;
 the private signing key stays on the Linux build machine and outside GitHub.

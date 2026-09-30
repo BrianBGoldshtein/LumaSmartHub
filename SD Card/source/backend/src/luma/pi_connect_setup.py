@@ -24,6 +24,7 @@ CLI = "/usr/bin/rpi-connect"
 QR = "/usr/bin/qrencode"
 ADMIN = "luma-admin"
 ADMIN_HOME = "/home/luma-admin"
+SHELL_APPROVAL = Path(ADMIN_HOME) / ".config/luma/remote-shell-approved"
 VERIFY_URL = re.compile(r"https://connect\.raspberrypi\.com/verify/[A-Za-z0-9-]{6,80}")
 ACTION_SET = {"status", "signin", "shell_on", "shell_off"}
 PENDING_SECONDS = 600
@@ -104,11 +105,13 @@ def parse_status(output: bytes) -> dict[str, object]:
 
 
 class PiConnectSetup:
-    def __init__(self, runner=run_command, qr=qr_data, clock=monotonic, installed=None):
+    def __init__(self, runner=run_command, qr=qr_data, clock=monotonic, installed=None,
+                 shell_approval: Path = SHELL_APPROVAL):
         self.run = runner
         self.qr = qr
         self.clock = clock
         self.installed = installed or (lambda: Path(CLI).is_file())
+        self.shell_approval = shell_approval
         self.verification_url: str | None = None
         self.qr_image: str | None = None
         self.pending_until = 0.0
@@ -119,8 +122,21 @@ class PiConnectSetup:
         except (OSError, TimeoutError):
             raise ValueError("Raspberry Pi Connect could not start. Check Internet and the device status.") from None
         if code:
-            raise ValueError("Raspberry Pi Connect could not complete that step. Check Internet and try again.")
+            stage = " ".join(args)
+            if stage == "on":
+                raise ValueError("Pi Connect could not start its admin session. Refresh status and try again.")
+            if stage == "signin":
+                raise ValueError("Pi Connect could not request sign-in. Check its service and Internet access.")
+            raise ValueError("Pi Connect could not change remote-shell access. Refresh status and try again.")
         return output
+
+    def _clear_shell_approval(self) -> None:
+        self.shell_approval.unlink(missing_ok=True)
+
+    def _approve_shell(self) -> None:
+        self.shell_approval.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.shell_approval.write_text("owner enabled remote shell\n", encoding="ascii")
+        self.shell_approval.chmod(0o600)
 
     async def _status(self) -> dict[str, object]:
         if not self.installed():
@@ -134,6 +150,13 @@ class PiConnectSetup:
         if code and not output:
             output = b"Raspberry Pi Connect is not running"
         result = parse_status(output)
+        if result["signed_in"] and result["remote_shell"] and not self.shell_approval.is_file():
+            # Connect does not permit changing access before sign-in. Its
+            # default shell permission is removed as soon as approval is
+            # observed; only the separate local owner button persists it.
+            await self._command("shell", "off")
+            _, output = await self.run(CLI, "status", timeout=12)
+            result = parse_status(output)
         if result["signed_in"]:
             self.verification_url = self.qr_image = None
         elif self.verification_url and self.clock() <= self.pending_until:
@@ -150,11 +173,10 @@ class PiConnectSetup:
         if action == "signin":
             if not self.installed():
                 return await self._status()
+            self._clear_shell_approval()
             await self._command("on")
-            # This support image uses a dedicated shell-only admin identity.
-            await self._command("vnc", "off")
-            # Make a fresh install fail closed even if an upstream default changes.
-            await self._command("shell", "off")
+            # Connect rejects shell/vnc changes until account approval. The
+            # image uses shell-only Connect Lite, so no VNC endpoint exists.
             output = await self._command("signin")
             match = VERIFY_URL.search(output.decode("utf-8", "replace"))
             status = await self._status()
@@ -174,6 +196,11 @@ class PiConnectSetup:
             if not current["signed_in"]:
                 raise ValueError("Approve this Pi in your Raspberry Pi Connect account first.")
             await self._command("shell", "on")
+            try:
+                self._approve_shell()
+            except OSError:
+                await self._command("shell", "off")
+                raise ValueError("Pi Connect could not preserve the shell approval. Try again.") from None
             current = await self._status()
             if not current["remote_shell"]:
                 raise ValueError("Pi Connect did not confirm that remote shell is enabled. Refresh status and retry.")
@@ -181,6 +208,7 @@ class PiConnectSetup:
         current = await self._status()
         if not current["available"] or not current["signed_in"]:
             return current
+        self._clear_shell_approval()
         await self._command("shell", "off")
         return await self._status()
 

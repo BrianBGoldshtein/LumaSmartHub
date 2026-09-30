@@ -2,6 +2,7 @@ import {useEffect,useState} from "react";
 import {useSetupActivity} from "./setupActivity";
 import "./features.css";
 type Calibration={active:boolean;passed:boolean;phrase:string|null;completed:number;total:number;message:string;attempts:number;agent_available:boolean;agent_phase:string;agent_error:string|null;signal_available:boolean;signal_rms:number;signal_peak:number};
+type MicHardware={available:boolean;gain:number;max_gain:number;capture_on:boolean;route_ready:boolean};
 type VoiceGroup={title:string;examples:string[]};
 const diagnosticCopy:Record<string,string>={
   recognizer_unavailable:"The offline speech engine could not start. Reinstall or update Luma, then retry.",
@@ -18,10 +19,12 @@ async function request(path:string,body?:unknown){
 }
 export function VoiceSetup({demo}:{demo:boolean}){
   const [enabled,setEnabled]=useState<boolean|null>(demo?true:null),[status,setStatus]=useState<Calibration>(),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
+  const [hardware,setHardware]=useState<MicHardware|undefined>(demo?{available:true,gain:39,max_gain:63,capture_on:true,route_ready:true}:undefined),[gain,setGain]=useState(39);
   const [library,setLibrary]=useState<VoiceGroup[]>(demo?previewLibrary:[]);
   useEffect(()=>{if(!demo)request('voice/library').then(data=>setLibrary(data.groups)).catch(()=>setLibrary([]));},[demo]);
   useSetupActivity(busy || !!status?.active);
   useEffect(()=>{if(!demo)request("settings").then(data=>setEnabled(data.voice_enabled)).catch(()=>setMessage("Device connection unavailable."));},[demo]);
+  useEffect(()=>{if(!demo)request("voice/hardware").then((data:MicHardware)=>{setHardware(data);setGain(data.gain);}).catch(()=>setHardware(undefined));},[demo]);
   useEffect(()=>{
     if(demo || !status?.active)return;
     const timer=window.setInterval(()=>request("voice/calibration").then(setStatus).catch(()=>setMessage("Voice check connection interrupted.")),1000);
@@ -32,7 +35,10 @@ export function VoiceSetup({demo}:{demo:boolean}){
   const voiceDiagnostic=!status?.active?null:status.agent_error?diagnosticCopy[status.agent_error]??"The local voice service reported a startup problem.":!status.agent_available?"Voice service has not checked in yet. It may still be starting; if this stays here, retry the microphone check.":!status.signal_available?"Voice service is running, but no microphone audio frames have arrived yet.":status.signal_peak>=.995?"Mic is live but clipping. Lower its capture gain before continuing.":status.signal_rms<.002?"Mic is live but very quiet. Speak closer or raise the ReSpeaker capture gain.":"Mic is live. Say the phrase below at your normal room distance.";
   return <section><h2>Hey Luma</h2><p>Your local voice controls are on by default. Say “Hey Luma” followed by a command. Audio stays in memory on this Pi; it is not saved or uploaded. You can turn the microphone off below; that choice survives restarts.</p>
     <button disabled={busy || enabled===null} onClick={()=>act(async()=>{if(!demo)await request("settings",{voice_enabled:!enabled});setEnabled(!enabled);setStatus(undefined);})}>{enabled===null?"Loading microphone setting…":enabled?"Turn microphone off":"Enable local voice"}</button>
-    <p className="setup-note">Check three phrases from your normal room distance. This tests recognition and signal level—it does not train a personal voice model. Test commands do not change your settings. If the signal is too quiet or clips, adjust microphone capture gain using the audio setup guide.</p>
+    <div className="voice-hardware"><strong>ReSpeaker capture</strong><p>{hardware===undefined?"Checking the V1 sound card…":hardware.available?hardware.capture_on&&hardware.route_ready?"V1 sound card and mic input path detected.":"V1 sound card detected; capture path needs initialization.":"V1 sound card not detected. Check the HAT model and seating with power off; gain cannot fix a missing card."}</p>
+      {hardware?.available&&<><label htmlFor="mic-capture-gain">Capture gain · {gain} / {hardware.max_gain}</label><input id="mic-capture-gain" type="range" min="0" max={hardware.max_gain} step="1" value={gain} disabled={busy} onChange={event=>setGain(Number(event.target.value))}/><button disabled={busy} onClick={()=>act(async()=>{if(demo){setMessage("Preview only. Gain was not changed.");return;}const next:MicHardware=await request("voice/hardware/gain",{gain});setHardware(next);setGain(next.gain);setMessage("Capture gain saved. Try the voice check again.");})}>Save capture gain</button></>}
+      <button disabled={busy||demo} onClick={()=>act(async()=>{const next:MicHardware=await request("voice/hardware");setHardware(next);setGain(next.gain);})}>Recheck microphone hardware</button></div>
+    <p className="setup-note">Check three phrases from your normal room distance. This tests recognition and signal level; it does not train a personal voice model. If the meter stays at zero after the HAT is detected, the audio route still needs physical diagnosis.</p>
     <button disabled={busy || !enabled || status?.active} onClick={()=>act(async()=>{if(demo){setMessage("Preview only. The microphone check runs on your Pi.");return;}setStatus(await request("voice/calibration/start",{}));})}>Check my voice</button>
     {status && <div className="voice-calibration" role="region" aria-label="Microphone check status"><p>{status.completed} / {status.total} phrases checked</p>{status.phrase && <h2>“{status.phrase}”</h2>}{voiceDiagnostic&&<div className={`voice-diagnostic ${status.agent_available?"is-live":"is-waiting"}`} role="status"><strong>{voiceDiagnostic}</strong><div className="voice-meter" role="progressbar" aria-label="Live microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={signalPercent}><span style={{width:`${signalPercent}%`}}/></div><small>{status.agent_available?`Voice service: ${status.agent_phase}`:status.agent_error?"Voice startup diagnostic":"Waiting for local voice service"} · level meter is temporary and only active during this check</small></div>}<p>{status.message}</p>{status.active && <button disabled={busy} onClick={()=>act(async()=>setStatus(await request("voice/calibration/cancel",{})))}>Cancel check</button>}</div>}
     {message && <p role="status">{message}</p>}

@@ -45,6 +45,7 @@ class PiConnectServiceTests(unittest.TestCase):
         self.assertEqual(service["ReadWritePaths"].split(), [
             "/home/luma-admin/.config/com.raspberrypi.connect",
             "/home/luma-admin/.config/systemd/user",
+            "/home/luma-admin/.config/luma",
             "/home/luma-admin/.cache",
             "/home/luma-admin/.local/share",
         ])

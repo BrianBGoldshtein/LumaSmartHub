@@ -4,11 +4,11 @@
 set -euo pipefail
 IMAGE_DIR=$(realpath "${1:?Path to completed image-luma-pi4 directory}")
 [[ -f "${IMAGE_DIR}/luma-pi4.img" && -f "${IMAGE_DIR}/boot.vfat" ]] || exit 1
-[[ ${2:-} == '' || ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check || ${2:-} == --pi-connect-check ]] || { echo 'Optional second argument: --api-check, --gateway-check, --tailscale-check, --backup-check or --pi-connect-check' >&2; exit 1; }
+[[ ${2:-} == '' || ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check || ${2:-} == --pi-connect-check || ${2:-} == --pi-connect-preflight ]] || { echo 'Optional second argument: --api-check, --gateway-check, --tailscale-check, --backup-check, --pi-connect-check or --pi-connect-preflight' >&2; exit 1; }
 [[ $# -le 3 && ( ${3:-} == '' || ${3:-} == --diagnostics || ${3:-} == --diagnostics-unconfined || ${3:-} == --diagnostics-stack ) ]] || { echo 'Optional third argument: --diagnostics, --diagnostics-unconfined or --diagnostics-stack (fresh, unprovisioned images only)' >&2; exit 1; }
 SMOKE_SECONDS=180
 KERNEL_ARGS='console=ttyAMA1,115200 root=/dev/disk/by-slot/system fsck.repair=yes rootwait systemd.show_status=yes'
-if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check || ${2:-} == --pi-connect-check ]]; then
+if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check || ${2:-} == --pi-connect-check || ${2:-} == --pi-connect-preflight ]]; then
   # systemd.run normally replaces default.target. Keep the appliance's graphical
   # boot and add the generated diagnostic unit alongside it, only in this VM.
   # Output is health/version/database only; never dump settings or credentials.
@@ -47,6 +47,18 @@ if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscal
       KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl kill --signal=SIGUSR1 luma-backup.service"'
       KERNEL_ARGS+=' systemd.run="/usr/bin/journalctl -u luma-backup.service -n 40 --no-pager"'
     fi
+  elif [[ ${2:-} == --pi-connect-preflight ]]; then
+    # Diagnostic only, in the disposable qcow2 VM: exercise the exact packaged
+    # CLI and dedicated user's bus. Never sign in or export an account URL.
+    KERNEL_ARGS+=' systemd.wants=luma-pi-connect-setup.socket'
+    KERNEL_ARGS+=' systemd.run="/usr/bin/systemctl start user@1001.service"'
+    KERNEL_ARGS+=' systemd.run="/usr/bin/echo LUMA-PI-CONNECT-PREFLIGHT-ON"'
+    KERNEL_ARGS+=' systemd.run="-/usr/sbin/runuser -u luma-admin -- /usr/bin/env HOME=/home/luma-admin USER=luma-admin LOGNAME=luma-admin XDG_RUNTIME_DIR=/run/user/1001 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus /usr/bin/rpi-connect on"'
+    KERNEL_ARGS+=' systemd.run="/usr/bin/sleep 5"'
+    KERNEL_ARGS+=' systemd.run="/usr/bin/echo LUMA-PI-CONNECT-PREFLIGHT-VNC-OFF"'
+    KERNEL_ARGS+=' systemd.run="-/usr/sbin/runuser -u luma-admin -- /usr/bin/env HOME=/home/luma-admin USER=luma-admin LOGNAME=luma-admin XDG_RUNTIME_DIR=/run/user/1001 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus /usr/bin/rpi-connect vnc off"'
+    KERNEL_ARGS+=' systemd.run="/usr/bin/echo LUMA-PI-CONNECT-PREFLIGHT-SHELL-OFF"'
+    KERNEL_ARGS+=' systemd.run="-/usr/sbin/runuser -u luma-admin -- /usr/bin/env HOME=/home/luma-admin USER=luma-admin LOGNAME=luma-admin XDG_RUNTIME_DIR=/run/user/1001 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus /usr/bin/rpi-connect shell off"'
   elif [[ ${2:-} == --pi-connect-check ]]; then
     # Fresh image only: ask the actual local setup broker for status as its
     # authorized API user. The broker runs `rpi-connect status`; this does not

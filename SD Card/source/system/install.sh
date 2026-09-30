@@ -30,7 +30,7 @@ apt-get install -y --no-install-recommends \
   lightdm avahi-daemon i2c-tools pulseaudio-utils gcc python3-dev linux-libc-dev espeak-ng alsa-utils \
   libwayland-dev libpango1.0-dev libxkbcommon-dev pkg-config make patch xz-utils nftables iptables \
   udisks2 polkitd gvfs-backends util-linux exfatprogs ntfs-3g firmware-realtek dnsmasq-base
-apt-get install -y --no-install-recommends rpi-connect qrencode
+apt-get install -y --no-install-recommends rpi-connect-lite qrencode
 
 bash "${SOURCE_ROOT}/system/build-keyboard.sh" "${SOURCE_ROOT}/assets/keyboard/wvkbd_0.15.orig.tar.xz" \
   "${INSTALL_ROOT}/bin" "${INSTALL_ROOT}/third-party/wvkbd"
@@ -125,7 +125,7 @@ if [[ -f "${SOURCE_ROOT}/system/luma-admin.pub" ]]; then
   install -m 0600 -o luma-admin -g luma-admin "${SOURCE_ROOT}/system/luma-admin.pub" /home/luma-admin/.ssh/authorized_keys
   install -d -m 0700 -o luma-admin -g luma-admin \
     /home/luma-admin/.config/com.raspberrypi.connect /home/luma-admin/.config/systemd/user \
-    /home/luma-admin/.cache /home/luma-admin/.local/share
+    /home/luma-admin/.config/luma /home/luma-admin/.cache /home/luma-admin/.local/share
   # Keep the dedicated Connect shell available across logout and reboot. It is
   # still unlinked and disabled until the owner approves it on the touchscreen.
   install -d -m 0755 /var/lib/systemd/linger

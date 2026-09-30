@@ -63,7 +63,7 @@ def test_status_parser_returns_only_link_and_remote_shell_state():
 
 
 @pytest.mark.asyncio
-async def test_signin_starts_connect_but_keeps_remote_shell_off_and_qr_local():
+async def test_signin_starts_connect_but_keeps_remote_shell_off_and_qr_local(tmp_path):
     fake = FakePiConnect()
     qr_urls = []
 
@@ -71,21 +71,23 @@ async def test_signin_starts_connect_but_keeps_remote_shell_off_and_qr_local():
         qr_urls.append(url)
         return "data:image/png;base64,LOCAL"
 
-    setup = PiConnectSetup(fake, local_qr, lambda: 20.0, installed=lambda: True)
+    setup = PiConnectSetup(fake, local_qr, lambda: 20.0, installed=lambda: True,
+                           shell_approval=tmp_path / "shell-approved")
     result = await setup.execute({"action": "signin"})
     assert result["state"] == "awaiting_approval"
     assert result["verification_url"] == VERIFY and result["qr"] == "data:image/png;base64,LOCAL"
     assert qr_urls == [VERIFY]
-    assert [call[0][1:] for call in fake.calls] == [("on",), ("vnc", "off"), ("shell", "off"), ("signin",), ("status",)]
+    assert [call[0][1:] for call in fake.calls] == [("on",), ("signin",), ("status",)]
     assert not fake.shell
     assert (await setup.execute({"action": "status"}))["verification_url"] == VERIFY
 
 
 @pytest.mark.asyncio
-async def test_untrusted_verification_url_is_never_shown():
+async def test_untrusted_verification_url_is_never_shown(tmp_path):
     fake = FakePiConnect()
     fake.signin_output = b"https://connect.raspberrypi.com.attacker.example/verify/ABCD-EFGH"
-    setup = PiConnectSetup(fake, installed=lambda: True)
+    setup = PiConnectSetup(fake, installed=lambda: True,
+                           shell_approval=tmp_path / "shell-approved")
     with pytest.raises(ValueError, match="No verification link"):
         await setup.execute({"action": "signin"})
     assert setup.verification_url is None
@@ -93,14 +95,16 @@ async def test_untrusted_verification_url_is_never_shown():
 
 
 @pytest.mark.asyncio
-async def test_approval_link_is_ephemeral_and_shell_requires_owner_approval():
+async def test_approval_link_is_ephemeral_and_shell_requires_owner_approval(tmp_path):
     fake = FakePiConnect()
     now = [1.0]
 
     async def no_qr(_url):
         return None
 
-    setup = PiConnectSetup(fake, no_qr, lambda: now[0], installed=lambda: True)
+    marker = tmp_path / "shell-approved"
+    setup = PiConnectSetup(fake, no_qr, lambda: now[0], installed=lambda: True,
+                           shell_approval=marker)
     with pytest.raises(ValueError, match="Approve this Pi"):
         await setup.execute({"action": "shell_on"})
     await setup.execute({"action": "signin"})
@@ -110,8 +114,39 @@ async def test_approval_link_is_ephemeral_and_shell_requires_owner_approval():
     fake.signed_in = True  # the owner approved the device at Raspberry Pi Connect
     result = await setup.execute({"action": "shell_on"})
     assert result["remote_shell"] and fake.shell
+    assert marker.read_text() == "owner enabled remote shell\n"
+    # A socket-activated broker can restart without forgetting the approval.
+    restarted = PiConnectSetup(fake, installed=lambda: True, shell_approval=marker)
+    assert (await restarted.execute({"action": "status"}))["remote_shell"]
     result = await setup.execute({"action": "shell_off"})
     assert not result["remote_shell"] and not fake.shell
+    assert not marker.exists()
+
+
+@pytest.mark.asyncio
+async def test_connect_default_shell_is_revoked_after_signin_without_owner_approval(tmp_path):
+    fake = FakePiConnect()
+    fake.signed_in = True
+    fake.shell = True
+    marker = tmp_path / "shell-approved"
+    setup = PiConnectSetup(fake, installed=lambda: True, shell_approval=marker)
+    result = await setup.execute({"action": "status"})
+    assert result["signed_in"] and not result["remote_shell"]
+    assert ("shell", "off") in [call[0][1:] for call in fake.calls]
+    assert not marker.exists()
+
+
+@pytest.mark.asyncio
+async def test_temporary_not_running_status_does_not_forget_owner_approval(tmp_path):
+    fake = FakePiConnect()
+    marker = tmp_path / "shell-approved"
+    marker.write_text("owner enabled remote shell\n")
+    setup = PiConnectSetup(fake, installed=lambda: True, shell_approval=marker)
+    assert not (await setup.execute({"action": "status"}))["signed_in"]
+    assert marker.exists()
+    fake.signed_in = True
+    fake.shell = True
+    assert (await setup.execute({"action": "status"}))["remote_shell"]
 
 
 @pytest.mark.asyncio
@@ -147,7 +182,7 @@ def test_image_installs_a_limited_lingering_admin_connect_broker():
     installer = (root / "system/install.sh").read_text()
     service = (root / "system/luma-pi-connect-setup.service").read_text()
     socket = (root / "system/luma-pi-connect-setup.socket").read_text()
-    assert "rpi-connect qrencode" in installer
+    assert "rpi-connect-lite qrencode" in installer
     assert "/var/lib/systemd/linger/luma-admin" in installer
     assert "luma-pi-connect-setup.socket" in installer
     assert "User=luma-admin" in service and "NoNewPrivileges=true" in service

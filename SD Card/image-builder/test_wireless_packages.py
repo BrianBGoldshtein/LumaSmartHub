@@ -45,7 +45,7 @@ class WirelessImagePackageTests(unittest.TestCase):
     def test_pi_connect_is_shipped_but_not_pre_enrolled_or_enabled(self):
         layer = (ROOT / "image-builder/layer/luma-base.yaml").read_text()
         installer = (ROOT / "source/system/install.sh").read_text()
-        self.assertIn("- rpi-connect", layer)
+        self.assertIn("- rpi-connect-lite", layer)
         self.assertNotIn("rpi-connect on", installer)
         self.assertNotIn("rpi-connect signin", installer)
         self.assertIn("- qrencode", layer)

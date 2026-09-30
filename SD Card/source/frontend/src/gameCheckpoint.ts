@@ -27,7 +27,7 @@ function valid(key:GameKey,s:Record<string,unknown>):boolean{
     else if(field==="paddleAim"){if(!number(s[field],52,648))return false;}
     else if(field==="decisionTicks"){if(!integer(s[field],0,4))return false;}
     else if(field==="fallProgress"){if(!number(s[field],0,1) || s[field]===1)return false;}
-    else if(field==="tempoVersion"){if(s[field]!==2 && s[field]!==3 && s[field]!==PONG_TEMPO_VERSION)return false;}
+    else if(field==="tempoVersion"){if(s[field]!==2 && s[field]!==3 && s[field]!==4 && s[field]!==PONG_TEMPO_VERSION)return false;}
     else if(!number(s[field],field==="moveDelay"?.01:field.endsWith("Velocity")?-1000:0,field==="moveDelay"?1:1e9))return false;
   }
   if(key==="snake")return list(s.body,v=>integer(v,0,639),1,640) && new Set(s.body as number[]).size===(s.body as number[]).length && s.head===(s.body as number[])[0] && integer(s.food,-1,639) && !(s.body as number[]).includes(s.food as number) && integer(s.score,0,1e9) && integer(s.best,0,1e9) && integer(s.pause,0,20) && typeof s.won==="boolean";
@@ -77,13 +77,13 @@ export function restoreGame<T extends object>(key:GameKey,game:T,store?:Store):T
       if(key==="blocks" && !("decisionTicks" in data))(game as Record<string,unknown>).decisionTicks=0;
       if(key==="rally" && data.tempoVersion!==PONG_TEMPO_VERSION){
         const oldVersion=data.tempoVersion;
-        const targetScale=oldVersion===2?PONG_TEMPO*PONG_BALL_TEMPO:oldVersion===3?PONG_BALL_TEMPO:.84*PONG_TEMPO*PONG_BALL_TEMPO;
+        const targetScale=oldVersion===2?PONG_TEMPO*PONG_BALL_TEMPO:oldVersion===3?PONG_BALL_TEMPO:oldVersion===4?PONG_BALL_TEMPO/1.08:.84*PONG_TEMPO*PONG_BALL_TEMPO;
         const speed=Math.hypot(data.vx as number,data.vy as number),scale=speed?Math.min(targetScale,PONG_MAX_SPEED/speed):1;
         (game as Record<string,unknown>).vx=(data.vx as number)*scale;
         (game as Record<string,unknown>).vy=(data.vy as number)*scale;
         // Version 3 already has the current paddle tuning; do not slow or
         // accelerate its paddles just because the ball now has its own tempo.
-        if(oldVersion!==3){
+        if(oldVersion!==3 && oldVersion!==4){
           for(const field of ["leftVelocity","rightVelocity"])if(typeof data[field]==="number")(game as Record<string,unknown>)[field]=data[field]*PONG_TEMPO;
           if(typeof data.receiverSpeed==="number")(game as Record<string,unknown>).receiverSpeed=Math.max(230*PONG_TEMPO,Math.min(280*PONG_TEMPO,data.receiverSpeed*PONG_TEMPO));
           if(typeof data.reactionDelay==="number")(game as Record<string,unknown>).reactionDelay=Math.min(.2,data.reactionDelay/PONG_TEMPO);

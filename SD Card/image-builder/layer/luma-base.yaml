@@ -44,7 +44,7 @@ mmdebstrap:
     - firmware-realtek
     # Optional owner-enrolled remote shell/screen sharing; stays off until
     # explicitly linked and enabled by the owner.
-    - rpi-connect
+    - rpi-connect-lite
     # Render the one-time Pi Connect verification QR locally; no third-party
     # QR endpoint ever receives the sign-in link.
     - qrencode

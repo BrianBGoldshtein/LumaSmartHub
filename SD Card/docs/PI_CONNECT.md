@@ -2,39 +2,25 @@
 
 ## Current inclusion and validation
 
-Pi Connect is included in the r9 development-image candidate alongside its
-touchscreen enrollment UI, official client/QR encoder, dedicated `luma-admin`
-account, linger configuration and fixed-action local broker. A disposable
-QEMU overlay of the exact r9 raw image passed API/database health and returned
-fresh-device status to the authorized Luma user: `available=true`,
-`signed_in=false`, `state=off`. No account was enrolled and remote shell was
-not enabled. The emulator ended at its planned 180-second timeout; this is a
-targeted package/broker check, not a complete or physical boot qualification.
-The candidate still reports `boot_verified=false` and `hardware_qualified=false`.
+The physical r12 test exposed a first-time enrollment bug: the broker called
+`rpi-connect vnc off` and `rpi-connect shell off` before sign-in. The real
+packaged client rejects both commands until the Pi is signed in, so the button
+failed before it could return a verification QR. A disposable QEMU boot of the
+exact r12 image reproduced this. Correct date/time, working weather and a
+successful Internet check do not resolve the command-order bug.
 
-The already-running older card predates this OS-level client/account/broker
-setup and cannot gain all of it from an app-only release. The owner will handle
-the eventual one-time candidate flash after reviewing the full acceptance
-checklist and preserving current settings. No Pi or SD was changed here. The
-intended update path after that base image is the signed Luma application
-updater; Pi Connect remains the troubleshooting/recovery path. A later OS,
-security or hardware-platform change could still require another OS image.
-
-Preview-only visual QA on September 29 checked the setup entry in Hearth, Luma
-Glass and Neon Grid at 320×568, 390×844, 720×1280, 1280×720 and 2048×1536.
-The card stayed within the viewport and interactive controls did not spill
-horizontally. Demo mode correctly showed a non-actionable preview state. This
-is rendered-layout evidence only—not enrollment, broker, network or hardware
-acceptance.
-
-In the r9 candidate, the service is **not signed in or remotely enabled**. The
-owner links the Pi and explicitly enables remote shell on its screen. No
-account password, auth key, or sign-in link is placed in the image or project
-files. Physical enrollment and remote-shell access remain untested.
+The corrected image source installs the official shell-only Connect Lite
+client, which has no VNC service. The broker now starts Connect, requests
+sign-in, and displays a locally generated QR. After account approval, it
+disables any default shell permission until the owner explicitly taps
+**Enable admin remote shell**. That approval persists across broker restart
+and Pi reboot. This correction is not yet physically verified, and the next
+image still requires owner testing. No account password, auth key or sign-in
+link is placed in the image or project files.
 
 ## Set up from the Luma touchscreen
 
-After that updated image is installed, first connect the Pi to Wi-Fi with
+After the corrected image is installed, first connect the Pi to Wi-Fi with
 working Internet. Stanford eduroam or a Visitor session with its terms
 accepted can provide that connection. Then:
 
@@ -52,7 +38,7 @@ accepted can provide that connection. Then:
 
 The remote shell is the dedicated `luma-admin` account with passwordless
 administrative `sudo`; treat it as full control of the Pi. Pi Connect screen
-sharing is intentionally left off. The account is linked to the owner's
+sharing is not installed. The account is linked to the owner's
 Raspberry Pi account; enable two-factor authentication on that account and
 disable remote shell from the Luma screen when you no longer need it. Disabling
 shell keeps sign-in but revokes shell access; the owner's local sign-in can
@@ -64,23 +50,17 @@ on the card under `/home/luma-admin`; app-only signed updates do not replace
 that account or its state. A full OS reflash does erase it and requires the
 owner to enroll the newly imaged Pi again.
 
-## Current-image limitation and preserving settings
+## Preserving settings during a new image flash
 
-The card currently written predates the touch enrollment broker. Its Luma
-screen has no supported control to start `rpi-connect signin`, so there is no
-touch-only Pi Connect enrollment path on that install today. SSH is not needed
-after a full updated image is installed: that image supplies **Pi Connect
-setup in Device setup** and starts with remote shell disabled.
-
-The signed `.lup` app updater intentionally cannot add OS packages, Linux user
-accounts, system services, or other root-level configuration. Therefore it
-cannot add the missing Pi Connect setup broker to this older OS. A full OS
-reflash would erase on-card settings; **do not reflash until Luma's backup and
-restore has been verified**, especially because this Pi has not detected the
-owner's USB drive yet. Once the platform image is qualified and the data has a
-verified backup/restore path, the updated image can be installed and Pi Connect
-enrolled without SSH. App-only releases after that preserve `/var/lib/luma`
-settings and the enrolled Connect identity.
+A full OS flash erases the current card's Wi-Fi, PIN, calendar and phone setup
+and any Pi Connect/Tailscale enrollment. The r12 USB file browser is presently
+blocked by its missing polkit authority, so USB backup has not been verified
+on that device. Before reflashing, inventory what configuration has actually
+been completed and preserve any recoverable settings by a supported route.
+The corrected image includes the authority, but physical USB retesting is
+still required. Later signed `.lup` app updates are designed to preserve
+`/var/lib/luma` and the Connect identity; they cannot replace OS packages or
+system services on r12.
 
 ## Network and troubleshooting
 

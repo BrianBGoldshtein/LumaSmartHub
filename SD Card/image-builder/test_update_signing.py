@@ -100,6 +100,11 @@ class OfflineSigningTests(unittest.TestCase):
         self.assertNotIn("secrets.", source)
         self.assertIn("--publish", source)
         self.assertIn("luma-update-ed25519.pem", source)
+        self.assertIn("qualify-update-bundle.py", source)
+        self.assertIn("verify_and_extract", source)
+        self.assertIn("SD Card/image-builder", source)
+        self.assertLess(source.index("qualify-update-bundle.py"), source.index('read -r CONFIRMATION'))
+        self.assertLess(source.index("verify_and_extract"), source.index('read -r CONFIRMATION'))
 
     @unittest.skipUnless(os.name == "posix", "POSIX mode bits are not portable to Windows")
     def test_private_key_permissions_must_be_owner_only(self):

@@ -33,11 +33,12 @@ the previously prepared 0.2.3 application work plus these follow-ons:
 - A real-signed-bundle Linux qualification utility for both successful
   switch and health-failure rollback with a saved-state sentinel.
 
-The last committed candidate passed GitHub's software workflow, 1,014 local
+The last committed candidate passed GitHub's software workflow, 1,039 local
 Linux backend tests, 130 frontend tests and 43 image-builder tests. A signed
-app bundle verified against the image-pinned public key; the ARM64 offline
-speech worker produced a valid WAV under emulation. Edits after that CI run
-need another full test/build/sign/CI cycle. These software checks do not prove
+app bundle passed actual updater switch/rollback qualification in a synthetic
+0.2.3 Linux install; the ARM64 offline speech worker produced a valid WAV under
+emulation. Release-script changes after that CI run need another CI cycle.
+These software checks do not prove
 native Pi Bluetooth, speaker quality, update timing or physical persistence.
 
 ## Next release gates

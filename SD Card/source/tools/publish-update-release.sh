@@ -61,6 +61,12 @@ VERSION="$(python3 -c 'import pathlib,sys,tomllib; print(tomllib.loads(pathlib.P
 [[ "${VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "the package version must be stable X.Y.Z"
 BASE_VERSION="$(tr -d '[:space:]' < "${DELIVERY_ROOT}/source/tools/update-base-version.txt")"
 [[ "${BASE_VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "the image's recorded base version is invalid"
+QUALIFY_FROM="${BASE_VERSION}"
+if [[ "${VERSION}" == "0.2.4" ]]; then
+  # The owner's live card received 0.2.3 through boot-partition recovery,
+  # even though the last full-image base version remains 0.2.0.
+  QUALIFY_FROM="0.2.3"
+fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"
 TAG="v${VERSION}"
@@ -120,34 +126,55 @@ fi
 printf 'Running frontend tests and production build for %s…\n' "${TAG}"
 (
   cd -- "${DELIVERY_ROOT}/source/frontend"
-  pnpm install --frozen-lockfile
+  CI=true pnpm install --frozen-lockfile
   pnpm test
   pnpm run build
 )
 
 printf 'Running the complete backend suite…\n'
 (cd -- "${DELIVERY_ROOT}/source/backend" && python3 -m pytest -q)
+printf 'Running image-builder, recovery and packaging tests…\n'
+(cd -- "${REPO_ROOT}" && python3 -m pytest -q "SD Card/image-builder")
 
 if ((PUBLISH)); then
   git -C "${REPO_ROOT}" fetch --quiet origin main
   [[ "$(git -C "${REPO_ROOT}" rev-parse refs/remotes/origin/main)" == "${HEAD_SHA}" ]] || die "main advanced while tests were running; nothing will be published"
-  printf 'Tests passed. This will publish %s from accepted main commit %s.\n' "${TAG}" "${HEAD_SHA}"
-  printf 'Type "publish %s" to continue: ' "${TAG}"
-  read -r CONFIRMATION
-  [[ "${CONFIRMATION}" == "publish ${TAG}" ]] || die "confirmation did not match; nothing was published"
 fi
 
 printf 'Signing locally with the key held outside GitHub Actions and the repository…\n'
 python3 "${DELIVERY_ROOT}/source/tools/build-update-bundle.py" "${DELIVERY_ROOT}" \
   --key "${KEY_PATH}" --output "${OUTPUT}"
+printf 'Qualifying the exact signed application archive against switch and rollback…\n'
+python3 "${DELIVERY_ROOT}/source/tools/qualify-update-bundle.py" "${OUTPUT}" \
+  --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
+  --current-version "${QUALIFY_FROM}"
 RELEASE_ASSETS=("${OUTPUT}")
 if [[ -n "${VOICE_ASSETS_DIR}" ]]; then
   python3 "${DELIVERY_ROOT}/source/tools/build-voice-asset.py" "${DELIVERY_ROOT}" \
     --assets "${VOICE_ASSETS_DIR}" --key "${KEY_PATH}" --output "${VOICE_OUTPUT}"
+  printf 'Verifying every signed offline voice file against the appliance key…\n'
+  PYTHONPATH="${DELIVERY_ROOT}/source/backend/src" python3 - \
+    "${VOICE_OUTPUT}" "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" <<'PY'
+from pathlib import Path
+import sys
+from tempfile import TemporaryDirectory
+from luma.voice_asset import verify_and_extract
+
+with TemporaryDirectory(prefix="luma-release-voice-check-") as staging:
+    manifest = verify_and_extract(Path(sys.argv[1]), Path(staging), Path(sys.argv[2]))
+    print(f"Verified {len(manifest['files'])} voice files for Luma {manifest['version']}.")
+PY
   RELEASE_ASSETS+=("${VOICE_OUTPUT}")
 fi
 
 if ((PUBLISH)); then
+  git -C "${REPO_ROOT}" fetch --quiet origin main
+  [[ "$(git -C "${REPO_ROOT}" rev-parse refs/remotes/origin/main)" == "${HEAD_SHA}" ]] || die "main advanced while signing; nothing will be published"
+  printf 'Verified assets for %s from accepted main commit %s.\n' "${TAG}" "${HEAD_SHA}"
+  sha256sum "${RELEASE_ASSETS[@]}"
+  printf 'Type "publish %s" to create the stable GitHub release: ' "${TAG}"
+  read -r CONFIRMATION
+  [[ "${CONFIRMATION}" == "publish ${TAG}" ]] || die "confirmation did not match; nothing was published"
   git -C "${REPO_ROOT}" tag -a "${TAG}" "${HEAD_SHA}" -m "Luma ${VERSION}"
   if ! git -C "${REPO_ROOT}" push origin "refs/tags/${TAG}"; then
     git -C "${REPO_ROOT}" tag -d "${TAG}" >/dev/null

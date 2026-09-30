@@ -12,7 +12,10 @@ updater trial, however, the screen stalled at **Switching versions**. After
 reboot the Pi returned to 0.2.3 and reported “Update failed and automatic
 rollback needs local recovery.” The 0.2.4 release directory remains staged.
 Do **not** press Update again until the failed service-control path is
-diagnosed and a safe recovery is qualified.
+diagnosed and a safe recovery is qualified. The 0.2.4 release is temporarily
+marked **prerelease**, retaining its signed assets but removing it from the
+Pi's stable `releases/latest` feed. That feed now returns 0.2.2, which is older
+than the installed 0.2.3 and thus offers no update.
 
 The one-shot SD diagnostics confirmed the 0.2.3 app pointer and retained
 update failure state. It captured the following boot's journal, not the

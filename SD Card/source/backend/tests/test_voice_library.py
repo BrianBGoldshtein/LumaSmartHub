@@ -11,6 +11,8 @@ from luma.service import LumaService
 from luma.storage import Storage
 from luma.voice import command_grammar, parse_local_command, WakeGate
 from luma.voice_library import QUERY_PHRASES, LIBRARY, answer_query
+from luma.voice_agent import _free_command
+from luma.voice_model import predict
 
 ZONE=ZoneInfo('America/Los_Angeles')
 NOW=datetime(2026,9,26,14,0,tzinfo=ZONE)
@@ -49,6 +51,70 @@ def test_all_presented_library_examples_are_recognized():
     assert gate.accept('when is my next event',3)=='when is my next event'
 
 
+@pytest.mark.parametrize('phrase', [
+    'what time is it', "what's the time", 'what is the time',
+    'tell me the time', 'could you tell me the time',
+    'do you know what time it is',
+])
+def test_everyday_time_paraphrases_resolve_identically(phrase):
+    command = parse_local_command('Hey Luma, ' + phrase + '?')
+    assert command.name == CommandName.LOCAL_QUERY
+    assert command.value == 'time'
+
+
+@pytest.mark.parametrize('phrase,intent', [
+    ('what time is it right now', 'time'),
+    ('can you tell me what time it is', 'time'),
+    ('what is the forecast for tomorrow', 'weather_tomorrow'),
+    ('how warm will it be tomorrow', 'weather_tomorrow'),
+    ('what is the weather like outside', 'weather_now'),
+    ('what is the chance of rain today', 'rain_today'),
+    ('what is my agenda today', 'calendar_today'),
+    ('what meetings do I have tomorrow', 'calendar_tomorrow'),
+    ('when does my next meeting start', 'next_event'),
+    ('what am I doing right now', 'ongoing'),
+    ('what do I need to do today', 'tasks_today'),
+    ('what is due soon', 'tasks_soon'),
+    ('what is the date', 'date'),
+    ('how much longer on my timer', 'timer_status'),
+    ('is my phone nearby', 'phone_status'),
+    ('can I see my calendar', 'privacy_status'),
+])
+def test_held_out_everyday_question_variations(phrase, intent):
+    command = parse_local_command('Hey Luma, ' + phrase + '?')
+    assert command is not None and command.name == CommandName.LOCAL_QUERY
+    assert command.value == intent
+
+
+@pytest.mark.parametrize('phrase', [
+    "don't set the brightness to zero",
+    'do not turn off the screen',
+    'please do not start a timer',
+    'never change the theme to arcade',
+    'tell me how to set brightness to zero',
+    'describe the arcade theme',
+])
+def test_negated_speech_cannot_mutate_the_hub(phrase):
+    assert parse_local_command(phrase) is None
+
+
+def test_phrase_preview_exposes_offline_model_without_executing(tmp_path):
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+    before = app.state.luma.settings.theme
+    preview = client.post('/api/v1/voice/phrase-preview', json={'text': "what's the time"})
+    assert preview.status_code == 200
+    assert preview.json()['command'] == CommandName.LOCAL_QUERY.value
+    assert preview.json()['intent'] == 'time'
+    assert preview.json()['model_suggestion'] == 'time'
+    assert preview.json()['executed'] is False
+    assert app.state.luma.settings.theme == before
+    varied = client.post('/api/v1/voice/phrase-preview', json={'text': 'tell me tomorrow weather'})
+    assert varied.json()['intent'] == 'weather_tomorrow'
+    assert varied.json()['model_suggestion'] == 'weather_tomorrow'
+    assert client.get('/api/v1/voice/library').json()['phrase_model'] == 'offline-neural-v1'
+
+
 @pytest.mark.parametrize('phrase,key',[
     ('run morning scene','morning'),('run night scene','night'),
     ('run arrival scene','arrive'),('run away scene','away'),
@@ -64,11 +130,55 @@ def test_cancel_scene_is_explicit_and_good_morning_keeps_its_briefing_meaning():
     assert parse_local_command('good morning').name==CommandName.GOOD_MORNING
 
 
-@pytest.mark.parametrize('phrase',['what is the weather next week','when is my next event in december',
+@pytest.mark.parametrize('phrase',['when is my next event in december',
                                   'ask explain quantum physics','question spend money','what is good night',
                                   'can you set brightness to zero'])
 def test_unknown_questions_do_not_navigate_mutate_or_call_cloud(phrase):
     assert parse_local_command(phrase) is None
+
+
+def test_offline_neural_matcher_maps_held_out_phrases_only_to_safe_intents():
+    samples={
+        'tell me tomorrow weather':'weather_tomorrow',
+        'is rain coming tomorrow':'rain_tomorrow',
+        'what tasks are late':'tasks_overdue',
+        'is my phone around':'phone_status',
+        'tell me my plans for tomorrow':'calendar_tomorrow',
+        'when do i have a break':'free_time',
+        'what time does my next class start':'next_event',
+    }
+    for phrase,intent in samples.items():
+        command=parse_local_command(phrase)
+        assert command.name==CommandName.LOCAL_QUERY and command.value==intent
+    assert parse_local_command('switch to wooden design').name==CommandName.SET_THEME
+    assert parse_local_command('pull up agenda').name==CommandName.SHOW_PAGE
+    assert parse_local_command('bring up the brightness control').name==CommandName.SHOW_BRIGHTNESS
+    assert parse_local_command('can you set brightness to zero') is None
+    assert parse_local_command('show weather').name==CommandName.SHOW_PAGE
+    far=parse_local_command('what is the weather next week')
+    assert far.name==CommandName.LOCAL_QUERY and far.value=='weather_beyond_forecast'
+
+
+def test_quantized_model_is_packaged_and_unknown_speech_stays_inert():
+    assert predict('tell me tomorrow weather')[0]=='weather_tomorrow'
+    for phrase in ('turn on the lights','make a phone call','read all my notifications',
+                   'what is my bank balance','where did my keys go'):
+        assert parse_local_command(phrase) is None
+    assert _free_command('hey luma tell me tomorrow weather','hey luma')=='tell me tomorrow weather'
+    assert _free_command('tell me tomorrow weather','hey luma')=='tell me tomorrow weather'
+
+
+@pytest.mark.parametrize('phrase,minutes',[
+    ('set a timer for 12 minutes',12),
+    ('start a twenty five minute timer',25),
+    ('set timer for one hour',60),
+    ('start a two hour timer',120),
+    ('set a timer for one hundred twenty minutes',120),
+])
+def test_spoken_timer_variations_keep_the_explicit_duration(phrase,minutes):
+    command=parse_local_command(phrase)
+    assert command.name==CommandName.START_TIMER and command.value==minutes
+    assert parse_local_command('set timer for 241 minutes') is None
 
 
 def test_today_includes_earlier_ongoing_all_day_but_not_other_calendars_or_declined(tmp_path):
@@ -215,6 +325,51 @@ def test_weather_saved_data_missing_rain_and_units(tmp_path):
     assert 'do not have precipitation' in reply(service,'rain_today')
     service.weather.observed_at=NOW-timedelta(hours=3)
     assert 'may be out of date' in reply(service,'weather_today')
+
+
+def test_broader_weather_answers_use_the_requested_local_day(tmp_path):
+    service=prepared(tmp_path)
+    service.replace_weather(WeatherSnapshot(NOW,70,68,75,55,0,'Clear skies',hourly=[
+        WeatherHour(NOW+timedelta(hours=1),72,5,0),
+        WeatherHour(NOW+timedelta(days=1,hours=1),82,60,3),
+        WeatherHour(NOW+timedelta(days=1,hours=2),61,10,0),
+    ]))
+    assert '61 to 82' in reply(service,'weather_tomorrow')
+    assert '60 percent' in reply(service,'rain_tomorrow')
+    assert '82 degrees' in reply(service,'high_tomorrow')
+    assert '61 degrees' in reply(service,'low_tomorrow')
+    assert 'next saved hour' in reply(service,'rain_timing')
+    assert 'two days' in reply(service,'weather_beyond_forecast')
+
+
+def test_week_free_time_location_and_task_deadlines_respect_saved_data(tmp_path):
+    service=prepared(tmp_path)
+    start=NOW.replace(hour=0)
+    service.replace_events([
+        event('Next class',NOW+timedelta(minutes=50),NOW+timedelta(hours=2),location='Room 101'),
+        event('Later event',NOW+timedelta(days=2),NOW+timedelta(days=2,hours=1)),
+        event('Late paper',start-timedelta(days=4),start-timedelta(days=1),'tasks',all_day=True),
+        event('Due soon',start,start+timedelta(days=3),'tasks',all_day=True),
+        event('Finished',start-timedelta(days=2),start+timedelta(days=1),'tasks',all_day=True,event_color_id='10'),
+    ],NOW)
+    assert 'Room 101' in reply(service,'next_location')
+    assert '50 minutes' in reply(service,'free_time')
+    assert '2 events' in reply(service,'calendar_week')
+    assert 'Late paper' in reply(service,'tasks_overdue')
+    assert 'Due soon' in reply(service,'tasks_soon')
+    assert 'Finished' in reply(service,'tasks_completed')
+    assert 'Late paper' not in reply(service,'tasks_soon')
+
+
+def test_status_answers_are_private_and_do_not_claim_unknown_network_is_online(tmp_path):
+    service=prepared(tmp_path)
+    snapshot=service.voice_snapshot(authorized=False,now=NOW)
+    snapshot['voice_status']={'network':{'state':'unknown'}}
+    assert 'cannot verify' in answer_query('internet_status',snapshot)
+    assert 'No iPhone' in answer_query('phone_status',snapshot)
+    private_service=LumaService(Storage(tmp_path/'private.db'),clock_trusted=lambda:True)
+    private=private_service.voice_snapshot(authorized=False,now=NOW)
+    assert 'private standby' in answer_query('sync_status',private).lower()
 
 
 def test_timer_date_time_and_help_remain_local_and_bounded(tmp_path):

@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import zipfile
+from types import SimpleNamespace
 
 import pytest
 from luma import update_agent
@@ -18,7 +19,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from luma.update_agent import (
-    UpdateError, _canonical, apply_bundle, dependency_fingerprint, verify_bundle,
+    UpdateError, SystemdController, _canonical, apply_bundle, dependency_fingerprint, verify_bundle,
 )
 from luma.github_updates import GitHubUpdateError, RELEASES_API, latest_release
 from luma.update_broker import UpdateBroker
@@ -217,7 +218,8 @@ async def test_root_update_broker_accepts_only_signed_bundle_and_reports_health_
     installed = []
     refreshed = []
 
-    def install(path, *, public_key_path):
+    def install(path, *, public_key_path, progress):
+        progress('copying')
         installed.append(verify_bundle(path, public_key_path)["version"])
 
     broker = UpdateBroker(installer=install, public_key_path=public,
@@ -245,7 +247,8 @@ async def test_root_update_broker_does_not_refresh_after_failed_install(tmp_path
     bundle_path, public = make_bundle(tmp_path)
     refreshed = []
 
-    def fail_install(_path, *, public_key_path):
+    def fail_install(_path, *, public_key_path, progress):
+        progress('copying')
         raise UpdateError("simulated install failure")
 
     broker = UpdateBroker(installer=fail_install, public_key_path=public,
@@ -256,6 +259,35 @@ async def test_root_update_broker_does_not_refresh_after_failed_install(tmp_path
     await broker.install(bundle)
     assert broker.status()["state"] == "failed"
     assert refreshed == []
+
+
+@pytest.mark.asyncio
+async def test_update_progress_survives_broker_restart_and_reports_interruption(tmp_path):
+    if sys.platform == "win32":
+        pytest.skip("durable directory fsync for update progress requires POSIX")
+    bundle_path,public=make_bundle(tmp_path)
+    status_path=tmp_path/'release-status.json'
+    phases=[]
+    def install(_path,*,public_key_path,progress):
+        progress('copying');progress('switching');phases.append('done')
+    broker=UpdateBroker(installer=install,public_key_path=public,status_path=status_path)
+    request={'action':'install','bundle':base64.b64encode(bundle_path.read_bytes()).decode()}
+    accepted,bundle=await broker.accept(request)
+    assert accepted['accepted'] and status_path.is_file()
+    assert broker.status()['phase']=='verifying'
+    await broker.install(bundle)
+    assert phases==['done'] and broker.status()['phase']=='complete'
+    restarted=UpdateBroker(public_key_path=public,status_path=status_path)
+    assert restarted.status()['state']=='installed'
+    assert restarted.status()['target_version']=='0.3.0'
+    assert restarted.status()['elapsed_seconds']>=0
+
+    interrupted_path=tmp_path/'interrupted-status.json'
+    interrupted=UpdateBroker(public_key_path=public,status_path=interrupted_path)
+    await interrupted.accept(request)
+    recovered=UpdateBroker(public_key_path=public,status_path=interrupted_path)
+    assert recovered.status()['state']=='failed' and recovered.status()['phase']=='interrupted'
+    assert 'interrupted' in recovered.status()['message']
 
 
 def test_verify_bundle_checks_signature_hashes_and_wheel_metadata(tmp_path):
@@ -288,15 +320,30 @@ def test_apply_stages_switches_and_keeps_prior_release(tmp_path):
     saved_state.parent.mkdir(parents=True)
     saved_state.write_bytes(b"owner's saved state")
     controller = FakeController()
+    phases=[]
     candidate = apply_bundle(bundle, app_root=app, releases_root=releases,
                              public_key_path=public, controller=controller,
-                             health_check=lambda version: version == "0.3.0", install_wheel=no_install)
+                             health_check=lambda version: version == "0.3.0", install_wheel=no_install,
+                             progress=phases.append)
     assert candidate == releases / "0.3.0"
     assert app.resolve() == candidate
     assert current.exists() and (candidate / "frontend/index.html").read_text() == "<main>new app</main>"
     assert json.loads((candidate / ".luma-release.json").read_text())["version"] == "0.3.0"
     assert controller.actions == ["stop", "start"]
     assert saved_state.read_bytes() == b"owner's saved state"
+    assert phases==['verifying','copying','installing','syncing','switching','restarting','checking','complete']
+
+
+def test_systemd_updater_leaves_kiosk_running_while_api_is_switched():
+    calls=[]
+    def runner(command,**kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0,stdout='active\n')
+    controller=SystemdController(runner=runner)
+    calls.clear()
+    controller.stop();controller.start()
+    assert not any('luma-kiosk.service' in command for command in calls)
+    assert any('luma-api.service' in command for command in calls)
 
 
 def test_apply_installs_wheel_and_repairs_venv_entrypoint_after_rename(tmp_path):

@@ -5,7 +5,7 @@ import {TouchField} from "./TouchField";
 import {forgetBluetoothPhone} from "./bluetoothForget";
 
 type Phone={path:string;name:string;address:string;paired:boolean;trusted:boolean};
-type Pairing={session:string|null;phase:string;devices:Phone[];selected:Phone|null;challenge:string|null;passkey:string|null;message:string;phone_address?:string|null;connection_status?:string};
+type Pairing={session:string|null;phase:string;devices:Phone[];selected:Phone|null;challenge:string|null;passkey:null|string;message:string;phone_address?:string|null;connection_status?:string;last_reconnect_at?:string|null;reconnect_attempts?:number;last_service_recovery_at?:string|null;service_recovery_attempts?:number};
 const initial:Pairing={session:null,phase:"idle",devices:[],selected:null,challenge:null,passkey:null,message:""};
 const previewPhone:Phone={path:"preview-phone",name:"Your iPhone",address:"Preview device",paired:false,trusted:false};
 const active=(phase:string)=>["scanning","pairing","confirming"].includes(phase);
@@ -57,7 +57,7 @@ export function BluetoothSetup({demo,pinConfigured}:{demo:boolean;pinConfigured:
   }
   return <section className="bluetooth-setup"><h2><Bluetooth/> Your iPhone</h2>
     <p className="setup-note">Open Settings → Bluetooth on your iPhone and keep it nearby. Select it below, then compare the pairing code on both screens. Pairing lets this phone become your privacy key; it does not route calls or music through Luma.</p>
-    {state.phone_address && <><p className="setup-note">Selected phone: {state.phone_address}<br/>{state.connection_status || "Notification authorization is still required."}</p>
+    {state.phone_address && <><p className="setup-note">Selected phone: {state.phone_address}<br/>{state.connection_status || "Notification authorization is still required."}<br/>Luma checks this bonded iPhone and retries the connection automatically{state.last_reconnect_at?` · Last attempt ${new Date(state.last_reconnect_at).toLocaleTimeString()}`:''}{state.last_service_recovery_at?` · Service recovery ${new Date(state.last_service_recovery_at).toLocaleTimeString()}`:''}.</p>
       {!forgetMode?<button disabled={busy} onClick={()=>{setError("");setNotice("");setForgetError("");setForgetMode(true);}}>Forget this iPhone…</button>:<form className="bluetooth-forget" onSubmit={forgetPhone}>
         <p>This removes only the selected iPhone’s Bluetooth pairing and clears it as Luma’s nearby-phone key. Other saved settings stay unchanged. Pair it again afterward.</p>
         {pinConfigured?<><TouchField label="Luma PIN" secret mode="digits" pattern="[0-9]{4,8}" minLength={4} maxLength={8} required value={forgetPin} onChange={setForgetPin} autoComplete="current-password" disabled={busy}/><button disabled={busy||forgetPin.length<4}>Confirm · forget iPhone</button></>:<p role="status">Set a Luma PIN in <strong>Privacy PIN</strong> above before you can forget a paired phone.</p>}

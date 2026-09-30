@@ -7,17 +7,67 @@ import json
 import logging
 import os
 from pathlib import Path
+import secrets
 import socket
 import struct
 import subprocess
+import time
 from contextlib import suppress
 
-from .update_agent import MAX_BUNDLE_BYTES, PUBLIC_KEY, UpdateError, apply_bundle, staged_bundle, verify_bundle
+from .update_agent import MAX_BUNDLE_BYTES, PUBLIC_KEY, RELEASES_ROOT, UpdateError, apply_bundle, staged_bundle, verify_bundle
 
 
 SOCKET = "/run/luma-update.sock"
 MAX_WIRE = ((MAX_BUNDLE_BYTES + 2) // 3) * 4 + 4096
 log = logging.getLogger(__name__)
+STATUS_PATH = RELEASES_ROOT / '.luma-update-status.json'
+PHASES = frozenset({'idle','verifying','copying','installing','syncing','switching',
+                    'restarting','checking','restoring','complete','failed','interrupted'})
+
+
+class ProgressStore:
+    """Root-owned, non-secret progress record outside every replaceable release."""
+
+    def __init__(self, path: Path):
+        self.path=path
+
+    def read(self):
+        try:
+            if self.path.is_symlink() or self.path.stat().st_size>4096:
+                return None
+            value=json.loads(self.path.read_text(encoding='utf-8'))
+            if (not isinstance(value,dict) or value.get('state') not in {'installing','installed','failed'}
+                    or value.get('phase') not in PHASES
+                    or not isinstance(value.get('target_version'),str)
+                    or not isinstance(value.get('started_epoch'),(int,float))
+                    or not isinstance(value.get('message'),str)
+                    or len(value['message'])>300):
+                return None
+            return value
+        except (OSError,ValueError,TypeError,KeyError):
+            return None
+
+    def write(self,value):
+        parent=self.path.parent
+        if parent.is_symlink() or not parent.is_dir():
+            raise UpdateError('The protected update-progress directory is unavailable.')
+        temporary=parent / f'.{self.path.name}.{secrets.token_hex(8)}.tmp'
+        descriptor=-1
+        try:
+            descriptor=os.open(temporary,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0),0o600)
+            with os.fdopen(descriptor,'wb') as stream:
+                descriptor=-1
+                stream.write(json.dumps(value,sort_keys=True,separators=(',',':')).encode('utf-8')+b'\n')
+                stream.flush();os.fsync(stream.fileno())
+            os.replace(temporary,self.path)
+            directory=os.open(parent,os.O_RDONLY|getattr(os,'O_DIRECTORY',0))
+            try:os.fsync(directory)
+            finally:os.close(directory)
+        except OSError:
+            raise UpdateError('Could not persist the local update status.') from None
+        finally:
+            if descriptor>=0:os.close(descriptor)
+            if temporary.exists():temporary.unlink()
 
 
 def validate_request(value):
@@ -54,17 +104,45 @@ class UpdateBroker:
     """Verify requests as root, then install outside the API process lifetime."""
 
     def __init__(self, *, installer=apply_bundle, public_key_path: Path = PUBLIC_KEY,
-                 refresh_service=None):
+                 refresh_service=None, status_path: Path | None = None):
         self.installer = installer
         self.public_key_path = public_key_path
         self.refresh_service = refresh_service
         self.state = "idle"
         self.version: str | None = None
         self.message = ""
+        self.phase = 'idle'
+        self.started_epoch: float | None = None
+        self.store=ProgressStore(status_path) if status_path is not None else None
+        saved=self.store.read() if self.store else None
+        if saved:
+            self.state=saved['state'];self.phase=saved['phase']
+            self.version=saved['target_version'];self.message=saved['message']
+            self.started_epoch=saved['started_epoch']
+            if self.state=='installing':
+                self._record('failed','interrupted',
+                             'The update process was interrupted. Check the active version before trying recovery.')
         self._lock = asyncio.Lock()
 
     def status(self):
-        return {"state": self.state, "target_version": self.version, "message": self.message}
+        elapsed=max(0,int(time.time()-self.started_epoch)) if self.started_epoch is not None else 0
+        return {"state": self.state, "phase": self.phase,
+                "target_version": self.version, "message": self.message,
+                "elapsed_seconds": elapsed}
+
+    def _record(self,state,phase,message,*,required=False):
+        self.state=state;self.phase=phase;self.message=message
+        if self.store:
+            try:
+                self.store.write({'state':state,'phase':phase,'target_version':self.version,
+                                  'started_epoch':self.started_epoch,'message':message})
+            except UpdateError:
+                if required:raise
+                log.exception('Could not persist Luma update progress')
+
+    def _progress(self,phase):
+        if phase not in PHASES:raise UpdateError('The installer reported an invalid progress phase.')
+        self._record('installing',phase,'Keep power connected while Luma installs the verified update.')
 
     async def accept(self, value):
         value = validate_request(value)
@@ -85,9 +163,13 @@ class UpdateBroker:
                 verified = await asyncio.to_thread(self._verify, bundle)
             except UpdateError as error:
                 return {"error": str(error)}, None
-            self.state = "installing"
             self.version = verified["version"]
-            self.message = "Luma is installing the verified update."
+            self.started_epoch=time.time()
+            try:
+                self._record('installing','verifying','Keep power connected while Luma installs the verified update.',required=True)
+            except UpdateError as error:
+                self.state='idle';self.phase='idle';self.version=None;self.started_epoch=None
+                return {'error':str(error)},None
         return {"accepted": True, "version": self.version}, bundle
 
     def _verify(self, bundle):
@@ -98,9 +180,8 @@ class UpdateBroker:
         try:
             with staged_bundle(bundle, prefix="luma-update-") as bundle_path:
                 await asyncio.to_thread(self.installer, bundle_path,
-                                        public_key_path=self.public_key_path)
-            self.state = "installed"
-            self.message = "The new release passed its health check."
+                                        public_key_path=self.public_key_path,progress=self._progress)
+            self._record('installed','complete','The new release passed its local health check.')
             if self.refresh_service is not None:
                 try:
                     await asyncio.to_thread(self.refresh_service)
@@ -110,11 +191,9 @@ class UpdateBroker:
                     # recoverable by reboot and must not imply app rollback.
                     log.exception("Could not refresh the Luma update broker after installation")
         except UpdateError as error:
-            self.state = "failed"
-            self.message = str(error)
+            self._record('failed','failed',str(error))
         except Exception:
-            self.state = "failed"
-            self.message = "The update failed; Luma's previous release remains active."
+            self._record('failed','failed','The update failed. Check the active version before retrying.')
 
 
 async def _serve_listener(listener, broker):
@@ -154,7 +233,7 @@ async def serve():
             or os.environ.get("LISTEN_FDS") != "1"):
         raise RuntimeError("Start through luma-update.socket")
     listener = socket.socket(fileno=3)
-    await _serve_listener(listener, UpdateBroker(refresh_service=_restart_service))
+    await _serve_listener(listener, UpdateBroker(refresh_service=_restart_service,status_path=STATUS_PATH))
 
 
 def _restart_service():

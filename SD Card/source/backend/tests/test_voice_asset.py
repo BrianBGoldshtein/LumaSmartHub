@@ -1,0 +1,206 @@
+import hashlib
+import io
+import json
+from pathlib import Path
+import subprocess
+import struct
+import wave
+import zipfile
+
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
+from fastapi.testclient import TestClient
+
+from luma.api import create_app
+from luma.voice_asset import CONFIG, MODEL, VOICE_ID, VOICE_ASSET_NAME, VOICE_RELEASE_URL, VoiceAssetError, fetch_and_install, install_asset, ready, verify_and_extract, voice_status
+from luma.voice_speech import wav_to_pcm
+
+
+def make_asset(tmp_path: Path, *, corrupt=False, extra=None):
+    key = Ed25519PrivateKey.generate()
+    public = tmp_path / "update.pub"
+    public.write_bytes(key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+    payload = {MODEL: b"model-bytes", CONFIG: b'{}', "sources/piper_tts-1.8.0.tar.gz": b"source archive",
+               "wheels/piper_tts-1.8.0-cp39-abi3-manylinux2014_aarch64.whl": b"wheel"}
+    if extra:
+        payload.update(extra)
+    manifest = {"format": 1, "kind": "luma-offline-voice", "version": "0.2.4",
+                "voice_id": "en_US-kristin-medium", "python": "cp313-aarch64",
+                "files": {name: {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+                          for name, data in payload.items()}}
+    raw = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    archive = tmp_path / "voice.lva"
+    with zipfile.ZipFile(archive, "w") as output:
+        output.writestr("manifest.json", raw)
+        output.writestr("manifest.sig", key.sign(raw))
+        for name, data in payload.items():
+            output.writestr(name, data + (b"tampered" if corrupt and name == MODEL else b""))
+    return archive, public
+
+
+def test_signed_voice_package_extracts_only_verified_files(tmp_path):
+    package, public = make_asset(tmp_path)
+    staging = tmp_path / "stage"
+    staging.mkdir()
+    assert verify_and_extract(package, staging, public)["version"] == "0.2.4"
+    assert (staging / MODEL).read_bytes() == b"model-bytes"
+
+
+def test_voice_package_rejects_tampered_model(tmp_path):
+    package, public = make_asset(tmp_path, corrupt=True)
+    staging = tmp_path / "stage"
+    staging.mkdir()
+    with pytest.raises(VoiceAssetError):
+        verify_and_extract(package, staging, public)
+
+
+def test_voice_package_rejects_path_traversal_even_if_signed(tmp_path):
+    package, public = make_asset(tmp_path, extra={"../../outside": b"malicious"})
+    staging = tmp_path / "stage"
+    staging.mkdir()
+    with pytest.raises(VoiceAssetError, match="file list"):
+        verify_and_extract(package, staging, public)
+    assert not (tmp_path / "outside").exists()
+
+
+def test_voice_package_rejects_extra_unsigned_member(tmp_path):
+    package, public = make_asset(tmp_path)
+    with zipfile.ZipFile(package, "a") as output:
+        output.writestr("wheels/extra.whl", b"not signed")
+    staging = tmp_path / "stage"
+    staging.mkdir()
+    with pytest.raises(VoiceAssetError, match="file list"):
+        verify_and_extract(package, staging, public)
+
+
+def test_voice_status_and_preview_are_local_and_do_not_install_automatically(tmp_path):
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        status = client.get('/api/v1/voice/asset')
+        assert status.status_code == 200 and status.json()['phase'] == 'checking'
+        assert client.post('/api/v1/voice/asset/preview').status_code == 409
+        assert client.post('/api/v1/voice/asset/retry').status_code == 409
+    assert not (tmp_path / 'voice-assets').exists()
+
+
+def test_piper_wav_decoder_accepts_only_expected_mono_format():
+    pcm = struct.pack('<hhhh', 0, 1000, -1000, 0)
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(22050)
+        output.writeframes(pcm)
+    assert wav_to_pcm(buffer.getvalue()) == pcm
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as output:
+        output.setnchannels(2)
+        output.setsampwidth(2)
+        output.setframerate(22050)
+        output.writeframes(pcm)
+    with pytest.raises(ValueError):
+        wav_to_pcm(buffer.getvalue())
+
+
+def test_install_keeps_settings_and_switches_only_after_smoke(tmp_path, monkeypatch):
+    import luma.voice_asset as module
+    monkeypatch.setattr(module, '_runtime_supported', lambda: True)
+    package, public = make_asset(tmp_path)
+    data = tmp_path / 'data'
+    data.mkdir()
+    settings = data / 'luma.db'
+    settings.write_bytes(b'owner settings')
+    calls = []
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        if command[1:3] == ['-m', 'venv']:
+            python = Path(command[3]) / 'bin/python'
+            python.parent.mkdir(parents=True)
+            python.write_bytes(b'python')
+    root = data / 'voice-assets'
+    assert install_asset(package, root=root, public_key=public, run=fake_run)['phase'] == 'ready'
+    assert ready(root) and settings.read_bytes() == b'owner settings'
+    assert (root / VOICE_ID / 'sources/piper_tts-1.8.0.tar.gz').is_file()
+    assert len(calls) == 3
+    assert not list(root.glob('.voice-stage-*'))
+
+
+def test_failed_smoke_leaves_previous_settings_and_no_partial_voice(tmp_path, monkeypatch):
+    import luma.voice_asset as module
+    monkeypatch.setattr(module, '_runtime_supported', lambda: True)
+    package, public = make_asset(tmp_path)
+    data = tmp_path / 'data'
+    data.mkdir()
+    settings = data / 'luma.db'
+    settings.write_bytes(b'owner settings')
+    def fake_run(command, **_kwargs):
+        if command[1:3] == ['-m', 'venv']:
+            python = Path(command[3]) / 'bin/python'
+            python.parent.mkdir(parents=True)
+            python.write_bytes(b'python')
+        if '-c' in command:
+            raise subprocess.CalledProcessError(1, command)
+    root = data / 'voice-assets'
+    with pytest.raises(VoiceAssetError, match='fallback'):
+        install_asset(package, root=root, public_key=public, run=fake_run)
+    assert settings.read_bytes() == b'owner settings'
+    assert not ready(root) and not (root / VOICE_ID).exists()
+    assert not list(root.glob('.voice-stage-*'))
+
+
+class FakeResponse:
+    def __init__(self, url, body):
+        self.url, self.body, self.position = url, body, 0
+        self.headers = {'Content-Length': str(len(body))}
+    def __enter__(self):
+        return self
+    def __exit__(self, *_):
+        return False
+    def geturl(self):
+        return self.url
+    def read(self, length=-1):
+        end = len(self.body) if length < 0 else min(len(self.body), self.position + length)
+        block = self.body[self.position:end]
+        self.position = end
+        return block
+
+
+def test_voice_download_accepts_exact_stable_release_then_calls_signed_installer(tmp_path):
+    package, public = make_asset(tmp_path)
+    body = package.read_bytes()
+    url = f'https://github.com/BrianBGoldshtein/LumaSmartHub/releases/download/v0.2.4/{VOICE_ASSET_NAME}'
+    release = {'draft': False, 'prerelease': False, 'target_commitish': 'main',
+               'tag_name': 'v0.2.4', 'assets': [{'name': VOICE_ASSET_NAME,
+               'size': len(body), 'digest': 'sha256:' + hashlib.sha256(body).hexdigest(),
+               'browser_download_url': url}]}
+    class Opener:
+        def open(self, request, timeout):
+            return FakeResponse(request.full_url,
+                                json.dumps(release).encode() if request.full_url == VOICE_RELEASE_URL else body)
+    calls = []
+    def installer(path, *, root, public_key):
+        calls.append((path.read_bytes(), root, public_key))
+        return {'phase': 'ready'}
+    root = tmp_path / 'voice-assets'
+    assert fetch_and_install(root=root, public_key=public, opener=Opener(), installer=installer) == {'phase': 'ready'}
+    assert calls == [(body, root, public)]
+    assert not list(root.glob('.voice-download-*.lva'))
+
+
+def test_voice_download_rejects_wrong_published_checksum_before_install(tmp_path):
+    package, public = make_asset(tmp_path)
+    body = package.read_bytes()
+    url = f'https://github.com/BrianBGoldshtein/LumaSmartHub/releases/download/v0.2.4/{VOICE_ASSET_NAME}'
+    release = {'draft': False, 'prerelease': False, 'target_commitish': 'main',
+               'tag_name': 'v0.2.4', 'assets': [{'name': VOICE_ASSET_NAME,
+               'size': len(body), 'digest': 'sha256:' + '0'*64,
+               'browser_download_url': url}]}
+    class Opener:
+        def open(self, request, timeout):
+            return FakeResponse(request.full_url,
+                                json.dumps(release).encode() if request.full_url == VOICE_RELEASE_URL else body)
+    root = tmp_path / 'voice-assets'
+    with pytest.raises(VoiceAssetError, match='checksum'):
+        fetch_and_install(root=root, public_key=public, opener=Opener(), installer=lambda *_a, **_k: pytest.fail())
+    assert voice_status(root)['phase'] == 'failed'

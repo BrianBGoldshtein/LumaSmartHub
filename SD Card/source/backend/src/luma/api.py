@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import asyncio
 import shutil
+import sys
 from importlib.metadata import version as package_version
 from time import monotonic
 from uuid import uuid4
@@ -22,6 +23,7 @@ from .models import AssistantPhase, Command, CommandName, Orientation, Theme
 from .voice import parse_local_command
 from .briefing import morning_briefing
 from .voice_library import LIBRARY, answer_query
+from .voice_model import predict as predict_voice_intent
 from .countdown_api import install_countdown_api
 from .transit_api import install_transit_api
 from .room_api import install_room_api
@@ -36,6 +38,8 @@ from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
+from .voice_asset import fetch_and_install as fetch_voice_asset, ready as voice_asset_ready, voice_status
+from .voice_speech import play_preview as play_voice_preview
 from . import mic_hardware
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
@@ -115,6 +119,11 @@ class DisplayConfirmation(DisplayRevision, DisplayGeneration):
 
 class VoiceCommand(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
+
+
+class VoicePhrasePreview(BaseModel):
+    model_config = {"extra": "forbid"}
+    text: str = Field(min_length=1, max_length=160)
 
 
 class VoicePhase(BaseModel):
@@ -220,6 +229,9 @@ def create_app(
     weather = WeatherRuntime(service, weather_client)
     bluetooth = BluetoothRuntime(service)
     calibration = VoiceCalibration()
+    voice_asset_root = data_root / "voice-assets"
+    voice_asset_retry = asyncio.Event()
+    voice_preview_lock = asyncio.Lock()
     voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None}
     google_sync_lock = asyncio.Lock()
     google_status: dict[str, Any] = {"last_synced": None, "error": None}
@@ -248,7 +260,7 @@ def create_app(
                 return {"count": 0}
             now = datetime.now(UTC)
             try:
-                fetched = await asyncio.to_thread(google.fetch_events, ids, now - timedelta(days=1), now + timedelta(days=7), settings.timezone)
+                fetched = await asyncio.to_thread(google.fetch_events, ids, now - timedelta(days=7), now + timedelta(days=7), settings.timezone)
             except Exception:
                 google_status["error"] = "Calendar sync unavailable; showing saved events."
                 service.calendar_sync_error = True
@@ -269,6 +281,23 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        async def voice_asset_worker():
+            # The system image sets LUMA_DATA_DIR. Tests and desktop previews
+            # never fetch a 130+ MB runtime or touch the host's data partition.
+            await asyncio.sleep(20)
+            while not voice_asset_ready(voice_asset_root):
+                try:
+                    await asyncio.to_thread(fetch_voice_asset, root=voice_asset_root)
+                except Exception:
+                    pass  # Fixed, non-secret status is persisted for the UI.
+                if voice_asset_ready(voice_asset_root):
+                    break
+                try:
+                    await asyncio.wait_for(voice_asset_retry.wait(), 900)
+                except asyncio.TimeoutError:
+                    pass
+                voice_asset_retry.clear()
+
         async def clock_worker():
             while True:
                 service.tick()
@@ -294,6 +323,8 @@ def create_app(
                 await asyncio.sleep(1)
 
         workers = [asyncio.create_task(calendar_worker()), asyncio.create_task(weather.run()), asyncio.create_task(clock_worker()), asyncio.create_task(backup_worker()), asyncio.create_task(bluetooth.run()), asyncio.create_task(bluetooth.scene_presence_worker()), asyncio.create_task(network.run()), asyncio.create_task(timer_worker()), asyncio.create_task(app.state.countdown_runtime.run()), asyncio.create_task(app.state.transit_runtime.run()), asyncio.create_task(app.state.room_runtime.run()), asyncio.create_task(app.state.scene_runtime.run())]
+        if (sys.platform == "linux" and os.environ.get("LUMA_DATA_DIR") == "/var/lib/luma"):
+            workers.append(asyncio.create_task(voice_asset_worker()))
         try:
             yield
         finally:
@@ -395,7 +426,11 @@ def create_app(
     @app.get("/api/v1/bluetooth/pairing", dependencies=[Depends(local_only)])
     def pairing_status() -> dict:
         return {**pairing.snapshot(), "phone_address": service.settings.phone_address,
-                "connection_status": bluetooth.status}
+                "connection_status": bluetooth.status,
+                "last_reconnect_at": bluetooth.last_reconnect_at,
+                "reconnect_attempts": bluetooth.reconnect_attempts,
+                "last_service_recovery_at": bluetooth.last_service_recovery_at,
+                "service_recovery_attempts": bluetooth.service_recovery_attempts}
 
     @app.post("/api/v1/bluetooth/pairing/start", dependencies=[Depends(local_only)])
     async def pairing_start() -> dict:
@@ -704,7 +739,46 @@ def create_app(
 
     @app.get('/api/v1/voice/library', dependencies=[Depends(local_only)])
     async def voice_library():
-        return {'wake_phrase': 'Hey Luma', 'groups': LIBRARY, 'local_only': True}
+        return {'wake_phrase': 'Hey Luma', 'groups': LIBRARY, 'local_only': True,
+                'phrase_model': 'offline-neural-v1'}
+
+    @app.get('/api/v1/voice/asset', dependencies=[Depends(local_only)])
+    async def offline_voice_asset() -> dict:
+        return voice_status(voice_asset_root)
+
+    @app.post('/api/v1/voice/asset/retry', dependencies=[Depends(local_only)])
+    async def retry_offline_voice_asset() -> dict:
+        if sys.platform != 'linux' or os.environ.get('LUMA_DATA_DIR') != '/var/lib/luma':
+            raise HTTPException(409, 'Offline voice installation runs on the Raspberry Pi only.')
+        voice_asset_retry.set()
+        return voice_status(voice_asset_root)
+
+    @app.post('/api/v1/voice/asset/preview', dependencies=[Depends(local_only)])
+    async def preview_offline_voice_asset() -> dict:
+        if not voice_asset_ready(voice_asset_root):
+            raise HTTPException(409, 'Install the offline voice before previewing it.')
+        if voice_preview_lock.locked():
+            raise HTTPException(409, 'Voice preview is already playing.')
+        async with voice_preview_lock:
+            try:
+                await asyncio.to_thread(play_voice_preview, voice_asset_root)
+            except Exception as exc:
+                raise HTTPException(409, 'Offline voice preview could not play on the selected speaker.') from exc
+        return {'played': True}
+
+    @app.post('/api/v1/voice/phrase-preview', dependencies=[Depends(local_only)])
+    async def voice_phrase_preview(payload: VoicePhrasePreview) -> dict[str, Any]:
+        """Explain local intent matching without running a command or reading private data."""
+        parsed = parse_local_command(payload.text)
+        model = predict_voice_intent(payload.text)
+        return {
+            'understood': parsed is not None,
+            'command': parsed.name.value if parsed else None,
+            'intent': str(parsed.value) if parsed and parsed.name == CommandName.LOCAL_QUERY else None,
+            'model_suggestion': model[0] if model else None,
+            'model_confidence': round(model[1], 2) if model else None,
+            'executed': False,
+        }
 
     @app.post("/api/v1/voice/command", dependencies=[Depends(local_only)])
     async def voice_command(payload: VoiceCommand) -> dict[str, Any]:
@@ -742,7 +816,9 @@ def create_app(
             task.add_done_callback(lambda finished: finished.exception() if not finished.cancelled() else None)
             return {"accepted": True, "message": f"I started the {key} scene. Check Room devices for each action’s result; uncertain actions are never retried."}
         if parsed.name == CommandName.LOCAL_QUERY:
-            return {'accepted': True, 'message': answer_query(parsed.value, service.voice_snapshot(authorized=google.authorized()))}
+            voice_view = service.voice_snapshot(authorized=google.authorized())
+            voice_view['voice_status'] = {'network': network.snapshot(), 'bluetooth': bluetooth.status}
+            return {'accepted': True, 'message': answer_query(parsed.value, voice_view)}
         result = service.execute(parsed)
         reply = morning_briefing(service.snapshot(briefing=True)) if parsed.name == CommandName.GOOD_MORNING and result.data.get('briefing') else result.message
         return {"accepted": result.accepted, "message": reply}

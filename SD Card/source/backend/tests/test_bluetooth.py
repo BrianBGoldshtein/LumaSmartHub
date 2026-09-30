@@ -1,12 +1,13 @@
 import struct
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from luma.bluetooth_runtime import BluetoothStatusError, trusted_connection, wait_for_trusted_connection
-from luma.integrations.ancs import AttributeResponse, notification, parse_source, request_attributes
+from luma.bluetooth_runtime import BluetoothRuntime, BluetoothStatusError, ancs_characteristics, prefer_le_bearer, recover_stalled_services, scan_for_paired_phone, subscribe_ancs, trusted_connection, wait_for_ancs, wait_for_trusted_connection
+from luma.integrations.ancs import SERVICE, SOURCE, DATA, CONTROL, AttributeResponse, notification, parse_source, request_attributes
 from luma.models import PrivacyLevel, Settings
 from luma.state_machine import StateMachine
 
@@ -35,6 +36,233 @@ async def test_missing_bond_stays_private_and_reports_fixed_status():
     manager = SimpleNamespace(call_get_managed_objects=AsyncMock(return_value={}))
     with pytest.raises(BluetoothStatusError, match="bond is missing"):
         await wait_for_trusted_connection(manager, "/phone")
+
+
+@pytest.mark.asyncio
+async def test_periodic_discovery_checks_only_saved_phone_and_releases_its_scan():
+    def snapshot(connected):
+        return {"/phone": {"org.bluez.Device1": {"Connected": SimpleNamespace(value=connected)}},
+                "/other": {"org.bluez.Device1": {"Connected": SimpleNamespace(value=True)}}}
+    manager = SimpleNamespace(call_get_managed_objects=AsyncMock(side_effect=[snapshot(False), snapshot(True)]))
+    adapter = SimpleNamespace(call_set_discovery_filter=AsyncMock(), call_start_discovery=AsyncMock(),
+                              call_stop_discovery=AsyncMock())
+    pause = AsyncMock()
+    assert await scan_for_paired_phone(manager, adapter, "/phone", pause=pause)
+    assert manager.call_get_managed_objects.await_count == 2
+    adapter.call_start_discovery.assert_awaited_once()
+    adapter.call_stop_discovery.assert_awaited_once()
+    assert StateMachine(Settings()).state.privacy == PrivacyLevel.PRIVATE
+
+
+@pytest.mark.asyncio
+async def test_discovery_timeout_releases_scan_without_claiming_phone_presence():
+    manager = SimpleNamespace(call_get_managed_objects=AsyncMock(return_value={}))
+    adapter = SimpleNamespace(call_set_discovery_filter=AsyncMock(), call_start_discovery=AsyncMock(),
+                              call_stop_discovery=AsyncMock())
+    assert not await scan_for_paired_phone(manager, adapter, "/phone", pause=AsyncMock())
+    assert manager.call_get_managed_objects.await_count == 6
+    adapter.call_stop_discovery.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ancs_reappearing_on_same_connected_link_restores_authorized_path():
+    device={key:SimpleNamespace(value=True) for key in ('Paired','Bonded','Trusted','Connected','ServicesResolved')}
+    initial={'/phone':{'org.bluez.Device1':device}}
+    later={**initial,'/ancs':{'org.bluez.GattService1':{'UUID':SimpleNamespace(value=SERVICE),'Device':SimpleNamespace(value='/phone')}}}
+    for name,path in ((SOURCE,'source'),(DATA,'data'),(CONTROL,'control')):
+        later['/'+path]={'org.bluez.GattCharacteristic1':{'UUID':SimpleNamespace(value=name),'Service':SimpleNamespace(value='/ancs')}}
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(return_value=later))
+    objects,chars=await wait_for_ancs(manager,'/phone',initial=initial,pause=AsyncMock())
+    assert objects is later and {SOURCE,DATA,CONTROL}<=chars.keys()
+    assert ancs_characteristics(initial,'/phone')=={}
+
+
+@pytest.mark.asyncio
+async def test_ancs_source_alone_is_enough_to_try_authorized_subscription():
+    # Apple defines Data Source and Control Point as optional. The runtime
+    # still cannot unlock until Notification Source StartNotify succeeds.
+    device={key:SimpleNamespace(value=True) for key in ('Paired','Bonded','Trusted','Connected')}
+    device['ServicesResolved']=SimpleNamespace(value=False)
+    objects={'/phone':{'org.bluez.Device1':device},
+             '/ancs':{'org.bluez.GattService1':{'UUID':SimpleNamespace(value=SERVICE),'Device':SimpleNamespace(value='/phone')}},
+             '/source':{'org.bluez.GattCharacteristic1':{'UUID':SimpleNamespace(value=SOURCE),'Service':SimpleNamespace(value='/ancs')}}}
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(return_value=objects))
+    assert await wait_for_trusted_connection(manager,'/phone') is objects
+    _,chars=await wait_for_ancs(manager,'/phone',initial=objects)
+    assert chars == {SOURCE:'/source'}
+
+
+@pytest.mark.asyncio
+async def test_optional_data_subscription_failure_keeps_source_authorized_without_details():
+    source=SimpleNamespace(call_start_notify=AsyncMock())
+    data=SimpleNamespace(call_start_notify=AsyncMock(side_effect=RuntimeError('no optional data')))
+    assert not await subscribe_ancs(source,data)
+    source.call_start_notify.assert_awaited_once()
+    data.call_start_notify.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_source_authorization_failure_never_uses_optional_data():
+    source=SimpleNamespace(call_start_notify=AsyncMock(side_effect=RuntimeError('not authorized')))
+    data=SimpleNamespace(call_start_notify=AsyncMock())
+    with pytest.raises(BluetoothStatusError,match='authorization'):
+        await subscribe_ancs(source,data)
+    data.call_start_notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stalled_bonded_service_recovers_without_forgetting_phone():
+    def snapshot(connected):
+        props={key:SimpleNamespace(value=True) for key in ('Paired','Bonded','Trusted')}
+        props['Connected']=SimpleNamespace(value=connected)
+        props['ServicesResolved']=SimpleNamespace(value=False)
+        return {'/phone':{'org.bluez.Device1':props}}
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(side_effect=[snapshot(True),snapshot(False),snapshot(False)]))
+    device=SimpleNamespace(call_disconnect=AsyncMock(),call_connect=AsyncMock())
+    properties=SimpleNamespace(call_set=AsyncMock())
+    await recover_stalled_services(manager,device,properties,'/phone',pause=AsyncMock())
+    device.call_disconnect.assert_awaited_once()
+    device.call_connect.assert_awaited_once()
+    properties.call_set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_recovery_prefers_le_bearer_when_bluez_exposes_it():
+    def snapshot(connected, bearer="last-used"):
+        props={key:SimpleNamespace(value=True) for key in ('Paired','Bonded','Trusted')}
+        props['Connected']=SimpleNamespace(value=connected)
+        props['PreferredBearer']=SimpleNamespace(value=bearer)
+        return {'/phone':{'org.bluez.Device1':props}}
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(side_effect=[snapshot(True),snapshot(False),snapshot(False)]))
+    device=SimpleNamespace(call_disconnect=AsyncMock(),call_connect=AsyncMock())
+    properties=SimpleNamespace(call_set=AsyncMock())
+    await recover_stalled_services(manager,device,properties,'/phone',pause=AsyncMock())
+    assert properties.call_set.await_count == 1
+    name,key,value=properties.call_set.await_args.args
+    assert (name,key,value.value) == ('org.bluez.Device1','PreferredBearer','le')
+    device.call_connect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_already_preferred_le_is_left_unchanged():
+    properties=SimpleNamespace(call_set=AsyncMock())
+    assert not await prefer_le_bearer(properties, {'PreferredBearer':'le'})
+    properties.call_set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runtime_repairs_stalled_services_once_per_cooldown(monkeypatch):
+    import luma.bluetooth_runtime as bluetooth_module
+    settings=Settings(phone_address='AA:BB:CC:DD:EE:FF')
+    runtime=BluetoothRuntime(SimpleNamespace(settings=settings))
+    repair=AsyncMock()
+    monkeypatch.setattr(bluetooth_module,'recover_stalled_services',repair)
+    await runtime.refresh_phone_services('manager','device','properties','/phone','adapter',settings.phone_address)
+    repair.assert_awaited_once()
+    assert runtime.service_recovery_attempts == 1
+    assert runtime.last_service_recovery_at
+    with pytest.raises(BluetoothStatusError,match='retry automatically'):
+        await runtime.refresh_phone_services('manager','device','properties','/phone','adapter',settings.phone_address)
+    repair.assert_awaited_once()
+    settings.phone_address='11:22:33:44:55:66'
+    runtime.last_service_recovery -= 301
+    with pytest.raises(BluetoothStatusError,match='retry automatically'):
+        await runtime.refresh_phone_services('manager','device','properties','/phone','adapter','AA:BB:CC:DD:EE:FF')
+    repair.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_service_recovery_scans_le_and_accepts_phone_initiated_reconnect():
+    def snapshot(connected):
+        props={key:SimpleNamespace(value=True) for key in ('Paired','Bonded','Trusted')}
+        props['Connected']=SimpleNamespace(value=connected)
+        props['ServicesResolved']=SimpleNamespace(value=False)
+        return {'/phone':{'org.bluez.Device1':props}}
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(side_effect=[
+        snapshot(True),snapshot(False),snapshot(False),snapshot(True),snapshot(True)]))
+    device=SimpleNamespace(call_disconnect=AsyncMock(),call_connect=AsyncMock())
+    adapter=SimpleNamespace(call_set_discovery_filter=AsyncMock(),call_start_discovery=AsyncMock(),
+                            call_stop_discovery=AsyncMock())
+    await recover_stalled_services(manager,device,SimpleNamespace(call_set=AsyncMock()),
+                                   '/phone',adapter=adapter,pause=AsyncMock())
+    adapter.call_start_discovery.assert_awaited_once()
+    adapter.call_stop_discovery.assert_awaited_once()
+    device.call_connect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fast_phone_reconnect_with_ancs_does_not_look_like_failed_reset():
+    def snapshot(with_ancs):
+        props={key:SimpleNamespace(value=True) for key in ('Paired','Bonded','Trusted','Connected')}
+        objects={'/phone':{'org.bluez.Device1':props}}
+        if with_ancs:
+            objects['/ancs']={'org.bluez.GattService1':{'UUID':SimpleNamespace(value=SERVICE),
+                                                     'Device':SimpleNamespace(value='/phone')}}
+            objects['/source']={'org.bluez.GattCharacteristic1':{
+                'UUID':SimpleNamespace(value=SOURCE),'Service':SimpleNamespace(value='/ancs')}}
+        return objects
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(side_effect=[snapshot(False),snapshot(True)]))
+    device=SimpleNamespace(call_disconnect=AsyncMock(),call_connect=AsyncMock())
+    await recover_stalled_services(manager,device,SimpleNamespace(call_set=AsyncMock()),
+                                   '/phone',pause=AsyncMock())
+    device.call_disconnect.assert_awaited_once()
+    device.call_connect.assert_not_awaited()
+    # An exposed source is only an opportunity to subscribe, not presence.
+    assert StateMachine(Settings()).state.privacy == PrivacyLevel.PRIVATE
+
+
+@pytest.mark.asyncio
+async def test_phone_initiated_disconnect_race_preserves_bond_and_reconnects():
+    def snapshot(connected):
+        props={key:SimpleNamespace(value=True) for key in ('Paired','Bonded','Trusted')}
+        props['Connected']=SimpleNamespace(value=connected)
+        return {'/phone':{'org.bluez.Device1':props}}
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(side_effect=[
+        snapshot(True),snapshot(False),snapshot(False),snapshot(False)]))
+    device=SimpleNamespace(call_disconnect=AsyncMock(side_effect=RuntimeError('already disconnected')),
+                           call_connect=AsyncMock())
+    await recover_stalled_services(manager,device,SimpleNamespace(call_set=AsyncMock()),
+                                   '/phone',pause=AsyncMock())
+    device.call_connect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stalled_service_recovery_refuses_phone_selection_change():
+    props={key:SimpleNamespace(value=True) for key in ('Paired','Bonded','Trusted','Connected')}
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(return_value={'/phone':{'org.bluez.Device1':props}}))
+    device=SimpleNamespace(call_disconnect=AsyncMock(),call_connect=AsyncMock())
+    with pytest.raises(BluetoothStatusError,match='changed'):
+        await recover_stalled_services(manager,device,SimpleNamespace(),'/phone',address_is_current=lambda:False)
+    device.call_disconnect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runtime_retries_after_disconnect_then_reopens_only_on_fresh_phone_seen(monkeypatch):
+    import luma.bluetooth_runtime as bluetooth_module
+    monkeypatch.setattr(bluetooth_module, 'sys', SimpleNamespace(platform='linux'))
+    settings=Settings(phone_address='AA:BB:CC:DD:EE:FF',phone_disconnect_grace_seconds=0)
+    machine=StateMachine(settings)
+    service=SimpleNamespace(settings=settings,state=machine.state,phone_seen=machine.phone_seen,
+                            phone_disconnected=machine.phone_disconnected)
+    runtime=BluetoothRuntime(service)
+    reconnected=asyncio.Event()
+    calls=[]
+    async def session(address):
+        calls.append(address)
+        machine.phone_seen()
+        if len(calls)==1:return  # The first ANCS session drops.
+        reconnected.set()
+        await asyncio.Event().wait()
+    runtime.session=session
+    task=asyncio.create_task(runtime.run(pause=AsyncMock()))
+    try:
+        await asyncio.wait_for(reconnected.wait(),2)
+        assert len(calls)>=2 and machine.state.phone_connected
+        assert machine.state.privacy==PrivacyLevel.FULL
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):await task
+    assert machine.state.privacy==PrivacyLevel.PRIVATE
 
 
 def test_disconnect_without_prior_presence_cannot_unlock():

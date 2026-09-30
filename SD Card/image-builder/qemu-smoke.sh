@@ -16,9 +16,18 @@ if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscal
   if [[ ${2:-} == --boot-recovery-check ]]; then
     # Disposable image only: exercise the same FAT script and signed update
     # used for a no-flash recovery. The image's BOOT FAT must be staged first.
+    RECOVERY_SCRIPT=${LUMA_QEMU_RECOVERY_SCRIPT:-luma-r14-recover.sh}
+    RECOVERY_LOG=${LUMA_QEMU_RECOVERY_LOG:-luma-r14-result.log}
+    RECOVERY_VERSION=${LUMA_QEMU_RECOVERY_VERSION:-0.2.2}
+    [[ $RECOVERY_SCRIPT =~ ^luma-[a-z0-9-]+-recover\.sh$ && $RECOVERY_LOG =~ ^luma-[a-z0-9-]+-result\.log$ ]] || {
+      echo 'Invalid disposable recovery fixture name.' >&2; exit 1;
+    }
+    [[ $RECOVERY_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+      echo 'Invalid disposable recovery version.' >&2; exit 1;
+    }
     SMOKE_SECONDS=900
-    KERNEL_ARGS+=' systemd.run="/usr/bin/bash /boot/firmware/luma-r14-recover.sh"'
-    KERNEL_ARGS+=' systemd.run="/usr/bin/cat /boot/firmware/luma-r14-result.log"'
+    KERNEL_ARGS+=" systemd.run=\"/usr/bin/bash /boot/firmware/${RECOVERY_SCRIPT}\""
+    KERNEL_ARGS+=" systemd.run=\"/usr/bin/cat /boot/firmware/${RECOVERY_LOG}\""
     KERNEL_ARGS+=' systemd.run="/usr/bin/curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8742/api/v1/health"'
   elif [[ ${2:-} == --app-update-check ]]; then
     # Only a disposable copy of an unprovisioned image may be used here. The
@@ -156,9 +165,9 @@ if [[ ${2:-} == --app-update-check ]]; then
   fi
 fi
 if [[ ${2:-} == --boot-recovery-check ]]; then
-  if grep -Fq 'SUCCESS: Luma 0.2.2 is running with a healthy API.' "${SMOKE_ROOT}/serial.log" &&
-     grep -Fq '"version":"0.2.2"' "${SMOKE_ROOT}/serial.log"; then
-    echo 'The one-shot BOOT recovery installed the signed application update and reached healthy 0.2.2 in the offline VM; physical Pi validation remains required.'
+  if grep -Fq "SUCCESS: Luma ${RECOVERY_VERSION} is running with a healthy API." "${SMOKE_ROOT}/serial.log" &&
+     grep -Fq "\"version\":\"${RECOVERY_VERSION}\"" "${SMOKE_ROOT}/serial.log"; then
+    echo "The one-shot BOOT recovery installed the signed application update and reached healthy ${RECOVERY_VERSION} in the offline VM; physical Pi validation remains required."
   else
     echo 'No confirmed one-shot recovery + new-version health response; inspect the disposable VM log.' >&2
     exit 1

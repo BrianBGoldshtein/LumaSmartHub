@@ -55,11 +55,12 @@ function initialDemoSnapshot(): Snapshot {
       ...demoSnapshot.state,
       privacy: privateMode ? "private" : "full",
       phone_connected: !privateMode,
+      assistant_phase: demoParameters.get('voice') === 'listening' ? 'listening' : demoSnapshot.state.assistant_phase,
     },
     privacy_redacted: privateMode,
   };
-  result.agenda=privateMode?null:agendaDemo(result.calendar,['packed','crowded'].includes(demoParameters.get('fixture')||''),demoParameters.get('fixture')==='crowded');
-  if(['packed','crowded'].includes(demoParameters.get('fixture')||''))result.calendar=result.agenda?.events.filter(event=>Date.parse(event.end)>Date.now())||[];
+  result.agenda=privateMode?null:agendaDemo(result.calendar,['packed','crowded','short'].includes(demoParameters.get('fixture')||''),demoParameters.get('fixture')==='crowded',demoParameters.get('fixture')==='short');
+  if(['packed','crowded','short'].includes(demoParameters.get('fixture')||''))result.calendar=result.agenda?.events.filter(event=>Date.parse(event.end)>Date.now())||[];
   return result;
 }
 
@@ -186,7 +187,7 @@ function HomePage({ snapshot }: { snapshot: Snapshot }) {
     <main className="page home-page">
       <section className="hero card"><Clock snapshot={snapshot} large /></section>
       <WeatherCard weather={snapshot.weather} compact />
-      <AgendaCard events={snapshot.calendar} limit={2} timezone={snapshot.settings.timezone} />
+      <AgendaCard events={snapshot.calendar} limit={3} timezone={snapshot.settings.timezone} />
     </main>
   );
 }
@@ -215,6 +216,15 @@ function PrivacyStandby({ snapshot }: { snapshot: Snapshot }) {
 
 function AssistantOrb({ phase, onClick }: { phase: string; onClick: () => void }) {
   return <button aria-label="Open Luma assistant" className={`assistant-orb ${phase}`} onClick={onClick}><LumaGlow /><b>{phase === "idle" ? "" : phase}</b></button>;
+}
+
+function ListeningPresence({phase}:{phase:Snapshot['state']['assistant_phase']}) {
+  if(!['listening','thinking','speaking'].includes(phase))return null;
+  const label=phase==='listening'?'Listening':phase==='thinking'?'Thinking':'Speaking';
+  return <div className={`assistant-presence ${phase}`} role="status" aria-live="polite" aria-label={`Luma ${label.toLowerCase()}`}>
+    <div className="assistant-presence-glow"><LumaGlow /></div>
+    <div className="assistant-presence-copy"><strong>{label}</strong><span>{phase==='listening'?'Go ahead, I’m here.':phase==='thinking'?'One moment.':'Luma'}</span></div>
+  </div>;
 }
 
 function ControlIsland({ snapshot, onUpdate, open, setOpen, onTimer }: { snapshot: Snapshot; onUpdate: (snapshot: Snapshot) => void; open:boolean;setOpen:(open:boolean)=>void;onTimer:()=>void }) {
@@ -312,7 +322,7 @@ function App() {
   const wake=async()=>{if(!snapshot)return;if(demoMode)setSnapshot({...snapshot,display:previewDisplay('waking',snapshot.settings.brightness),state:{...snapshot.state,display_power:'on'}});else setSnapshot(await sendCommand('wake'));};
   const privateSetup=!demoMode&&snapshot?.settings.onboarding_completed===true&&snapshot.privacy_redacted;
   if(snapshot?.display?.mode==='off')return <button className="sleep-screen" onClick={()=>void wake()} aria-label="Wake Luma"/>;
-  if(snapshot?.display?.mode==='night-clock' || snapshot?.display?.mode==='waking')return <div className={`app theme-${snapshot.settings.theme} night-screen`}><NightDisplay snapshot={snapshot} onWake={()=>void wake()}/></div>;
+  if(snapshot?.display?.mode==='night-clock' || snapshot?.display?.mode==='waking')return <div className={`app theme-${snapshot.settings.theme} night-screen`}><NightDisplay snapshot={snapshot} onWake={()=>void wake()}/><ListeningPresence phase={snapshot.state.assistant_phase}/></div>;
   if (demoParameters.get("setup") === "google") return <GoogleSetup demo={demoMode}/>;
   if (demoParameters.get("setup") === "device") return <DeviceSetup demo={demoMode}/>;
   if (demoParameters.get("setup") === "onboarding") return <Onboarding demo={demoMode} locked={privateSetup}/>;
@@ -328,6 +338,7 @@ function App() {
       <div className="page-stage" key={`${snapshot.privacy_redacted}-${page}`}>{content}</div>
       {!snapshot.privacy_redacted && <nav className="page-dots" aria-label="Dashboard pages">{(["home", "agenda", "weather", "todos", "ambient",...(hasDates?['countdowns']:[]),...(hasTransit?['transit']:[])] as Page[]).map((item) => <button aria-label={item} className={page === item ? "active" : ""} onClick={() => setPage(item)} key={item} />)}</nav>}
       <AssistantOrb phase={snapshot.state.assistant_phase} onClick={() => setPage("home")} />
+      <ListeningPresence phase={snapshot.state.assistant_phase}/>
       <ControlIsland snapshot={snapshot} onUpdate={setSnapshot} open={overlay==='controls'} setOpen={open=>setOverlay(open?'controls':null)} onTimer={()=>setOverlay('timer')} />
       {overlay==='timer' && <TimerPanel snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}
       {overlay==='departure' && !snapshot.privacy_redacted && snapshot.departure && <DeparturePanel key={snapshot.departure.key} snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}

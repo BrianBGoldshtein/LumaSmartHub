@@ -30,6 +30,7 @@ import urllib.error
 import urllib.request
 import zipfile
 from contextlib import contextmanager
+from typing import Callable
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -47,7 +48,10 @@ PUBLIC_KEY = Path("/etc/luma/luma-update-ed25519.pub")
 SYSTEM_SOCKET_UNITS = ("luma-backup.socket",)
 SYSTEM_SERVICE_UNITS = ("luma-api.service", "luma-backup.service")
 SYSTEM_UNITS = (*SYSTEM_SOCKET_UNITS, *SYSTEM_SERVICE_UNITS)
-USER_UNITS = ("luma-kiosk.service", "luma-device.service", "luma-voice.service")
+# Chromium keeps the already-loaded update progress surface visible while the
+# API is swapped and health-checked. Only helpers with release-bound binaries
+# are stopped; the kiosk reloads after success.
+USER_UNITS = ("luma-device.service", "luma-voice.service")
 
 
 @contextmanager
@@ -396,8 +400,12 @@ def wait_for_health(version: str, timeout: float = 45.0) -> bool:
 
 def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
                          releases_root: Path, public_key_path: Path,
-                         controller, health_check, install_wheel) -> Path:
+                         controller, health_check, install_wheel,
+                         progress: Callable[[str], None] | None = None) -> Path:
     """Stage and atomically switch a verified release, rolling back on bad health."""
+    def phase(value: str) -> None:
+        if progress:progress(value)
+    phase('verifying')
     verified = verify_bundle(bundle_path, public_key_path)
     current = _current_release(app_root, releases_root)
     try:
@@ -443,6 +451,7 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
     promoted = False
     rollback_completed = False
     try:
+        phase('copying')
         shutil.copytree(current, stage, dirs_exist_ok=True, symlinks=False)
         _plain_tree(stage)
         for directory in (stage / "backend", stage / "frontend"):
@@ -466,6 +475,7 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
         wheel_name = next(name for name in verified["files"] if name.endswith(".whl"))
         wheel_path = stage / Path(wheel_name).name
         wheel_path.write_bytes(verified["files"][wheel_name])
+        phase('installing')
         install_wheel(stage, wheel_path)
         wheel_path.unlink()
         (stage / ".luma-release.json").write_bytes(_canonical({
@@ -475,6 +485,7 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
         os.chmod(stage / ".luma-release.json", 0o644)
         staged_path = stage
         os.chmod(staged_path, 0o755)
+        phase('syncing')
         _sync_tree(staged_path)
         os.rename(staged_path, candidate)
         promoted = True
@@ -486,6 +497,7 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
         _relocate_venv_scripts(candidate / "venv/bin", staged_path, candidate)
         _sync_tree(candidate / "venv/bin")
 
+        phase('switching')
         stopped = True
         controller.stop()
         # _atomic_link can replace the pointer successfully and then fail while
@@ -493,13 +505,17 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
         # attempt before calling it so every post-replace error takes rollback.
         switch_attempted = True
         _atomic_link(app_root, candidate)
+        phase('restarting')
         controller.start()
+        phase('checking')
         if not health_check(verified["version"]):
             raise UpdateError("The new release did not pass its local health check.")
+        phase('complete')
         return candidate
     except Exception as exc:
         if switch_attempted:
             try:
+                phase('restoring')
                 controller.stop()
                 _atomic_link(app_root, current)
                 controller.start()
@@ -508,6 +524,7 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
                 raise UpdateError("Update failed and automatic rollback needs local recovery.") from None
         elif stopped:
             try:
+                phase('restoring')
                 controller.start()
             except Exception:
                 raise UpdateError("Update failed before switching; service recovery needs local review.") from None
@@ -525,7 +542,8 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
 
 def apply_bundle(bundle_path: Path, *, app_root: Path = APP_ROOT,
                  releases_root: Path = RELEASES_ROOT, public_key_path: Path = PUBLIC_KEY,
-                 controller=None, health_check=wait_for_health, install_wheel=_install_wheel) -> Path:
+                 controller=None, health_check=wait_for_health, install_wheel=_install_wheel,
+                 progress: Callable[[str], None] | None = None) -> Path:
     """Serialize installation so two admin requests cannot race the active pointer."""
     if fcntl is None:
         raise UpdateError("In-place updates require the Linux appliance runtime.")
@@ -547,7 +565,7 @@ def apply_bundle(bundle_path: Path, *, app_root: Path = APP_ROOT,
         return _apply_bundle_locked(bundle_path, app_root=app_root,
                                     releases_root=releases_root, public_key_path=public_key_path,
                                     controller=controller, health_check=health_check,
-                                    install_wheel=install_wheel)
+                                    install_wheel=install_wheel,progress=progress)
     finally:
         fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)

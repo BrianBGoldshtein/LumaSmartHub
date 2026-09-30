@@ -1,25 +1,62 @@
-# Luma development status
+# Luma development status — 2026-09-30
 
-Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed the physical acceptance suite, and `main` must remain untouched until that review and explicit v1 approval. The physically tested [r12 image candidate](image/r12-current-916b5d7-20260930/README.md) revealed failures in Pi Connect enrollment, removable-drive file browsing and microphone input; do not treat it as accepted. The owner is now running the [r13 candidate](image/r13-final-71d91b5-20260930/README.md), reports working Google Calendar and weather, and has found a further Pi Connect sign-in failure despite working Internet. The combined signed `0.2.2` app-only recovery candidate passed a disposable offline ARM64 one-shot boot/install check using the card's FAT BOOT partition, without reflashing. It is not yet an accepted hardware release.
+Luma is a pre-v1 Raspberry Pi 4 appliance. The owner's Pi currently runs the
+**0.2.3 application**, installed through the no-flash microSD recovery path;
+the saved device and account settings remain on that card. Google Calendar and
+weather have worked on the Pi, and Hey Luma now responds, but physical
+acceptance is **not complete**. The owner reports an iPhone that reconnects
+according to iOS while Luma waits for Bluetooth services and remains in
+privacy standby. The existing spoken reply still sounds mechanical. Pi Connect
+sign-in, USB browsing/backup and the GitHub update path have not yet received
+successful owner acceptance after the latest fixes.
 
-## Implemented in source
+## Current 0.2.4 candidate
 
-- Large-format themed dashboard with time, Open-Meteo weather, Google Calendar agenda, selected-calendar tasks and sleep scheduling; privacy standby follows authenticated phone presence.
-- Local Hey Luma command path, local timers with audible completion, phone pairing controls, Tailscale private Shortcuts, Pi Connect recovery route, and guarded network setup.
-- Optional Levoit Core 300S/300S-P setup and conservative VeSync control, subject to actual model/account/network qualification.
-- Morning, Night, Arrive and Away scenes, disabled by default, with purifier-only bound actions, durable one-shot execution, separate remote consent, and no startup replay.
-- Portable encrypted settings-only USB backup/restore and the signed, app-only updater design. The signing key remains offline.
-- r12 hardware finding: the native file chooser enumerates USB media but cannot mount it because `polkitd` was omitted by the minimal package install. r13 source requires and audits `polkitd`; physical USB file access and backup still require retesting.
-- r12 hardware finding: Hey Luma's calibration meter remains near zero even when the owner shouts. r13 source adds a ReSpeaker V1 hardware check, capture-only mixer initialization and persisted UI gain slider. Treat local voice as failed until the [ReSpeaker capture triage](docs/VOICE_HARDWARE_TRIAGE.md) and actual moving-meter test pass. The “live” virtual source alone does not prove a working microphone.
-- r12 hardware finding: Pi Connect sign-in failed before requesting a QR because `vnc off` and `shell off` were called while unsigned. Exact-image QEMU preflight reproduced this. r13 source reorders the broker and uses shell-only Connect Lite. Real enrollment and reboot persistence still require owner retesting.
-- The weather discrepancy was a location entry error: Stanford longitude is negative. The owner corrected the Pi's coordinates and reports weather is fixed. Setup now includes an explicit western-longitude hint.
-- Full-screen themed ambient animations and game checkpoints. Existing Tetris timing and score ramp remain unchanged; Pong's ball receives a small, checkpoint-migrated speed lift without changing paddle speed.
-- Post-freeze [r14 game polish](docs/R14_GAME_POLISH.md) in the feature branch addresses Pong's occasional retrace bounce and reduces Space Invaders rendering/simulation work. These changes are **not in the r13 image** and still need Pi-side visual qualification before release.
-- The `0.2.2` candidate also adds Pi Connect network diagnostics and longer sign-in/start allowances, hides configured Sleep events from the visible/spoken agenda, prioritizes short-event titles, and adds Bluetooth reconnect/service-resolution diagnostics. The owner reports iPhone Bluetooth showing connected while Luma says paired but disconnected even with Share System Notifications enabled. Preserve fail-closed privacy until the updated status and physical link can be checked; the cause is not yet proven.
-- A pleasant offline female voice is researched in [R14_VOICE_PLAN.md](docs/R14_VOICE_PLAN.md) but **not** included in `0.2.2`; the current `espeak-ng` output remains. A licensed model/runtime and larger signed asset delivery need their own qualification.
+[Draft PR #2](https://github.com/BrianBGoldshtein/LumaSmartHub/pull/2) is a
+feature-branch candidate, **not** a published GitHub Release. It includes
+the previously prepared 0.2.3 application work plus these follow-ons:
 
-## Release gates
+- Active recovery of a stalled bonded iPhone Bluetooth/ANCS connection, with
+  bounded LE discovery and a selected-phone-only service reset. Private
+  information remains hidden until ANCS subscription authorizes. See
+  [Bluetooth recovery](docs/V024_BLUETOOTH_RECOVERY.md).
+- A separately signed, SHA-256-pinned offline Piper/Kristin female voice
+  asset, a warm local speech worker, a fallback to the original voice, and
+  on-screen install status and sample. The approximately 158 MB asset stays
+  outside the app-only bundle and the saved settings database. See
+  [offline voice](docs/V024_OFFLINE_VOICE.md).
+- More everyday voice phrasings and a safe typed phrase preview for the
+  existing offline neural intent matcher. Negated or informational wording
+  must never accidentally operate the hub.
+- More legible calendar event titles and times at the wall-screen size,
+  retaining Google colors, duration-based placement and the themed grid.
+- A real-signed-bundle Linux qualification utility for both successful
+  switch and health-failure rollback with a saved-state sentinel.
 
-The r13 source passed 900 backend tests, 127 frontend tests, 43 image-builder regressions and frontend production compilation. Its archive passed XZ integrity, copied-file hash, exact root-partition comparison and 162-file audit. Disposable ARM64 emulation reached API/database health and exercised the Pi Connect and USB-backup setup brokers; it did not test real peripherals or account enrollment. Follow the [focused r13 owner test sequence](docs/R13_TEST_SEQUENCE.md), then the full [hardware acceptance checklist](docs/HARDWARE_VALIDATION.md). Outstanding physical gates include screen/touch orientation, audio alarm during sleep, microphone wake phrase, campus Wi-Fi, Google OAuth, Bluetooth presence/re-pairing, Tailscale Shortcuts, Pi Connect, USB detection/backup, purifier enrollment and scene safety, reboot/power-loss persistence, and signed update rollback. Synthetic tests and QEMU are not physical evidence. Do not publish v1 or merge to `main` before acceptance.
+The last committed candidate passed GitHub's software workflow, 1,039 local
+Linux backend tests, 130 frontend tests and 43 image-builder tests. A signed
+app bundle passed actual updater switch/rollback qualification in a synthetic
+0.2.3 Linux install; the ARM64 offline speech worker produced a valid WAV under
+emulation. Release-script changes after that CI run need another CI cycle.
+These software checks do not prove
+native Pi Bluetooth, speaker quality, update timing or physical persistence.
 
-See [README.md](README.md), [REQUIREMENTS_STATUS.md](docs/REQUIREMENTS_STATUS.md), [ROOM_DEVICES.md](docs/ROOM_DEVICES.md), [SCENES.md](docs/SCENES.md), and [CAMPUS_NETWORK.md](docs/CAMPUS_NETWORK.md) for current contracts.
+## Next release gates
+
+1. Finish the remaining [0.2.4 ledger](docs/V024_PROGRESS.md), rerun the full
+   suites and review three-theme/portrait screen captures.
+2. Build the exact signed 0.2.4 application and voice assets using the private
+   key kept offline; validate the real archive's switch/rollback and retained
+   settings. Do not put the key or account credentials in GitHub.
+3. Promote to `main` and publish a stable GitHub Release only when the candidate
+   is qualified for an owner-supervised updater trial. This is not v1 approval.
+4. On the Pi, verify update progress and rollback, Bluetooth off/on and
+   out-of-range return, ANCS/privacy, new voice audibility/latency, normal
+   microphone wake, and reboot/power-loss persistence. Record failures before
+   treating 0.2.4 as accepted.
+
+The prior 0.2.2 publication was a narrow exception to the original `main`
+hold. v1 remains unpublished until the full [hardware validation
+checklist](docs/HARDWARE_VALIDATION.md) passes. See [requirements
+status](docs/REQUIREMENTS_STATUS.md), [the iPhone guide](docs/IPHONE_AND_SIRI.md),
+and [update deployment](docs/UPDATE_DEPLOYMENT.md) for standing contracts.

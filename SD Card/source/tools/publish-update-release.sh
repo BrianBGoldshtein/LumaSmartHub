@@ -6,9 +6,11 @@ usage() {
 Usage:
   bash "SD Card/source/tools/publish-update-release.sh" \
     --notes-file /path/to/release-notes.md [--key /offline/path/key.pem] \
-    [--output /path/to/luma-update-X.Y.Z.lup] [--publish]
+    [--output /path/to/luma-update-X.Y.Z.lup] \
+    [--voice-assets-dir /path/to/pinned-voice-files] \
+    [--voice-output /path/to/luma-voice-kristin-X.Y.Z.lva] [--publish]
 
-Without --publish this builds and signs a local .lup only. Publishing additionally
+Without --publish this builds signed local assets without uploading them. Publishing additionally
 requires the exact main commit to be clean, current, and green in GitHub Actions,
 then asks for a typed confirmation before creating a stable GitHub Release.
 EOF
@@ -23,6 +25,8 @@ REPOSITORY="BrianBGoldshtein/LumaSmartHub"
 KEY_PATH="/home/luma-build/keys/luma-update-ed25519.pem"
 NOTES_FILE=""
 OUTPUT=""
+VOICE_ASSETS_DIR=""
+VOICE_OUTPUT=""
 PUBLISH=0
 
 while (($#)); do
@@ -30,6 +34,8 @@ while (($#)); do
     --key) (($# >= 2)) || { usage >&2; exit 2; }; KEY_PATH="$2"; shift 2 ;;
     --notes-file) (($# >= 2)) || { usage >&2; exit 2; }; NOTES_FILE="$2"; shift 2 ;;
     --output) (($# >= 2)) || { usage >&2; exit 2; }; OUTPUT="$2"; shift 2 ;;
+    --voice-assets-dir) (($# >= 2)) || { usage >&2; exit 2; }; VOICE_ASSETS_DIR="$2"; shift 2 ;;
+    --voice-output) (($# >= 2)) || { usage >&2; exit 2; }; VOICE_OUTPUT="$2"; shift 2 ;;
     --publish) PUBLISH=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
@@ -55,6 +61,12 @@ VERSION="$(python3 -c 'import pathlib,sys,tomllib; print(tomllib.loads(pathlib.P
 [[ "${VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "the package version must be stable X.Y.Z"
 BASE_VERSION="$(tr -d '[:space:]' < "${DELIVERY_ROOT}/source/tools/update-base-version.txt")"
 [[ "${BASE_VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "the image's recorded base version is invalid"
+QUALIFY_FROM="${BASE_VERSION}"
+if [[ "${VERSION}" == "0.2.4" ]]; then
+  # The owner's live card received 0.2.3 through boot-partition recovery,
+  # even though the last full-image base version remains 0.2.0.
+  QUALIFY_FROM="0.2.3"
+fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"
 TAG="v${VERSION}"
@@ -64,6 +76,18 @@ ASSET="luma-update-${VERSION}.lup"
 OUTPUT="$(realpath -m -- "${OUTPUT}")"
 case "${OUTPUT}" in "${REPO_ROOT}"|"${REPO_ROOT}"/*) die "keep signed archives outside the repository" ;; esac
 [[ ! -e "${OUTPUT}" && ! -L "${OUTPUT}" ]] || die "output already exists; choose a new path"
+if [[ "${VERSION}" == "0.2.4" && -z "${VOICE_ASSETS_DIR}" ]]; then
+  die "0.2.4 requires its separately signed offline voice asset"
+fi
+if [[ -n "${VOICE_ASSETS_DIR}" ]]; then
+  [[ -d "${VOICE_ASSETS_DIR}" && ! -L "${VOICE_ASSETS_DIR}" ]] || die "voice source directory is missing or linked"
+  VOICE_ASSETS_DIR="$(realpath -- "${VOICE_ASSETS_DIR}")"
+  [[ -n "${VOICE_OUTPUT}" ]] || VOICE_OUTPUT="/home/luma-build/luma-voice-kristin-${VERSION}.lva"
+  [[ "$(basename -- "${VOICE_OUTPUT}")" == "luma-voice-kristin-${VERSION}.lva" ]] || die "voice output filename must match the release version"
+  VOICE_OUTPUT="$(realpath -m -- "${VOICE_OUTPUT}")"
+  case "${VOICE_OUTPUT}" in "${REPO_ROOT}"|"${REPO_ROOT}"/*) die "keep signed voice archives outside the repository" ;; esac
+  [[ ! -e "${VOICE_OUTPUT}" && ! -L "${VOICE_OUTPUT}" ]] || die "voice output already exists; choose a new path"
+fi
 
 if ((PUBLISH)); then
   command -v gh >/dev/null || die "GitHub CLI (gh) is required to publish"
@@ -102,42 +126,71 @@ fi
 printf 'Running frontend tests and production build for %s…\n' "${TAG}"
 (
   cd -- "${DELIVERY_ROOT}/source/frontend"
-  pnpm install --frozen-lockfile
+  # Keep pnpm's content store on the Linux build filesystem. WSL can otherwise
+  # choose a Windows-backed store and create incomplete cross-filesystem links.
+  CI=true pnpm install --frozen-lockfile --store-dir "$(dirname -- "${OUTPUT}")/pnpm-store"
   pnpm test
   pnpm run build
 )
 
 printf 'Running the complete backend suite…\n'
 (cd -- "${DELIVERY_ROOT}/source/backend" && python3 -m pytest -q)
+printf 'Running image-builder, recovery and packaging tests…\n'
+(cd -- "${REPO_ROOT}" && python3 -m pytest -q "SD Card/image-builder")
 
 if ((PUBLISH)); then
   git -C "${REPO_ROOT}" fetch --quiet origin main
   [[ "$(git -C "${REPO_ROOT}" rev-parse refs/remotes/origin/main)" == "${HEAD_SHA}" ]] || die "main advanced while tests were running; nothing will be published"
-  printf 'Tests passed. This will publish %s from accepted main commit %s.\n' "${TAG}" "${HEAD_SHA}"
-  printf 'Type "publish %s" to continue: ' "${TAG}"
-  read -r CONFIRMATION
-  [[ "${CONFIRMATION}" == "publish ${TAG}" ]] || die "confirmation did not match; nothing was published"
 fi
 
 printf 'Signing locally with the key held outside GitHub Actions and the repository…\n'
 python3 "${DELIVERY_ROOT}/source/tools/build-update-bundle.py" "${DELIVERY_ROOT}" \
   --key "${KEY_PATH}" --output "${OUTPUT}"
+printf 'Qualifying the exact signed application archive against switch and rollback…\n'
+python3 "${DELIVERY_ROOT}/source/tools/qualify-update-bundle.py" "${OUTPUT}" \
+  --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
+  --current-version "${QUALIFY_FROM}"
+RELEASE_ASSETS=("${OUTPUT}")
+if [[ -n "${VOICE_ASSETS_DIR}" ]]; then
+  python3 "${DELIVERY_ROOT}/source/tools/build-voice-asset.py" "${DELIVERY_ROOT}" \
+    --assets "${VOICE_ASSETS_DIR}" --key "${KEY_PATH}" --output "${VOICE_OUTPUT}"
+  printf 'Verifying every signed offline voice file against the appliance key…\n'
+  PYTHONPATH="${DELIVERY_ROOT}/source/backend/src" python3 - \
+    "${VOICE_OUTPUT}" "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" <<'PY'
+from pathlib import Path
+import sys
+from tempfile import TemporaryDirectory
+from luma.voice_asset import verify_and_extract
+
+with TemporaryDirectory(prefix="luma-release-voice-check-") as staging:
+    manifest = verify_and_extract(Path(sys.argv[1]), Path(staging), Path(sys.argv[2]))
+    print(f"Verified {len(manifest['files'])} voice files for Luma {manifest['version']}.")
+PY
+  RELEASE_ASSETS+=("${VOICE_OUTPUT}")
+fi
 
 if ((PUBLISH)); then
+  git -C "${REPO_ROOT}" fetch --quiet origin main
+  [[ "$(git -C "${REPO_ROOT}" rev-parse refs/remotes/origin/main)" == "${HEAD_SHA}" ]] || die "main advanced while signing; nothing will be published"
+  printf 'Verified assets for %s from accepted main commit %s.\n' "${TAG}" "${HEAD_SHA}"
+  sha256sum "${RELEASE_ASSETS[@]}"
+  printf 'Type "publish %s" to create the stable GitHub release: ' "${TAG}"
+  read -r CONFIRMATION
+  [[ "${CONFIRMATION}" == "publish ${TAG}" ]] || die "confirmation did not match; nothing was published"
   git -C "${REPO_ROOT}" tag -a "${TAG}" "${HEAD_SHA}" -m "Luma ${VERSION}"
   if ! git -C "${REPO_ROOT}" push origin "refs/tags/${TAG}"; then
     git -C "${REPO_ROOT}" tag -d "${TAG}" >/dev/null
     die "could not publish the exact tested tag; main or the remote tag changed"
   fi
-  if ! gh release create "${TAG}" "${OUTPUT}" --repo "${REPOSITORY}" --target main \
+  if ! gh release create "${TAG}" "${RELEASE_ASSETS[@]}" --repo "${REPOSITORY}" --target main \
     --verify-tag \
     --title "Luma ${VERSION}" --notes-file "${NOTES_FILE}"
   then
     printf 'The tested tag %s is on GitHub at %s; the release upload did not finish.\n' "${TAG}" "${HEAD_SHA}" >&2
-    printf 'Recover by creating the release for this same tag and attaching %s; do not reuse its version.\n' "${OUTPUT}" >&2
+    printf 'Recover by creating the release for this same tag and attaching all signed assets; do not reuse its version.\n' >&2
     exit 1
   fi
   printf 'Published %s. The private signing key was not sent to GitHub.\n' "${TAG}"
 else
-  printf 'Built signed bundle only (not published): %s\n' "${OUTPUT}"
+  printf 'Built signed assets only (not published): %s\n' "${RELEASE_ASSETS[*]}"
 fi

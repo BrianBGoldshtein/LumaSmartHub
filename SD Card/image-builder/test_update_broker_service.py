@@ -37,7 +37,7 @@ class UpdateBrokerImageTests(unittest.TestCase):
 
         installer = (SYSTEM / "install.sh").read_text()
         self.assertIn('"${SOURCE_ROOT}/system/luma-update.service" "${SOURCE_ROOT}/system/luma-update.socket"', installer)
-        self.assertIn("enable luma-api.service luma-network.socket luma-backup.socket luma-update.socket", installer)
+        self.assertIn("enable luma-api.service luma-boot-diagnostics.service luma-network.socket luma-backup.socket luma-update.socket", installer)
         package = (ROOT / "source/backend/pyproject.toml").read_text()
         self.assertIn('luma-update-broker = "luma.update_broker:main"', package)
 

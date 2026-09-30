@@ -1,3 +1,0 @@
-# After 70-uaccess, before 73-seat-late: no desktop-user direct device ACL.
-# USB only; leave GPIO/ReSpeaker and unrelated devices untouched.
-SUBSYSTEM=="lirc", SUBSYSTEMS=="usb", GROUP="luma-ir", MODE="0660", TAG-="uaccess"

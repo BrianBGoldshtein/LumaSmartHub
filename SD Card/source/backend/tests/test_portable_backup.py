@@ -174,7 +174,7 @@ def test_apply_is_transactional_and_preserves_secrets_live_links_and_most_restri
     store.set_secret("google.refresh", "DO_NOT_REPLACE_REFRESH")
     store.set_secret("transit.511", "DO_NOT_REPLACE_TRANSIT")
     store.set_cache("room", "purifier", {"existing": "keep-room-binding"})
-    store.set_cache("room", "fans", {"existing": "keep-fan-binding"})
+    store.set_cache("room", "auxiliary", {"existing": "keep-room-setting"})
     document = empty_document()
     document["settings"]["theme"] = "hearth"
     document["settings"]["voice_enabled"] = True
@@ -188,7 +188,7 @@ def test_apply_is_transactional_and_preserves_secrets_live_links_and_most_restri
     assert store.get_secret("google.refresh") == "DO_NOT_REPLACE_REFRESH"
     assert store.get_secret("transit.511") == "DO_NOT_REPLACE_TRANSIT"
     assert store.get_cache("room", "purifier") == {"existing": "keep-room-binding"}
-    assert store.get_cache("room", "fans") == {"existing": "keep-fan-binding"}
+    assert store.get_cache("room", "auxiliary") == {"existing": "keep-room-setting"}
     from luma.countdowns import Countdowns
     imported_dates = Countdowns(store)
     assert not imported_dates.recovery_error and imported_dates.items[0]["title"] == "Dentist"

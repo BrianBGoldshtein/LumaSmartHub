@@ -1,5 +1,9 @@
 # r11 Raspberry Pi 4 image candidate
 
+> Historical artifact only. This image predates the current source and must
+> not be used for the next flash. Its checks describe the old build, not the
+> current application.
+
 **Status: software-checked for owner-run hardware testing, not hardware-qualified or v1.** The Pi, display/touch, microphone/speaker, campus networks, USB media, phone, appliances and power-loss recovery still need physical acceptance.
 
 ## Exact artifact

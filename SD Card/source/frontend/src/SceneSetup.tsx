@@ -104,7 +104,7 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
     {!ready?<button disabled={busy} onClick={()=>void run(load)}>Load saved scenes</button>:<>
       {config.recovery_error?<p role="alert">Saved scenes need recovery. Nothing has been overwritten; actions are disabled.</p>:!selected?<>
         {remoteDirty&&<p role="status" className="setup-note">Save or discard your private iPhone permission edits before opening another scene or refreshing results.</p>}
-        <div className="fan-cards scene-cards">{sceneKeys.map(key=>{const Icon=icons[key],row=config.definitions[key];return <button key={key} disabled={busy||remoteDirty} onClick={()=>choose(key)}><Icon aria-hidden="true"/><strong>{sceneLabels[key]}</strong><span>{row.needs_review?'Device review needed':!row.enabled?'Off':row.automatic?'Manual + automatic':'Manual only'} · {row.actions.length} {row.actions.length===1?'action':'actions'}</span></button>;})}</div>
+        <div className="scene-cards">{sceneKeys.map(key=>{const Icon=icons[key],row=config.definitions[key];return <button key={key} disabled={busy||remoteDirty} onClick={()=>choose(key)}><Icon aria-hidden="true"/><strong>{sceneLabels[key]}</strong><span>{row.needs_review?'Device review needed':!row.enabled?'Off':row.automatic?'Manual + automatic':'Manual only'} · {row.actions.length} {row.actions.length===1?'action':'actions'}</span></button>;})}</div>
         <section className="private-scene-policy" aria-labelledby="remote-scene-heading">
           <h3 id="remote-scene-heading">Private iPhone actions</h3>
           <p>Separate opt-in. Choose scenes to run from your authenticated Shortcut. This grants only the exact saved devices/actions below—not calendar access, nearby-phone status, scene editing, or automatic triggers.</p>
@@ -119,7 +119,7 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
           {config.remote.recovery_error&&<p className="setup-note">Resetting discards only the unreadable remote allowlist and leaves all remote control off. You can grant scenes again after review.</p>}
         </section>
         <button disabled={busy||remoteDirty} onClick={()=>void run(load)}>Refresh devices & results</button>
-        {!config.devices.length&&<p className="setup-note">Connect the air purifier or complete both fans’ learning and independent-reception checks first. You can leave scenes off and continue setup.</p>}
+        {!config.devices.length&&<p className="setup-note">Connect and select the air purifier first. You can leave scenes off and continue setup.</p>}
       </>:<>
         <button disabled={busy} onClick={back}>← All scenes</button><h3>{sceneLabels[selected]} · {step==='actions'?'Choose actions':'Review & enable'}</h3>
         {step==='actions'?<>
@@ -128,7 +128,7 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
           <button disabled={busy||choice===''||draft.actions.length>=8} onClick={()=>{const {label:_,...item}=choices[Number(choice)].item;edit({actions:[...draft.actions,item]});setChoice('');}}>Add action</button>
           <ol className="scene-actions">{draft.actions.map((item,index)=><li key={index}><span>{actionLabel(item,config.devices)}</span><div><button disabled={busy||index===0} aria-label={`Move action ${index+1} earlier`} onClick={()=>{const next=[...draft.actions];[next[index-1],next[index]]=[next[index],next[index-1]];edit({actions:next});}}>↑</button><button disabled={busy} aria-label={`Remove action ${index+1}`} onClick={()=>edit({actions:draft.actions.filter((_,i)=>i!==index)})}>Remove</button></div></li>)}</ol>
           {!draft.actions.length&&<p className="setup-note">No actions yet. Empty scenes stay off.</p>}
-          <p className="setup-note">Only fresh purifier capabilities and independently tested absolute fan commands are offered. Toggles cannot be automated. If an action is missing, return to device setup.</p>
+          <p className="setup-note">Only fresh purifier capabilities are offered. If an action is missing, return to device setup.</p>
           <button disabled={busy} onClick={()=>setStep('review')}>Review scene</button>
         </>:<>
           <ol className="scene-actions">{draft.actions.map((item,index)=><li key={index}>{actionLabel(item,config.devices)}</li>)}</ol>
@@ -137,7 +137,7 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
           <p className="setup-note">{selected==='morning'||selected==='night'?'Uses only the Sleep calendars selected in Night & wake. Screen commands alone do not enable this calendar trigger.':'Uses the selected phone’s authenticated Bluetooth connection, not PIN unlock or Tailscale. Radio uncertainty does not count as leaving.'}</p>
           {(selected==='morning'||selected==='night')&&!config.calendar_ready&&<p className="setup-note">Fresh Sleep calendar data is not available yet. You may save the preference; no missed trigger will replay when it connects.</p>}
           {(selected==='arrive'||selected==='away')&&!config.phone_configured&&<p className="setup-note">Pair your phone before automatic presence scenes can work.</p>}
-          <p className="setup-note">Manual device control takes priority for one hour. Scenes have a five-minute cooldown. Purifier speed/mode may turn it on; fan state cannot be read back. No remote appliance access is enabled here.</p>
+          <p className="setup-note">Manual device control takes priority for one hour. Scenes have a five-minute cooldown. Purifier speed/mode may turn it on. No remote appliance access is enabled here.</p>
           <div className="room-actions"><button disabled={busy} onClick={()=>setStep('actions')}>Edit actions</button><button disabled={busy} onClick={()=>void run(save)}>Save scene</button></div>
         </>}
         <button disabled={busy||dirty||!config.definitions[selected].enabled||config.definitions[selected].needs_review||!config.clock_trusted} onClick={()=>setConfirm('run')}>Run saved scene once…</button>

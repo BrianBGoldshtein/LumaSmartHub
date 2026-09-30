@@ -16,7 +16,7 @@ import {SetupActivity} from "./setupActivity";
 import "./onboarding.css";
 
 const demoKey="luma.onboarding.preview.v1";
-type Summary={weather:boolean;pin:boolean;google:boolean;phone_selected:boolean;voice_enabled:boolean;weather_nudges_enabled?:boolean;timer_focus_minutes?:number;timer_break_minutes?:number;departure_enabled?:boolean;departure_calendars?:number;night_clock_enabled?:boolean;night_brightness?:number;countdowns?:number;public_countdowns?:number;transit_stops?:number;public_transit_stops?:number;transit_token?:boolean;purifier_session?:boolean;purifier_selected?:boolean;room_recovery?:boolean;fan_outputs?:number;fan_checks?:boolean;fan_recovery?:boolean;scenes_enabled?:number;scenes_automatic?:number;scenes_recovery?:boolean};
+type Summary={weather:boolean;pin:boolean;google:boolean;phone_selected:boolean;voice_enabled:boolean;weather_nudges_enabled?:boolean;timer_focus_minutes?:number;timer_break_minutes?:number;departure_enabled?:boolean;departure_calendars?:number;night_clock_enabled?:boolean;night_brightness?:number;countdowns?:number;public_countdowns?:number;transit_stops?:number;public_transit_stops?:number;transit_token?:boolean;purifier_session?:boolean;purifier_selected?:boolean;room_recovery?:boolean;scenes_enabled?:number;scenes_automatic?:number;scenes_recovery?:boolean};
 async function request(path:string,method="GET",body?:unknown){
   const response=await fetch(`/api/v1/${path}`,{method,cache:"no-store",headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
   const data=await response.json();if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:"Could not save. Please try again.");return data;
@@ -106,12 +106,11 @@ export function Onboarding({demo,locked=false}:{demo:boolean;locked?:boolean}){
                 <div><strong>Important dates</strong><span>{demo?'Sample preview only':`${summary?.countdowns??0} saved · ${summary?.public_countdowns??0} public in standby`}</span></div>
                 <div><strong>Transit</strong><span>{demo?'Sample preview only':`${summary?.transit_stops??0} stops · ${summary?.public_transit_stops??0} public · ${summary?.transit_token?'token saved, feed access still required':'no token'}`}</span></div>
                 <div><strong>Room devices</strong><span>{demo?'Sample preview only':summary?.room_recovery?'Settings need recovery':summary?.purifier_selected?'Purifier selected · physical check still required':summary?.purifier_session?'VeSync session saved · choose a purifier':'Not connected · optional'}</span></div>
-                <div><strong>Fans</strong><span>{demo?'Sample preview only':summary?.fan_recovery?'Settings need recovery':`${summary?.fan_outputs??0}/2 outputs saved · ${summary?.fan_checks?'owner-recorded checks saved':'independent-operation checks needed'}`}</span></div>
                 <div><strong>Scenes</strong><span>{demo?'Sample preview only':summary?.scenes_recovery?'Settings need recovery':`${summary?.scenes_enabled??0} enabled · ${summary?.scenes_automatic??0} automatic triggers · remote access off`}</span></div>
               </div>
               <p className="onboarding-note">This is a configuration review, not a hardware pass. Display, audio, campus access and phone controls still need checks on the assembled Pi. Private commands are verified in their own setup panel.</p>
               <details><summary>Return to a setup step</summary><div className="onboarding-revisit">{setupSteps.slice(0,-1).map(key=><button key={key} disabled={busy} onClick={()=>void move("visit",key)}>{setupCopy[key].label}<span>{progress.statuses[key]==="later"?"Saved for later":progress.statuses[key]==="reviewed"?"Reviewed":"Not reviewed"}</span></button>)}</div></details>
-              <p className="onboarding-note">Focus timers are ready in dashboard controls. Daily rhythm, dates, transit, the purifier and fan learning have optional settings in Extras. Scenes and USB recovery are still in development. No appliance automation is enabled by finishing setup.</p>
+              <p className="onboarding-note">Focus timers are ready in dashboard controls. Daily rhythm, dates, transit, and the purifier have optional settings in Extras. No appliance automation is enabled by finishing setup.</p>
             </>}
           </div>
           {notice && <p className="onboarding-save" role="status">{notice}</p>}

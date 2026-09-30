@@ -39,7 +39,6 @@ from .countdowns import Countdowns
 from .transit import Transit
 from .agenda import day_agenda
 from .room import Room
-from .fans import Fans
 from .scenes import Scenes
 
 
@@ -64,7 +63,6 @@ class LumaService:
         self.countdowns = Countdowns(storage)
         self.transit = Transit(storage)
         self.room = Room(storage)
-        self.fans = Fans(storage)
         self.scenes = Scenes(storage)
         self.display = DisplayCycle(storage)
         self.display_handoff = DisplayHandoff()

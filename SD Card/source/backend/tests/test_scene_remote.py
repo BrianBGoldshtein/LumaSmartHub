@@ -6,7 +6,7 @@ from luma.scene_remote import RemoteScenePolicy
 from luma.storage import Storage
 
 
-ACTION={'device':'fan_1','action':'oscillate_off','value':None,'binding':'a'*64}
+ACTION={'device':'purifier','action':'power','value':False,'binding':'a'*64}
 
 
 class Devices:
@@ -28,7 +28,7 @@ def test_remote_permissions_are_separate_default_off_and_bound_to_exact_actions(
     assert not policy.effective('morning',rows['morning'])
     policy.save(True,['morning'],revision=policy.revision,definitions=rows,devices=devices)
     assert policy.effective('morning',rows['morning']) and devices.calls==1
-    changed=deepcopy(rows);changed['morning']['actions'][0]['action']='power'
+    changed=deepcopy(rows);changed['morning']['actions'][0]['value']=True
     status=policy.configuration(changed)
     assert not policy.effective('morning',changed['morning'])
     assert status['scenes']['morning']=={'allowed':False,'needs_review':True}

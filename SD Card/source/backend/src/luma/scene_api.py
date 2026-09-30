@@ -17,7 +17,7 @@ SceneKey = Literal['morning', 'night', 'arrive', 'away']
 
 class Action(BaseModel):
     model_config = {'extra': 'forbid'}
-    device: Literal['purifier', 'fan_1', 'fan_2']
+    device: Literal['purifier']
     action: str = Field(min_length=1, max_length=32)
     value: StrictBool | StrictInt | StrictStr | None
     binding: str = Field(pattern=r'^[a-f0-9]{64}$')
@@ -41,7 +41,7 @@ class RemoteReset(Revision):
 
 
 def install_scene_api(app, service, local_only, bluetooth):
-    runtime = SceneRuntime(service, app.state.room_runtime, app.state.fan_runtime, bluetooth)
+    runtime = SceneRuntime(service, app.state.room_runtime, bluetooth)
     app.state.scene_runtime = runtime
 
     def owner():

@@ -26,11 +26,11 @@ def sleep_interval(service, now):
 
 
 class SceneRuntime:
-    def __init__(self, service, room, fans, bluetooth, *, clock=monotonic, utcnow=None):
+    def __init__(self, service, room, bluetooth, *, clock=monotonic, utcnow=None):
         self.service, self.store, self.bluetooth = service, service.scenes, bluetooth
         self.remote_policy = RemoteScenePolicy(service.scenes.storage)
         self.clock, self.utcnow = clock, utcnow or (lambda: datetime.now(UTC))
-        self.devices = SceneDevices(service, room, fans, utcnow=self.utcnow)
+        self.devices = SceneDevices(service, room, utcnow=self.utcnow)
         self.presence, self.calendar = PresenceTriggers(), CalendarTriggers()
         self.trigger = None
         self.job = None

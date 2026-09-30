@@ -38,7 +38,6 @@ luma-backup = "luma.backup_broker:main"
 luma-shortcut-gateway = "luma.shortcut_gateway:main"
 luma-tailscale-setup = "luma.tailscale_setup:main"
 luma-pi-connect-setup = "luma.pi_connect_setup:main"
-luma-ir = "luma.ir_broker:main"
 luma-update = "luma.update_agent:main"
 luma-update-broker = "luma.update_broker:main"
 

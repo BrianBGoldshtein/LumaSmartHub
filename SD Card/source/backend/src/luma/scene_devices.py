@@ -3,10 +3,7 @@ from copy import deepcopy
 import hashlib
 import json
 
-from .fans import BUTTONS, SLOTS
-from .room import instant
 from .purifier_adapter import PurifierBusy, PurifierRateLimit, PurifierUnavailable
-from .ir_protocol import InfraredError
 
 
 def digest(value):
@@ -14,25 +11,18 @@ def digest(value):
 
 
 class SceneDevices:
-    def __init__(self, service, room, fans, *, utcnow):
-        self.service, self.room, self.fans, self.utcnow = service, room, fans, utcnow
+    def __init__(self, service, room, *, utcnow):
+        self.service, self.room, self.utcnow = service, room, utcnow
 
     def binding(self, device):
         if device == 'purifier':
             store = self.service.room
             if store.recovery_error or store.selected is None or store.session is None: return None
             return digest(['purifier', store.revision, store.selected['id']])
-        if device in SLOTS:
-            store = self.service.fans
-            if store.recovery_error or store.slots[device] is None: return None
-            return digest([device, store.revision, store.slots[device]['route']])
         return None
 
     def overridden(self, device):
-        now = self.utcnow()
-        if device == 'purifier': return self.service.room.override_active(now)
-        until = instant(self.service.fans.overrides.get(device))
-        return bool(until and now < until)
+        return device == 'purifier' and self.service.room.override_active(self.utcnow())
 
     def supported(self, item):
         device, key, value = item['device'], item['action'], item['value']
@@ -45,10 +35,7 @@ class SceneDevices:
             if key == 'speed': return type(value) is int and value in caps.get('speeds', [])
             if key == 'mode': return type(value) is str and value in caps.get('modes', [])
             return False
-        config = self.fans.configuration()
-        if any(row['needs_output_review'] for row in config['fans']): return False
-        row = next((row for row in config['fans'] if row['id'] == device), None)
-        return bool(value is None and row and any(button['key'] == key and button['scene_eligible'] for button in row['buttons']))
+        return False
 
     def catalog(self):
         rows = []
@@ -59,10 +46,6 @@ class SceneDevices:
                           *[('mode', mode, f'{mode.title()} mode · may turn on') for mode in ('manual', 'sleep', 'auto')],
                           ('display', False, 'Display off'), ('display', True, 'Display on')]
             rows.append(self._catalog_device('purifier', store.selected['name'], candidates))
-        for device, row in self.service.fans.slots.items():
-            if row:
-                candidates = [(key, None, BUTTONS[key][0]) for key in row['buttons'] if BUTTONS[key][1] == 'absolute']
-                rows.append(self._catalog_device(device, row['name'], candidates))
         return rows
 
     def _catalog_device(self, device, name, candidates):
@@ -93,10 +76,8 @@ class SceneDevices:
                 result = await self.room.scene_command(item['action'], item['value'], self.service.room.revision, can_send=guard)
                 return {'confirmed': 'confirmed', 'unconfirmed': 'unconfirmed',
                         'rejected': 'rejected', 'not_sent': 'not_sent'}[result['status']]
-            result = await self.fans.scene_command(device, item['action'], self.service.fans.revision, can_send=guard)
-            return 'not_sent' if result['status'] == 'not_sent' else 'unconfirmed'
         except (PurifierBusy, PurifierRateLimit): return 'unavailable'
-        except (PurifierUnavailable, InfraredError, ValueError):
+        except (PurifierUnavailable, ValueError):
             # Transport may have crossed the physical boundary; receipts, not an
             # exception class, determine whether the outcome is known.
             return 'unconfirmed'

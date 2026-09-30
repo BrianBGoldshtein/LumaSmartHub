@@ -123,7 +123,7 @@ def test_voice_scene_requires_owner_and_nonempty_explicitly_enabled_config(tmp_p
     runtime.owner_allowed=lambda:True
     empty=client.post('/api/v1/voice/command',json={'text':'run morning scene'}).json()
     assert not empty['accepted'] and 'not set up' in empty['message']
-    runtime.store.definitions['morning']={'enabled':True,'automatic':False,'actions':[{'device':'fan_1'}]}
+    runtime.store.definitions['morning']={'enabled':True,'automatic':False,'actions':[{'device':'purifier'}]}
     service.display_clock_trusted=lambda:False
     clock=client.post('/api/v1/voice/command',json={'text':'run morning scene'}).json()
     assert not clock['accepted'] and 'clock' in clock['message'].lower()
@@ -133,7 +133,7 @@ def test_voice_scene_starts_saved_manual_run_only_after_all_gates(tmp_path):
     import asyncio
     app=create_app(data_dir=tmp_path);runtime=app.state.scene_runtime
     app.state.luma.display_clock_trusted=lambda:True
-    runtime.store.definitions['night']={'enabled':True,'automatic':False,'actions':[{'device':'fan_1'}]}
+    runtime.store.definitions['night']={'enabled':True,'automatic':False,'actions':[{'device':'purifier'}]}
     runtime.configuration=lambda:{'definitions':{'night':{'needs_review':False}}}
     started=Event()
     async def manual(key,revision):

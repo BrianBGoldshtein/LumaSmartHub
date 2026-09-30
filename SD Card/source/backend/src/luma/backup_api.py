@@ -135,7 +135,7 @@ def install_backup_api(app, service, storage, local_only):
             "orientation": settings["orientation"],
             "counts": counts,
             "preserved_here": ["Google account and calendar links", "phone pairing", "PIN and privacy state",
-                               "purifier/fan bindings and credentials", "this Pi's current microphone mute"],
+                               "purifier binding and credentials", "this Pi's current microphone mute"],
             "requires_review": ["Google and phone links are not transferred", "restored scenes stay off until rebound",
                                 "saved game runs in this backup replace the same games on this hub"],
         }, headers={"Cache-Control": "no-store"})

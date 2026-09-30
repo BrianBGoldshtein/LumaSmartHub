@@ -5,7 +5,6 @@ import {NightSetup} from './NightSetup';
 import {CountdownSetup} from './CountdownSetup';
 import {TransitSetup} from './TransitSetup';
 import {RoomSetup} from './RoomSetup';
-import {FanSetup} from './FanSetup';
 import {SceneSetup} from './SceneSetup';
 import {BackupSetup} from './BackupSetup';
 import {TouchField,TouchInputProvider} from './TouchField';
@@ -17,7 +16,7 @@ import {extraPreferences,extraPatch,type ExtraTask,type ExtraPreferences} from '
 export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boolean;embedded?:boolean;onSaved?:()=>void;locked?:boolean}){
   const shellRef=useRef<HTMLDivElement>(null);
   const [values,setValues]=useState(()=>extraPreferences()),[baseline,setBaseline]=useState(()=>extraPreferences());
-  const [task,setTask]=useState<ExtraTask|'departure'|'night'|'countdowns'|'transit'|'room'|'fans'|'scenes'|'backup'|null>(null),[saving,setBusy]=useState(false),[ready,setReady]=useState(demo),[message,setMessage]=useState('');
+  const [task,setTask]=useState<ExtraTask|'departure'|'night'|'countdowns'|'transit'|'room'|'scenes'|'backup'|null>(null),[saving,setBusy]=useState(false),[ready,setReady]=useState(demo),[message,setMessage]=useState('');
   const [childDirty,setChildDirty]=useState(false),[childBusy,setChildBusy]=useState(false);
   const busy=saving||childBusy;
   const [hasLocation,setHasLocation]=useState(false),[retry,setRetry]=useState(0),[theme,setTheme]=useState(()=>setupTheme(new URLSearchParams(location.search).get('theme')));
@@ -35,13 +34,13 @@ export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boo
     return()=>controller.abort();
   },[demo,retry]);
   const edit=(key:keyof ExtraPreferences,value:string|boolean)=>{activity.edited();setValues(current=>({...current,[key]:value}));setMessage('');};
-  function choose(next:ExtraTask|'departure'|'night'|'countdowns'|'transit'|'room'|'fans'|'scenes'|'backup'|null){
+  function choose(next:ExtraTask|'departure'|'night'|'countdowns'|'transit'|'room'|'scenes'|'backup'|null){
     if(dirty){setMessage('Save these preferences before choosing another extra. You can also leave this setup step and discard edits.');return;}
     setTask(next);setMessage('');
     scrollSetupToTop(shellRef.current);
   }
   async function save(){
-    if(!task || task==='departure' || task==='night' || task==='countdowns' || task==='transit' || task==='room' || task==='fans' || task==='scenes' || task==='backup')return;
+    if(!task || task==='departure' || task==='night' || task==='countdowns' || task==='transit' || task==='room' || task==='scenes' || task==='backup')return;
     let patch:Record<string,number|boolean>;
     try{patch=extraPatch(task,values);}catch(e){setMessage((e as Error).message);return;}
     setBusy(true);setMessage('');
@@ -60,9 +59,9 @@ export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boo
         <button onClick={()=>choose('weather')}><CloudSun aria-hidden="true"/><strong>Weather hints</strong><span>{baseline.weather_nudges_enabled?hasLocation?'Enabled · forecast required':'Needs a location':'Off · optional'}</span></button>
         <button onClick={()=>choose('departure')}><Footprints aria-hidden="true"/><strong>Leave soon</strong><span>Optional · Google Calendar</span></button>
         <button onClick={()=>choose('night')}><Moon aria-hidden="true"/><strong>Night & wake</strong><span>Dim clock · gentle mornings</span></button>
-      </div><h2>Dates & travel</h2><div className="extras-choices"><button onClick={()=>choose('countdowns')}><CalendarDays aria-hidden="true"/><strong>Important dates</strong><span>Manual dates · Google event links</span></button><button onClick={()=>choose('transit')}><TrainFront aria-hidden="true"/><strong>Transit</strong><span>Saved stops · live or scheduled departures</span></button></div><h2>Room devices</h2><div className="extras-choices"><button onClick={()=>choose('room')}><Wind aria-hidden="true"/><strong>Air purifier</strong><span>Optional · VeSync cloud connection</span></button><button onClick={()=>choose('fans')}><Wind aria-hidden="true"/><strong>Two fans</strong><span>USB infrared · guided learning & tests</span></button><button onClick={()=>choose('scenes')}><Moon aria-hidden="true"/><strong>Room scenes</strong><span>Morning · Night · Arrive · Away</span></button></div><h2>Keep & restore</h2><div className="extras-choices"><button onClick={()=>choose('backup')}><HardDrive aria-hidden="true"/><strong>Settings backup</strong><span>Encrypted USB · review before restore</span></button></div></section>:<section>
+      </div><h2>Dates & travel</h2><div className="extras-choices"><button onClick={()=>choose('countdowns')}><CalendarDays aria-hidden="true"/><strong>Important dates</strong><span>Manual dates · Google event links</span></button><button onClick={()=>choose('transit')}><TrainFront aria-hidden="true"/><strong>Transit</strong><span>Saved stops · live or scheduled departures</span></button></div><h2>Room devices</h2><div className="extras-choices"><button onClick={()=>choose('room')}><Wind aria-hidden="true"/><strong>Air purifier</strong><span>Optional · VeSync cloud connection</span></button><button onClick={()=>choose('scenes')}><Moon aria-hidden="true"/><strong>Room scenes</strong><span>Morning · Night · Arrive · Away</span></button></div><h2>Keep & restore</h2><div className="extras-choices"><button onClick={()=>choose('backup')}><HardDrive aria-hidden="true"/><strong>Settings backup</strong><span>Encrypted USB · review before restore</span></button></div></section>:<section>
         <button disabled={busy} onClick={()=>choose(null)}><ArrowLeft aria-hidden="true"/> Choose another extra</button>
-        {task==='backup'?<BackupSetup demo={demo} locked={locked} onSaved={onSaved}/>:task==='scenes'?locked?<p role="status">Unlock with your nearby phone or PIN to configure scenes.</p>:<SceneSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='fans'?locked?<p role="status">Unlock with your nearby phone or PIN to configure fans.</p>:<FanSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='room'?locked?<p role="status">Unlock with your nearby phone or PIN to configure room devices.</p>:<RoomSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='transit'?locked?<p role="status">Unlock with your nearby phone or PIN to configure transit.</p>:<TransitSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='countdowns'?locked?<p role="status">Private dates are hidden. Connect your nearby phone or unlock with your PIN from the dashboard to continue.</p>:<CountdownSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='departure'?<DepartureSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='night'?<NightSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:<>
+        {task==='backup'?<BackupSetup demo={demo} locked={locked} onSaved={onSaved}/>:task==='scenes'?locked?<p role="status">Unlock with your nearby phone or PIN to configure scenes.</p>:<SceneSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='room'?locked?<p role="status">Unlock with your nearby phone or PIN to configure room devices.</p>:<RoomSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='transit'?locked?<p role="status">Unlock with your nearby phone or PIN to configure transit.</p>:<TransitSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='countdowns'?locked?<p role="status">Private dates are hidden. Connect your nearby phone or unlock with your PIN from the dashboard to continue.</p>:<CountdownSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='departure'?<DepartureSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:task==='night'?<NightSetup demo={demo} onDirty={setChildDirty} onBusy={setChildBusy} onSaved={()=>{setMessage('');onSaved?.();}}/>:<>
         <h2>{task==='timer'?<><Timer/>Focus & break</>:<><CloudSun/>Weather hints</>}</h2>
         <p>{task==='timer'?'One local timer. No account or phone needed.':'One useful forecast hint, inside your weather card. No extra alerts.'}</p>
         <form onSubmit={event=>{event.preventDefault();void save();}}>

@@ -51,8 +51,6 @@ def test_all_four_scenes_start_empty_disabled_and_without_remote_permission(tmp_
     {**CONFIG, 'actions': [{**ACTION, 'device': 'arbitrary'}]},
     {**CONFIG, 'actions': [{**ACTION, 'action': 'filter_reset'}]},
     {**CONFIG, 'actions': [{**ACTION, 'value': 1}]},
-    {**CONFIG, 'actions': [{**ACTION, 'device': 'fan_1', 'action': 'power_toggle', 'value': None}]},
-    {**CONFIG, 'actions': [{**ACTION, 'device': 'fan_1', 'action': 'speed_up', 'value': None}]},
     {**CONFIG, 'actions': [ACTION, {**ACTION, 'action': 'speed', 'value': 2}]},
     {**CONFIG, 'actions': [ACTION, {**ACTION, 'action': 'display', 'binding': 'b' * 64}]},
 ])
@@ -71,11 +69,24 @@ def test_save_reload_absolute_actions_and_independent_trigger_optin(tmp_path):
     assert restored.generation != saved.generation and restored.active is None
     with pytest.raises(ValueError, match='trigger'): claim(restored, source='calendar')
     assert claim(restored)['source'] == 'manual'
-    value = {'enabled': True, 'automatic': False, 'actions': [
-        {**ACTION, 'device': 'fan_1', 'action': 'power_off', 'value': None},
-        {**ACTION, 'device': 'fan_2', 'action': 'speed_2', 'value': None},
-    ]}
+    value = {'enabled': True, 'automatic': False, 'actions': [ACTION,
+        {**ACTION, 'action': 'display', 'value': True}]}
     assert definition(value) == value
+
+
+def test_upgrade_drops_unavailable_device_actions_without_losing_purifier_scene(tmp_path):
+    saved = setup(store(tmp_path))
+    raw = saved.storage.get_cache('room', 'scenes')
+    raw['definitions']['morning']['actions'].append({**ACTION, 'device': 'retired_device'})
+    raw['definitions']['night'] = {'enabled': True, 'automatic': True,
+                                   'actions': [{**ACTION, 'device': 'retired_device'}]}
+    saved.storage.set_cache('room', 'scenes', raw)
+    restored = Scenes(saved.storage)
+    assert not restored.recovery_error
+    assert restored.revision != saved.revision
+    assert restored.definitions['morning']['actions'] == [ACTION]
+    assert restored.definitions['morning']['enabled']
+    assert restored.definitions['night'] == {'enabled': False, 'automatic': False, 'actions': []}
 
 
 @pytest.mark.parametrize('source', ['presence', 'pin', 'tailscale', 'boot', 'token_refresh'])

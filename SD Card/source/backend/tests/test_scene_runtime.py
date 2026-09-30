@@ -18,7 +18,6 @@ from luma.scene_triggers import SceneTrigger
 from luma.service import LumaService
 from luma.storage import Storage
 from test_scenes import CONFIG, NOW
-from test_fans import configure, observed
 
 ADDRESS = 'AA:BB:CC:DD:EE:FF'
 OBJECTS = {'/adapter': {'org.bluez.Adapter1': {'Powered': True}}, '/phone': {'org.bluez.Device1': {
@@ -57,8 +56,8 @@ def runtime(tmp_path):
     service.update_settings({'onboarding_completed': True, 'phone_address': ADDRESS, 'sleep_calendar_ids': ['sleep']})
     ticks = [0]
     bluetooth = SimpleNamespace(scene_presence=ScenePresence(clock=lambda: ticks[0]))
-    room, fans = SimpleNamespace(), SimpleNamespace()
-    rt = SceneRuntime(service, room, fans, bluetooth, clock=lambda: ticks[0], utcnow=lambda: NOW + timedelta(seconds=ticks[0]))
+    room = SimpleNamespace()
+    rt = SceneRuntime(service, room, bluetooth, clock=lambda: ticks[0], utcnow=lambda: NOW + timedelta(seconds=ticks[0]))
     dispatch = AsyncMock(return_value='confirmed')
     rt.executor.dispatch = dispatch
     return service, rt, ticks, dispatch
@@ -263,38 +262,11 @@ def test_scene_api_local_owner_strict_body_no_remote_raw_trigger(tmp_path):
     assert client.get('/api/v1/scenes').status_code == 200
 
 
-def test_scene_api_binds_reviewed_fan_saves_reloads_and_runs_real_dispatch(tmp_path):
-    app = create_app(data_dir=tmp_path)
-    service = app.state.luma
-    service.display_clock_trusted = lambda: True
-    configure(service.fans)
-    observed(service.fans); observed(service.fans); observed(service.fans, 'fan_2')
-    now = NOW + timedelta(hours=2)
-    rt = app.state.scene_runtime
-    rt.utcnow = rt.devices.utcnow = rt.executor.utcnow = app.state.fan_runtime.utcnow = lambda: now
-    from luma.ir_protocol import send_result
-    transport = AsyncMock(return_value=send_result('sent_unconfirmed'))
-    app.state.fan_runtime.transport = transport
-    client = TestClient(app, client=('127.0.0.1', 1234))
-    config = client.get('/api/v1/scenes').json()
-    item = config['devices'][0]['actions'][0]; item.pop('label')
-    body = {'revision': config['revision'], 'enabled': True, 'automatic': False, 'actions': [item]}
-    response = client.put('/api/v1/scenes/night', json=body)
-    assert response.status_code == 200
-    revision = response.json()['revision']
-    assert client.get('/api/v1/scenes').json()['definitions']['night']['enabled']
-    result = client.post('/api/v1/scenes/night/run', json={'revision': revision})
-    assert result.status_code == 200 and transport.await_count == 1
-    assert result.json()['result']['steps'][0]['status'] == 'unconfirmed'
-    assert client.post('/api/v1/scenes/night/run', json={'revision': revision}).status_code == 409
-    assert transport.await_count == 1
-
-
 @pytest.mark.asyncio
 async def test_scene_runtime_cancel_covers_voice_acknowledgement_before_claim(tmp_path):
     service=LumaService(Storage(tmp_path/'luma.db'),clock_trusted=lambda:True)
     service.display_clock_trusted=lambda:True
-    runtime=SceneRuntime(service,AsyncMock(),AsyncMock(),SimpleNamespace(scene_presence=SimpleNamespace(read=lambda _:None)))
+    runtime=SceneRuntime(service,AsyncMock(),SimpleNamespace(scene_presence=SimpleNamespace(read=lambda _:None)))
     attempted=[]
     async def queued_manual():
         attempted.append(True)

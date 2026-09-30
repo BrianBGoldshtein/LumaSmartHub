@@ -43,12 +43,6 @@ usermod -a -G audio,bluetooth,input,render,video,i2c luma
 groupadd --system -f luma-led
 usermod -a -G luma-led luma
 install -m 0644 "${SOURCE_ROOT}/system/70-luma-spi.rules" /etc/udev/rules.d/
-groupadd --system -f luma-ir
-if ! id luma-ir >/dev/null 2>&1; then
-  useradd --system --gid luma-ir --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin luma-ir
-fi
-# Do not add the interactive/API luma user to this hardware-access group.
-install -m 0644 "${SOURCE_ROOT}/system/72-luma-ir.rules" /etc/udev/rules.d/
 
 install -d -m 0755 "${INSTALL_ROOT}/backend" "${INSTALL_ROOT}/frontend"
 install -d -m 0755 -o root -g root "${INSTALL_ROOT}/qualification"
@@ -89,7 +83,6 @@ install -m 0644 "${SOURCE_ROOT}/system/luma-tailscaled.service" \
 install -m 0644 "${SOURCE_ROOT}/system/luma-network.service" "${SOURCE_ROOT}/system/luma-network.socket" /etc/systemd/system/
 install -m 0644 "${SOURCE_ROOT}/system/luma-backup.service" "${SOURCE_ROOT}/system/luma-backup.socket" /etc/systemd/system/
 install -m 0644 "${SOURCE_ROOT}/system/luma-update.service" "${SOURCE_ROOT}/system/luma-update.socket" /etc/systemd/system/
-install -m 0644 "${SOURCE_ROOT}/system/luma-ir.service" "${SOURCE_ROOT}/system/luma-ir.socket" /etc/systemd/system/
 install -d -m 0755 /etc/NetworkManager/conf.d
 install -m 0644 "${SOURCE_ROOT}/system/30-luma-connectivity.conf" /etc/NetworkManager/conf.d/
 # Trust is scoped to the Stanford Wi-Fi profile, never the OS/browser trust store.
@@ -118,7 +111,7 @@ if [[ ${LUMA_IMAGE_BUILD:-0} != 1 && -S /run/systemd/private && -d /run/systemd/
 fi
 install -d -m 0755 /etc/lightdm/lightdm.conf.d
 install -m 0644 "${SOURCE_ROOT}/system/60-luma.conf" /etc/lightdm/lightdm.conf.d/
-systemctl --root=/ enable luma-api.service luma-network.socket luma-backup.socket luma-update.socket luma-tailscale-setup.socket luma-ir.socket bluetooth.service lightdm.service avahi-daemon.service
+systemctl --root=/ enable luma-api.service luma-network.socket luma-backup.socket luma-update.socket luma-tailscale-setup.socket bluetooth.service lightdm.service avahi-daemon.service
 systemctl --root=/ set-default graphical.target
 
 # Owner-approved recovery route. Only the public key enters the appliance.

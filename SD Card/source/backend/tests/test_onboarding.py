@@ -22,7 +22,6 @@ def test_fresh_setup_is_private_and_secret_free(client):
                                   departure_enabled=False, departure_calendars=0, night_clock_enabled=True, night_brightness=5, countdowns=0, public_countdowns=0,
                                   transit_stops=0, public_transit_stops=0, transit_token=False,
                                   purifier_session=False, purifier_selected=False, room_recovery=False,
-                                  fan_outputs=0, fan_checks=False, fan_recovery=False,
                                   scenes_enabled=0, scenes_automatic=0, scenes_recovery=False)
     assert client.get('/api/v1/state').json()['privacy_redacted']
 

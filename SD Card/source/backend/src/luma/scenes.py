@@ -8,10 +8,14 @@ from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 import re
 from threading import RLock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from .fans import BUTTONS, uuid
 from .room import Room, instant
+
+
+def uuid(value):
+    if not isinstance(value, str): raise ValueError('Invalid scene identifier.')
+    UUID(value)
 
 SCENES = ('morning', 'night', 'arrive', 'away')
 AUTOMATIC = {'morning': 'calendar', 'night': 'calendar', 'arrive': 'presence', 'away': 'presence'}
@@ -34,14 +38,10 @@ def scene_key(value):
 
 def action(value):
     if (not isinstance(value, dict) or set(value) != {'device', 'action', 'value', 'binding'}
-            or value['device'] not in ('purifier', 'fan_1', 'fan_2')
+            or value['device'] != 'purifier'
             or not isinstance(value['binding'], str) or not re.fullmatch('[a-f0-9]{64}', value['binding'])):
         raise ValueError('Choose a linked device and a supported absolute action.')
-    if value['device'] == 'purifier':
-        Room._action(value['action'], value['value'])
-    elif (not isinstance(value['action'], str) or value['action'] not in BUTTONS
-          or BUTTONS[value['action']][1] != 'absolute' or value['value'] is not None):
-        raise ValueError('Scenes cannot use toggle or relative fan commands.')
+    Room._action(value['action'], value['value'])
     return deepcopy(value)
 
 
@@ -58,8 +58,7 @@ def definition(value):
         key = item['action']
         # One instruction per physical property, not contradictory On/Off or
         # multiple speeds in the same run. Multiple different properties allowed.
-        prop = key.split('_')[0] if item['device'].startswith('fan_') else key
-        token = (item['device'], prop)
+        token = (item['device'], key)
         if token in seen:
             raise ValueError('Choose one setting per device property.')
         seen.add(token)
@@ -86,10 +85,38 @@ class Scenes:
         try:
             raw = storage.get_cache('room', 'scenes')
             if raw is not None:
+                raw = self._without_unavailable_devices(raw)
                 self.validate(raw)
                 self.revision, self.definitions, self.runs = (raw[key] for key in ('revision', 'definitions', 'runs'))
         except Exception:
             self.recovery_error = True  # Preserve damaged records, disable writes.
+
+    def _without_unavailable_devices(self, raw):
+        """Retire unsupported device actions without losing unrelated scene settings."""
+        if not isinstance(raw, dict) or not isinstance(raw.get('definitions'), dict) or not isinstance(raw.get('runs'), list):
+            return raw
+        cleaned = deepcopy(raw)
+        changed = False
+        for item in cleaned['definitions'].values():
+            if not isinstance(item, dict) or not isinstance(item.get('actions'), list): return raw
+            actions = item['actions']
+            kept = [action for action in actions if isinstance(action, dict) and action.get('device') == 'purifier']
+            if len(kept) != len(actions):
+                item['actions'] = kept
+                if not kept: item['enabled'] = item['automatic'] = False
+                changed = True
+        runs = cleaned['runs']
+        kept_runs = [run for run in runs if isinstance(run, dict) and isinstance(run.get('steps'), list)
+                     and all(isinstance(step, dict) and isinstance(step.get('action'), dict)
+                             and step['action'].get('device') == 'purifier' for step in run['steps'])]
+        if len(kept_runs) != len(runs):
+            cleaned['runs'] = kept_runs
+            changed = True
+        if changed:
+            cleaned['revision'] = str(uuid4())
+            self.validate(cleaned)
+            self.storage.set_cache('room', 'scenes', cleaned)
+        return cleaned
 
     @staticmethod
     def validate(raw):

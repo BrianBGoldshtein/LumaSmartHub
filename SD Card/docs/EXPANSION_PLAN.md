@@ -2,27 +2,18 @@
 
 Updated September 29, 2026. This is the durable implementation plan and current source-status index; it is not a claim of physical-device acceptance. The owner selected features **1, 2, 3, 4, 5, 7, 8, 9 and 10**; feature 6 (meeting/focus-mode integration) is excluded. Guided onboarding and the optional setup cards are implemented in source.
 
-Latest delivery note: **r11** (source `74d1f71`) is the newest
-software-checked, hardware-unverified full image; read its
-[handoff](R11_HANDOFF.md). The table below records the earlier r9 checkpoint.
-r11 includes room-device nested scroll/offline/recovery and remote scene
-re-review UI fixes. Remaining scene/fan dirty/interrupted/privacy/keyboard
-paths, actual touch and all owner hardware/account tests remain open;
-app-only signed update has not been published or tested on Pi.
-
-Later source-only acceptance work now also anchors nested purifier/fan/scene
-steps at the top, surfaces unknown IR receipts immediately after an outage,
-and permits explicit reauthorization of a stale scene grant after current
-device review. Synthetic three-theme navigation, fake-IR outage and scene
-regrant passed. Remaining dirty/interrupted/privacy/keyboard paths and real
-hardware/account acceptance are not implied by those tests.
+Current source is newer than every generated image candidate. See
+[CURRENT_STATUS.md](../CURRENT_STATUS.md) for the active release gate. Older
+image archives are historical and must not be flashed as this source build.
+The scene editor permits explicit reauthorization of a stale remote grant
+after current purifier review; physical touch and account acceptance remain open.
 
 ## Current acceptance ledger
 
 | Scope | Source state | Software evidence | Still outstanding |
 | --- | --- | --- | --- |
 | Guided onboarding, core hub, native voice questions, calendar tasks, timer, leave-soon, weather hints, night clock/wake, countdowns and transit | Integrated in r9; the USB-inventory fix is included | GitHub Actions passed on commit 7a5a918 (Linux backend, frontend tests/build, image-builder/recovery/packaging); local backend 957 Windows passed/32 Linux-only skipped | Actual Pi/account/provider checks remain |
-| Purifier, two independently identified fans, local/automatic scenes, voice scene actions and separately consented iPhone scene allowlist | Implemented in source; deliberately empty/off until owner configures them | Mocked adapter/runtime/API/scene tests, synthetic HTTP/WebSocket checks, and partial rendered browser checks; see [ROOM_DEVICES.md](ROOM_DEVICES.md) and [SCENES.md](SCENES.md) | Remaining all-theme/error/reconnect/touch review; real VeSync/IR/phone/network acceptance |
+| Purifier, local/automatic scenes, voice scene actions and separately consented iPhone scene allowlist | Implemented in source; scenes deliberately empty/off until owner configures them | Mocked adapter/runtime/API/scene tests and partial rendered browser checks; see [ROOM_DEVICES.md](ROOM_DEVICES.md) and [SCENES.md](SCENES.md) | Remaining all-theme/error/reconnect/touch review; real VeSync/phone/network acceptance |
 | Optional Levoit internet-forwarding Wi-Fi AP | `Luma-Devices` 2.4 GHz WPA2 hotspot included, off by default; shared subnet/NAT via NetworkManager | Unit/API security checks, fixed profile and dependency audit; runtime fails closed without live upstream and a second AP-capable physical radio | Stanford/venue permission, compatible USB adapter, campus NAT policy, and actual Levoit/VeSync onboarding and forwarding |
 | Encrypted settings-only USB backup/restore | Source flow and protected root broker; discovery accepts actual USB transport/sysfs identity even when a flash drive reports `RM=0`, and excludes all partitions on the physical system disk; included in r9 | Encryption/schema/security tests plus regressions for false `RM` and USB system-disk sibling exclusion; exact r9 QEMU overlay received `{"volumes":[]}` as authorized Luma UID | Actual removable media/export/restore and power-loss recovery |
 | Signed in-place application updater | Implemented in source and included in r9; this is app-only, not an OS updater | Windows/Linux signature/tamper/rollback tests and exact staged-broker audit; see [UPDATE_DEPLOYMENT.md](UPDATE_DEPLOYMENT.md) | GitHub release publication and Pi deployment/recovery check |
@@ -72,7 +63,7 @@ Each feature declares: stable ID/schema version; availability/capabilities; prer
 
 - Daily rhythm: timer defaults → leave-soon calendar/buffers → weather-nudge thresholds → night clock/brightness → exact morning ramp behavior. Preview day/night without silently changing real display power.
 - Dates & travel: manual countdowns first; Google-linked dates only when connected; transit token entered locally, then agency/stop/direction picker and optional live-data check. Missing feeds get honest fallback copy.
-- Room devices: explain campus network prerequisite → VeSync enrollment → discover/select Core 300S → supported controls → separately identify both Woozoos → guided one-device-at-a-time IR checks → name devices → build scenes → review triggers. No scene is enabled by pairing alone.
+- Room devices: explain campus network prerequisite → VeSync enrollment → discover/select Core 300S → supported controls → build scenes → review triggers. No scene is enabled by connecting the purifier alone.
 - Recovery: explain settings-only scope → choose a verified removable USB → set an export passphrase in memory → review exclusions → export/verify/eject. Backups never require surrendering accounts or contain raw database exports.
 - Final review: which information is public, which account connections work, which features are deferred, which scenes are **disabled**, and which tests await hardware. Start the dashboard even when every optional feature is skipped.
 
@@ -148,19 +139,13 @@ Clearly distinguish predicted, scheduled and stale. Remove expired departures; a
 
 ## 9. Room appliances and scenes
 
-**Source implementation is integrated, but feature 9 is not fully software-qualified or hardware-qualified.** The pinned pyvesync3.4.2 adapter, durable stores, conservative purifier polling, USB/LIRC broker, owner-local bounded APIs, themed setup/control, non-secret onboarding review, local voice scene actions and separately consented remote-scene allowlist exist. “Run … scene” and “cancel scene” use the same owner/device/clock guards; “Good morning” remains the briefing. Remote appliance control stays off unless the owner locally grants exact saved scenes/actions; any edit or device relink invalidates review. Remaining all-theme/keyboard/error UI checks, packaged trigger/integration qualification, Linux/exact-image/real-WS gates and owner hardware/provider acceptance are detailed in [ROOM_DEVICES.md](ROOM_DEVICES.md) and [SCENES.md](SCENES.md). No real provider/account/device acceptance inferred.
+**Source implementation is integrated, but feature 9 is not fully software-qualified or hardware-qualified.** The pinned pyvesync3.4.2 adapter, durable stores, conservative purifier polling, owner-local bounded APIs, themed setup/control, non-secret onboarding review, local voice scene actions and separately consented remote-scene allowlist exist. “Run … scene” and “cancel scene” use the same owner/device/clock guards; “Good morning” remains the briefing. Remote appliance control stays off unless the owner locally grants exact saved scenes/actions; any edit or device relink invalidates review. Remaining all-theme/keyboard/error UI checks, packaged trigger/integration qualification, Linux/exact-image/real-WS gates and owner hardware/provider acceptance are detailed in [ROOM_DEVICES.md](ROOM_DEVICES.md) and [SCENES.md](SCENES.md). No real provider/account/device acceptance inferred.
 
 ### Levoit
 
 Owner clarified **Core 300S / 300S-P**, not yet set up in VeSync. Enroll in the vendor app first, on a permitted network. The source uses a pinned direct pyvesync adapter rather than running Home Assistant on the Pi. This remains a cloud-dependent, unofficial library: handle expiry and breaking changes explicitly; prefer persisted sessions over storing a password. The exact returned API model must still match discovery.
 
 Select the specific purifier; expose only discovered capabilities (power, speed, supported sleep/auto/display options and reported air-quality/filter values). Poll conservatively with backoff. Distinguish command acceptance from reported device state. No queued offline commands that execute hours later. Network compatibility is a prerequisite, not an assumption or permission to bypass campus policy. The r7 source/image also provides the separate optional Levoit 2.4 GHz NAT hotspot documented in [CAMPUS_NETWORK.md](CAMPUS_NETWORK.md); campus permission, AP adapter and VeSync setup still require owner qualification. References: [pyvesync](https://github.com/webdjoe/pyvesync), [VeSync integration capabilities](https://www.home-assistant.io/integrations/vesync), [Stanford student networking](https://uit.stanford.edu/students).
-
-### Two independent Woozoos
-
-Both have hand remotes; exact labels/models still required. Separate remotes do not prove unique IR addresses. Plan USB/LIRC to avoid ReSpeaker GPIO conflicts, first proving independent reception. If necessary use separately addressable directed/shielded emitter zones, as approved for planning. No equipment purchase before model/protocol and installation review.
-
-Learn a single requested button in a bounded session; no continuous recording or arbitrary shell commands. Test Fan 1 while observing Fan 2, then reverse. IR has no acknowledgement: report **Command sent · state unconfirmed**. Never issue “off” using a blind power toggle. Unknown/toggle-only commands require manual confirmation and are ineligible for autonomous scenes; do not retry uncertain IR toggles. [LIRC USB transmitter documentation](https://www.lirc.org/html/irtoy.html) is a candidate interface reference, not a confirmed shopping list.
 
 ### Scenes
 
@@ -180,13 +165,13 @@ Import authenticates and validates before preview/apply. Apply transactionally; 
 
 Owner's final-handoff addition: deliver a clear hardware-to-first-boot guide based on the finalized parts. Cover powered-off wiring, screen/touch/microphone/speaker connections and power requirements, connecting a microSD reader to this Windows laptop, identifying and confirming the exact removable card before flashing, safe eject/first boot, campus network setup, and connecting this laptop to the Pi for supported diagnostics. Clearly separate software-qualified results from owner-authorized physical checks. Include recovery and rollback instructions; never overwrite a card or change hardware before explicit owner readiness. Verify exact wiring against the final hardware revision/manuals before publishing it. This remains a final deliverable.
 
-1. Current source overlay fixes preview-mode “Forget this iPhone”: the demo clears synthetic state without calling the Bluetooth API. The complete frontend suite passes 127/127; dashboard and Vite-config typechecks pass; Vite production bundle and browser pair/forget preview pass. Commit `ce9dc1c` is pushed, and [hosted CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/36609105394) passed the complete backend, frontend, build and image-builder/recovery suites. Continue the remaining room-device theme, error, reconnect, keyboard and touch review.
+1. Current source overlay fixes preview-mode “Forget this iPhone”: the demo clears synthetic state without calling the Bluetooth API. Continue the remaining room-device theme, error, reconnect, keyboard and touch review; rerun the full suite after every release change.
 2. Validate Levoit hotspot on real hardware only after confirming campus/network-owner permission and selecting a compatible second Wi-Fi radio. Test upstream continuity, isolated DHCP/NAT, restart behavior and actual purifier cloud onboarding.
 3. Retain the fresh r9 candidate and its exact-image audit. Do not represent QEMU or synthetic results as physical boot/provider evidence.
 4. Code and CI for the current source overlay are published on the authorized feature branch. After owner-approved hardware acceptance, build and sign the app-only `.lup` release using the local Ed25519 key; releases are attached only to stable GitHub Releases.
 5. The owner decides when to flash/test. Preserve current Pi configuration and data; do not write a card or change hardware before explicit owner direction.
 
-Remaining owner inputs are configuration, not reasons to invent defaults: exact Woozoo labels, permitted purifier network and VeSync enrollment, transit favorites/token, selected calendars and travel buffers, dates, scene actions and backup passphrase. Enter credentials only on the device or official provider, never in chat.
+Remaining owner inputs are configuration, not reasons to invent defaults: permitted purifier network and VeSync enrollment, transit favorites/token, selected calendars and travel buffers, dates, scene actions and backup passphrase. Enter credentials only on the device or official provider, never in chat.
 
 ## Arcade animation refinements
 

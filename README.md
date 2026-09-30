@@ -36,9 +36,9 @@ sleep-aware display behavior and room automations.
   App-only releases use health checks and automatic rollback; they do not
   replace the operating system or database schema. Pi Connect remains the
   recovery route.
-- Includes software paths for scenes and supported room-device integrations.
-  Actual Levoit model/API behavior and the exact Woozoo models, remotes and IR
-  hardware must be confirmed and tested before promising appliance control.
+- Includes software paths for scenes and the Levoit purifier integration.
+  Actual Levoit model/API behavior must be confirmed on hardware before
+  promising appliance control.
 
 See [`SD Card/README.md`](SD%20Card/README.md) for the software overview and
 [`SD Card/docs/REQUIREMENTS_STATUS.md`](SD%20Card/docs/REQUIREMENTS_STATUS.md)

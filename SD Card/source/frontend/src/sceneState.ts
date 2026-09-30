@@ -1,6 +1,6 @@
 export const sceneKeys=['morning','night','arrive','away'] as const;
 export type SceneKey=typeof sceneKeys[number];
-export type SceneAction={device:'purifier'|'fan_1'|'fan_2';action:string;value:boolean|number|string|null;binding:string};
+export type SceneAction={device:'purifier';action:string;value:boolean|number|string|null;binding:string};
 export type SceneDefinition={enabled:boolean;automatic:boolean;actions:SceneAction[];needs_review?:boolean};
 export type SceneDevice={id:SceneAction['device'];name:string;override_active:boolean;actions:(SceneAction&{label:string})[]};
 export type SceneRun={id:string;scene:SceneKey;source:string;at:string;finished:boolean;interrupted:boolean;steps:{action:SceneAction;status:string}[]};
@@ -22,7 +22,7 @@ export function remoteReauthorizationReady(config:SceneConfig,selected:SceneKey[
 }
 export function actionLabel(item:SceneAction,devices:SceneDevice[]):string{
   const device=devices.find(row=>row.id===item.device),choice=device?.actions.find(row=>row.action===item.action&&row.value===item.value&&row.binding===item.binding);
-  const name=device?.name||(item.device==='purifier'?'Purifier':item.device==='fan_1'?'Fan 1':'Fan 2');
+  const name=device?.name||'Purifier';
   return `${name} · ${choice?.label||`${item.action.replaceAll('_',' ')}${item.value===null?'':` · ${item.value}`} · review needed`}`;
 }
 export function resultLabel(value:string):string{return ({confirmed:'Confirmed by device',unconfirmed:'Unconfirmed · check device',unknown:'Outcome unknown · do not retry blindly',not_started:'Not run',not_sent:'Not sent',unavailable:'Unavailable · not queued',skipped_override:'Skipped · manual override',cancelled:'Cancelled',rejected:'Device rejected command'} as Record<string,string>)[value]||'Outcome unavailable';}

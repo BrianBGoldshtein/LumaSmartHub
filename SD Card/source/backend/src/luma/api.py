@@ -25,7 +25,6 @@ from .voice_library import LIBRARY, answer_query
 from .countdown_api import install_countdown_api
 from .transit_api import install_transit_api
 from .room_api import install_room_api
-from .fan_api import install_fan_api
 from .scene_api import install_scene_api
 from .backup_api import install_backup_api
 from .update_api import install_update_api
@@ -302,7 +301,6 @@ def create_app(
             weather_client.client.close()
             app.state.transit_runtime.close()
             await app.state.room_runtime.close()
-            await app.state.fan_runtime.close()
 
     app = FastAPI(title="Luma Smart Screen", version=package_version("luma-smart-screen"), lifespan=lifespan)
     app.state.luma = service
@@ -335,7 +333,6 @@ def create_app(
     install_countdown_api(app,service,google,google_sync_lock,local_only)
     install_transit_api(app,service,local_only)
     install_room_api(app,service,local_only)
-    install_fan_api(app,service,local_only)
     install_scene_api(app,service,local_only,bluetooth)
     install_backup_api(app,service,storage,local_only)
     install_update_api(app,local_only)
@@ -361,9 +358,6 @@ def create_app(
                                          "purifier_session": service.room.session is not None,
                                          "purifier_selected": service.room.selected is not None,
                                          "room_recovery": service.room.recovery_error,
-                                         "fan_outputs": sum(row is not None for row in service.fans.slots.values()),
-                                         "fan_checks": bool(service.fans.independent()),
-                                         "fan_recovery": service.fans.recovery_error,
                                          "scenes_enabled": sum(row['enabled'] for row in service.scenes.definitions.values()),
                                          "scenes_automatic": sum(row['automatic'] for row in service.scenes.definitions.values()),
                                          "scenes_recovery": service.scenes.recovery_error,

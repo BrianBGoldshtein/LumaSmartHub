@@ -100,7 +100,7 @@ def test_remote_scene_is_rejected_until_separately_allowlisted_then_acknowledged
     app.state.luma.display_clock_trusted = lambda: True
     runtime.trusted = lambda: True
     runtime.store.definitions['night'] = {'enabled': True, 'automatic': False, 'actions': [
-        {'device': 'fan_1', 'action': 'oscillate_off', 'value': None, 'binding': 'a' * 64}]}
+        {'device': 'purifier', 'action': 'power', 'value': False, 'binding': 'a' * 64}]}
     runtime.configuration = lambda: {'definitions': {'night': {'needs_review': False}}}
     started = Event()
 
@@ -118,48 +118,6 @@ def test_remote_scene_is_rejected_until_separately_allowlisted_then_acknowledged
     allowed = client.post('/command', json=payload, headers=headers)
     assert allowed.status_code == 200 and allowed.json()['accepted']
     assert 'snapshot' not in allowed.json() and started.wait(2)
-
-
-def test_remote_allowlist_is_touch_opt_in_for_exact_scene_and_dispatches_without_presence(tmp_path):
-    from test_fans import RAW, configure, observed
-    from luma.ir_protocol import send_result
-
-    app=create_app(data_dir=tmp_path);service=app.state.luma;service.display_clock_trusted=lambda:True
-    configure(service.fans);observed(service.fans);observed(service.fans);observed(service.fans,'fan_2')
-    service.fans.learned('fan_1','power_on',RAW,revision=service.fans.revision,generation=service.fans.generation)
-    observed(service.fans,key='power_on');observed(service.fans,key='power_on')
-    client=TestClient(app);runtime=app.state.scene_runtime
-    config=client.get('/api/v1/scenes').json()
-    action=config['devices'][0]['actions'][0].copy();action.pop('label')
-    saved=client.put('/api/v1/scenes/night',json={'revision':config['revision'],'enabled':True,'automatic':False,'actions':[action]})
-    assert saved.status_code==200
-    untouched=app.state.security.get_or_create_lan_token()
-    remote=TestClient(create_gateway(transport=httpx.ASGITransport(app=app,client=('127.0.0.1',1234))))
-    headers={'X-Luma-Token':untouched}
-    payload={'name':'run_remote_scene','value':'night'}
-    assert not remote.post('/command',json=payload,headers=headers).json()['accepted']
-    fresh=client.get('/api/v1/scenes').json()
-    granted=client.put('/api/v1/scenes/remote',json={'revision':fresh['remote']['revision'],'enabled':True,'scenes':['night']})
-    assert granted.status_code==200 and granted.json()['remote']['scenes']['night']['allowed']
-    sent=Event()
-    async def transmit(*args,**kwargs):
-        sent.set()
-        return send_result('sent_unconfirmed')
-    app.state.fan_runtime.transport=transmit
-    result=remote.post('/command',json=payload,headers=headers)
-    assert result.status_code==200 and result.json()['accepted'] and sent.wait(3)
-    deadline=time.monotonic()+3
-    while not runtime.store.runs and time.monotonic()<deadline: time.sleep(.01)
-    assert runtime.store.runs[-1]['source']=='remote'
-    assert runtime.store.runs[-1]['steps'][0]['action']==action
-    assert service.state.phone_connected is False and service.snapshot()['privacy_redacted']
-    changed=client.get('/api/v1/scenes').json()
-    action2=next(item.copy() for device in changed['devices'] for item in device['actions'] if item['action']!=action['action'])
-    action2.pop('label')
-    changed_scene=client.put('/api/v1/scenes/night',json={'revision':changed['revision'],'enabled':True,'automatic':False,'actions':[action2]})
-    assert changed_scene.status_code==200 and changed_scene.json()['remote']['scenes']['night']['needs_review']
-    denied=remote.post('/command',json=payload,headers=headers)
-    assert denied.status_code==200 and not denied.json()['accepted']
 
 
 def test_briefing_respects_actual_presence_and_its_expiry(hub):

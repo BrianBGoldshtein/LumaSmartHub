@@ -23,7 +23,7 @@ class GatewayServiceTests(unittest.TestCase):
                            "PrivateDevices": "yes", "PrivateTmp": "yes"}.items():
             self.assertEqual(self.service[key], value)
         paths = self.service["InaccessiblePaths"].split()
-        for path in ["-/var/lib/luma", "-/etc/luma", "-/run/dbus", "-/run/luma-network.sock", "-/run/luma-ir.sock"]:
+        for path in ["-/var/lib/luma", "-/etc/luma", "-/run/dbus", "-/run/luma-network.sock"]:
             self.assertIn(path, paths)
         self.assertNotIn("ReadWritePaths", self.service)
         self.assertNotIn("SupplementaryGroups", self.service)

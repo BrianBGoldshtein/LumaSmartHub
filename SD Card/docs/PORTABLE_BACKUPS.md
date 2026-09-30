@@ -52,7 +52,7 @@ device testing.
 - `apply_document()` validates every section before a single SQLite transaction
   replaces settings, local dates, transit favorites and disabled scene records.
   It leaves provider secrets, calendar/task links, phone pairing, PIN state,
-  purifier/fan configurations and existing microphone mute untouched. A muted
+  purifier configuration and existing microphone mute untouched. A muted
   target stays muted even if the backup says voice is enabled. Automation is
   never replayed.
 - `backup_media.py` accepts only opaque fresh IDs and authenticated-container

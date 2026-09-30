@@ -1,0 +1,55 @@
+# Generated Raspberry Pi images and build workspaces
+.build-tools/
+/SD Card/image/*
+!/SD Card/image/README.md
+!/SD Card/image/.gitkeep
+!/SD Card/image/r7-updater-fix-20260929/
+!/SD Card/image/r8-usb-inventory-20260929/
+!/SD Card/image/r9-campus-network-20260929/
+!/SD Card/image/r12-current-916b5d7-20260930/
+/SD Card/image/r12-current-916b5d7-20260930/*
+!/SD Card/image/r12-current-916b5d7-20260930/README.md
+!/SD Card/image/r13-final-71d91b5-20260930/
+/SD Card/image/r13-final-71d91b5-20260930/*
+!/SD Card/image/r13-final-71d91b5-20260930/README.md
+/SD Card/image/**/*.img.xz
+/SD Card/image/**/*.img.xz.sha256
+/SD Card/updates/
+SD Card/image/*.img
+SD Card/image/*.img.xz
+SD Card/image/*.bmap
+SD Card/image/*.sha256
+SD Card/image-builder/work/
+SD Card/image-builder/.cache/
+SD Card/source/assets/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+
+# Frontend
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+/SD Card/source/frontend/vite.config.js
+/SD Card/source/frontend/vite.config.d.ts
+
+# Local rendered research deliverables are preserved in the workspace, not source releases.
+/output/
+/research/
+
+# Local secrets and runtime state
+*.local
+.env
+.env.*
+!.env.example
+runtime/
+diagnostics/

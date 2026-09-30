@@ -1,0 +1,7 @@
+Disposable QEMU backup-broker smoke check — 2026-09-29
+
+Result: PASS (script exit 0; its required response assertion succeeded).
+
+The exact fresh ARM64 candidate ran in QEMU with no network and a temporary qcow2 overlay. The packaged backup socket activated its root broker, authorized the installed `luma` user through peer credentials, and returned `{"volumes":[]}` because no USB storage was attached. The emulator was stopped by the script's 180-second bound (QEMU status 124) after the assertion; that timeout is not counted as a full-boot pass. QEMU warned that several Pi 4 hardware devices were unavailable in emulation.
+
+This verifies the broker's offline empty-inventory path only. It does not test USB detection, physical media access, the touchscreen, or SD-card behavior.

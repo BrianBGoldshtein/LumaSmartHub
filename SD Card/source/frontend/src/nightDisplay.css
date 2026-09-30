@@ -1,0 +1,6 @@
+html,body,#root { background:#000; }
+.app.night-screen { background:#000; display:grid; place-items:center; padding:0; }
+.night-clock { width:100%; height:100%; min-height:100dvh; display:grid; place-items:center; margin:0; padding:3vmin; border:0; background:#000; color:var(--muted); cursor:pointer; }
+.night-clock span { font:700 32vmin/1 var(--heading); font-variant-numeric:tabular-nums; letter-spacing:-.045em; white-space:nowrap; }
+.theme-neon-grid .night-clock span { font-size:round(down,min(calc(60*var(--pixel)),32vmin),var(--pixel)); letter-spacing:0; }
+.night-clock:focus-visible { outline:1px solid var(--muted); outline-offset:-2vmin; }

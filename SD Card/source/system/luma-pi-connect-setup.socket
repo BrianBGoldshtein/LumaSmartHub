@@ -1,0 +1,12 @@
+[Unit]
+Description=Luma physical-screen Raspberry Pi Connect setup
+
+[Socket]
+ListenStream=/run/luma-pi-connect-setup.sock
+SocketUser=root
+SocketGroup=luma
+SocketMode=0660
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

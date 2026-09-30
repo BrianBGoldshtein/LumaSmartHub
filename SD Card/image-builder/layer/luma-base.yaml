@@ -1,0 +1,59 @@
+# METABEGIN
+# X-Env-Layer-Name: luma-base
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Category: application
+# X-Env-Layer-Desc: Luma Pi 4 appliance with NetworkManager and local kiosk.
+# X-Env-Layer-Requires: debian-trixie-arm64-multi,rpi-debian-trixie,
+#  rpi-misc-utils,rpi-essential-base,rpi-misc-skel,systemd-timesyncd,
+#  wireless-regulatory,network-manager
+# METAEND
+---
+mmdebstrap:
+  packages:
+    - bluez
+    - chromium
+    - curl
+    - labwc
+    - wvkbd
+    - fonts-dejavu-core
+    - lightdm
+    - pipewire
+    - pipewire-audio
+    - pipewire-pulse
+    # The echo-cancel server module and its WebRTC SPA implementation are split
+    # packages; require both directly and verify their installed plugin files.
+    - libpipewire-0.3-modules
+    - libspa-0.2-modules
+    - python3
+    - python3-venv
+    - wlr-randr
+    - ddcutil
+    - dbus-user-session
+    - avahi-daemon
+    - i2c-tools
+    - espeak-ng
+    - pulseaudio-utils
+    # network-manager only Recommends this package. The appliance builds
+    # without recommends, so make the Wi-Fi supplicant backend explicit.
+    - wpasupplicant
+    # NetworkManager only Recommends dnsmasq-base, but shared/NAT profiles
+    # need its dnsmasq executable to provide downstream DHCP and DNS.
+    - dnsmasq-base
+    # Optional USB Wi-Fi AP adapters using in-kernel Realtek drivers need
+    # this firmware; no out-of-tree kernel module is installed.
+    - firmware-realtek
+    # Optional owner-enrolled remote shell/screen sharing; stays off until
+    # explicitly linked and enabled by the owner.
+    - rpi-connect-lite
+    # Render the one-time Pi Connect verification QR locally; no third-party
+    # QR endpoint ever receives the sign-in link.
+    - qrencode
+    # GTK/Chromium file chooser needs the desktop volume monitor to enumerate
+    # USB media; udisks2 alone only provides the lower-level block service.
+    - gvfs-backends
+    # udisks2 only Recommends polkitd. Without it, the file chooser can list a
+    # USB drive but a non-root desktop user cannot mount/open it.
+    - polkitd
+    - gcc
+    - python3-dev
+    - linux-libc-dev

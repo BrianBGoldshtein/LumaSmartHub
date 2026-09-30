@@ -1,0 +1,25 @@
+[Unit]
+Description=Luma fixed-action Raspberry Pi Connect enrollment broker
+Requires=luma-pi-connect-setup.socket
+
+[Service]
+ExecStart=/opt/luma/venv/bin/luma-pi-connect-setup
+User=luma-admin
+Group=luma-admin
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/luma-admin/.config/com.raspberrypi.connect /home/luma-admin/.config/systemd/user /home/luma-admin/.config/luma /home/luma-admin/.cache /home/luma-admin/.local/share
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+UMask=0077
+MemoryMax=128M
+TasksMax=32
+Restart=on-failure
+RestartSec=3

@@ -1,0 +1,1 @@
+luma-admin ALL=(ALL:ALL) NOPASSWD: ALL

@@ -1,0 +1,16 @@
+[Unit]
+Description=Luma optional offline voice controls
+After=pipewire.service graphical-session.target
+PartOf=graphical-session.target
+[Service]
+Environment=LUMA_MIC_SOURCE=luma_mic
+Environment=PULSE_SINK=luma_speaker
+EnvironmentFile=-/home/luma/.config/luma/voice.env
+ExecStartPre=/opt/luma/venv/bin/python -m luma.mic_hardware
+ExecStart=/opt/luma/venv/bin/luma-voice
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+
+[Install]
+WantedBy=graphical-session.target

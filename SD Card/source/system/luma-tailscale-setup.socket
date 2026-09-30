@@ -1,0 +1,12 @@
+[Unit]
+Description=Luma physical-screen private transport setup
+
+[Socket]
+ListenStream=/run/luma-tailscale-setup.sock
+SocketUser=root
+SocketGroup=luma
+SocketMode=0660
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

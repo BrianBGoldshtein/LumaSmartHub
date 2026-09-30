@@ -1,0 +1,7 @@
+# Requirements and acceptance status
+
+Luma is a pre-release Raspberry Pi 4 wall dashboard. Source implementation covers the themed dashboard, time/weather, multi-calendar agenda, Google-linked all-day tasks, selected Sleep calendar, local timers and voice commands, privacy standby, phone pairing, private iPhone Shortcuts, optional purifier controls/scenes, removable encrypted settings backups, and signed app-only updates. Details live in the topic-specific docs and [CURRENT_STATUS.md](../CURRENT_STATUS.md).
+
+No claim of physical acceptance follows from source tests, browser previews, QEMU, or archived SD images. The next candidate must pass fresh backend/frontend/image-builder tests, exact source and image-file audits, ARM64 boot checks, and owner-led testing on the assembled Pi. That includes screen/touch/audio, Hey Luma, campus network, Google OAuth, phone presence, Pi Connect, removable USB, purifier setup, scene safety, update rollback, and power-loss persistence. The previously generated image predates the current source and is not a final flash candidate.
+
+`main` remains reserved for the owner's approved v1 after hardware acceptance. Use the authorized feature branch for development; publish signed app releases only after their checks and owner review. Keep the signing key offline. User credentials belong on the Pi or provider login page, never in this repository or chat.

@@ -1,0 +1,7 @@
+Disposable QEMU Pi Connect setup smoke check — 2026-09-29
+
+Result: PASS (script exit 0; required API, database, and setup-socket assertions succeeded).
+
+The exact fresh ARM64 candidate ran in QEMU with no network and a temporary qcow2 overlay. The API health/database check responded, then the packaged Pi Connect setup socket returned fresh-device status to its authorized local Luma user. No account was enrolled and no verification URL was requested or exposed. The emulator was stopped by the script's 180-second bound (QEMU status 124) after the assertions; that timeout is not counted as a full-boot pass. QEMU warned that several Pi 4 hardware devices were unavailable in emulation.
+
+This verifies the local setup-broker path only. It does not verify Pi Connect sign-in, Stanford network reachability, or physical Pi boot behavior.

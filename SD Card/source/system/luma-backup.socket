@@ -1,0 +1,13 @@
+[Unit]
+Description=Luma local-only removable-backup socket
+
+[Socket]
+ListenStream=/run/luma-backup.sock
+SocketUser=root
+SocketGroup=luma
+SocketMode=0660
+RemoveOnStop=true
+Backlog=4
+
+[Install]
+WantedBy=sockets.target

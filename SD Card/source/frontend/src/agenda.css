@@ -1,0 +1,38 @@
+.day-agenda { --agenda-gutter:clamp(86px,17vmin,250px); --agenda-type:clamp(22px,3.2vmin,52px); }
+.agenda-summary { display:flex; justify-content:space-between; flex-wrap:wrap; gap:.5em; color:var(--muted); font-size:clamp(14px,2.2vmin,34px); }
+.agenda-window-title { display:flex; justify-content:space-between; align-items:center; gap:1em; margin:2vmin 0 3vmin; }
+.agenda-window-title h2 { margin:0; font:700 clamp(22px,3.5vmin,56px)/1.15 var(--heading); }
+.agenda-window-title>span { color:var(--muted); font-size:clamp(14px,2.2vmin,34px); }
+.agenda-timeline { position:relative; flex:1; min-height:0; margin:1vmin 0 2vmin; }
+.agenda-hour { position:absolute; left:0; right:0; display:flex; align-items:center; height:0; pointer-events:none; }
+.agenda-hour time { width:var(--agenda-gutter); padding-right:1vmin; font-size:clamp(17px,2.8vmin,46px); font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.agenda-hour>span { height:1px; background:var(--line); flex:1; }
+.agenda-appointments { position:absolute; inset:0 0 0 var(--agenda-gutter); }
+.agenda-appointment { position:absolute; top:var(--agenda-top); height:var(--agenda-height); left:var(--agenda-left); width:var(--agenda-width); border:0; border-left:clamp(3px,.5vmin,8px) solid var(--event-color); border-radius:var(--radius); border-right:6px solid var(--bg); border-bottom:4px solid var(--bg); padding:.8vmin 1.4vmin; background:color-mix(in srgb,var(--event-color) 18%,var(--bg)); text-align:left; display:flex; flex-direction:column; gap:.3vmin; overflow:hidden; min-width:0; }
+.agenda-appointment time { font-size:clamp(16px,2.6vmin,42px); font-weight:700; line-height:1.2; white-space:nowrap; min-height:0; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; }
+.agenda-appointment strong { font:700 var(--agenda-type)/1.12 var(--heading); overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; flex-shrink:0; }
+.agenda-appointment.is-compact strong { display:block; white-space:nowrap; text-overflow:ellipsis; }
+.agenda-appointment>span { color:var(--muted); font-size:clamp(14px,2vmin,32px); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.agenda-appointment.is-past { background:color-mix(in srgb,var(--event-color) 9%,var(--bg)); }
+.agenda-now { position:absolute; left:calc(var(--agenda-gutter) - 6px); right:0; height:2px; background:var(--accent); pointer-events:none; }
+.agenda-now::before { content:''; display:block; width:10px; height:10px; border-radius:50%; background:var(--accent); transform:translateY(-4px); }
+.agenda-controls { display:flex; align-items:center; justify-content:flex-end; gap:1vmin; padding-top:1vmin; font-size:clamp(18px,2.6vmin,40px); color:var(--muted); }
+.agenda-controls button { border:0; background:transparent; min-width:44px; min-height:44px; padding:.7vmin; display:grid; place-items:center; }
+.agenda-controls svg { width:clamp(24px,3vmin,48px); height:clamp(24px,3vmin,48px); }
+.agenda-all-day { flex:1; min-height:0; display:grid; grid-template-rows:repeat(3,minmax(0,1fr)); gap:2vmin; }
+.agenda-all-day button { border:0; border-left:5px solid var(--event-color); border-radius:var(--radius); background:color-mix(in srgb,var(--event-color) 14%,var(--bg)); padding:2vmin; text-align:left; display:flex; flex-direction:column; justify-content:center; min-width:0; overflow:hidden; }
+.agenda-all-day strong { font:700 clamp(26px,4.5vmin,72px)/1.12 var(--heading); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.agenda-all-day span { font-size:clamp(17px,2.5vmin,40px); color:var(--muted); margin-top:1vmin; }
+.agenda-detail-shade { position:fixed; inset:0; z-index:55; background:#000b; display:grid; place-items:center; padding:4vmin; }
+.agenda-detail { position:relative; width:min(100%,1000px); max-height:85dvh; overflow:auto; background:var(--surface); border-left:6px solid var(--event-color); border-radius:var(--radius); padding:4vmin; overflow-wrap:anywhere; }
+.agenda-detail>button { float:right; border:0; background:transparent; min-width:48px; min-height:48px; }
+.agenda-detail h2 { clear:both; font:700 clamp(30px,5vmin,80px)/1.15 var(--heading); margin:.5em 0; }
+.agenda-detail p { font-size:clamp(20px,3vmin,48px); margin:.5em 0; }
+.day-agenda button:focus-visible { outline:3px solid var(--accent); outline-offset:-3px; }
+.theme-neon-grid .day-agenda { --agenda-gutter:calc(32*var(--pixel)); --agenda-type:calc(7*var(--pixel)); }
+.theme-neon-grid .agenda-appointment { border-radius:0; border-left-width:var(--pixel); border-right-width:var(--pixel); border-bottom-width:var(--pixel); padding:var(--pixel) calc(2*var(--pixel)); top:round(nearest,var(--agenda-top),var(--pixel)); height:round(down,var(--agenda-height),var(--pixel)); left:round(nearest,var(--agenda-left),var(--pixel)); width:round(down,var(--agenda-width),var(--pixel)); }
+.theme-neon-grid .agenda-appointment time,.theme-neon-grid .agenda-hour time { font-size:calc(6*var(--pixel)); }
+.theme-neon-grid .agenda-appointment>span { font-size:calc(5*var(--pixel)); }
+.theme-neon-grid .agenda-window-title h2 { font-size:calc(8*var(--pixel)); }
+.theme-neon-grid .agenda-now::before { border-radius:0; }
+@media(max-width:620px) { .day-agenda { --agenda-gutter:80px; }.agenda-appointment time { font-size:16px; }.agenda-appointment strong { font-size:22px; }.agenda-hour time { font-size:16px; }.theme-neon-grid .day-agenda { --agenda-gutter:calc(27*var(--pixel)); }.theme-neon-grid .agenda-appointment time,.theme-neon-grid .agenda-hour time { font-size:calc(5*var(--pixel)); }.theme-neon-grid .agenda-appointment strong { font-size:calc(7*var(--pixel)); } }

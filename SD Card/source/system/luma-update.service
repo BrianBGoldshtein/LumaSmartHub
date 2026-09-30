@@ -15,7 +15,10 @@ AmbientCapabilities=
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/opt/luma /opt/luma-releases
+# The atomic release pointer and its temporary sibling both live directly in
+# /opt. Allowing only /opt/luma (a symlink) and /opt/luma-releases leaves the
+# parent read-only under ProtectSystem=strict and strands stopped services.
+ReadWritePaths=/opt
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

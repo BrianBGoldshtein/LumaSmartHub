@@ -166,6 +166,14 @@ test("Pong's ball-only pace rises 12% without changing paddle tempo",()=>{
   assert.equal(game.receiverSpeed,255*PONG_TEMPO);
   assert.equal(PONG_MAX_SPEED,380*PONG_TEMPO*PONG_BALL_TEMPO);
 });
+test("Pong paddle contacts cannot retrace the incoming path",()=>{
+  const game=new RallyGame(()=>.5);game.x=644;game.y=215.2;game.vx=200;game.vy=62;
+  game.right=230;game.rightVelocity=0;game.reactionDelay=.2;game.shotOffset=0;
+  const retrace=-Math.atan2(game.vy,Math.abs(game.vx));
+  game.step(.01);
+  assert.ok(game.vx<0 && game.rallies===1);
+  assert.ok(Math.abs(Math.atan2(game.vy,Math.abs(game.vx))-retrace)>=.199);
+});
 test("Pong produces varied legal rallies and real points during sustained seeded play",()=>{
   for(const seed of [7,83,191]){
     const game=new RallyGame(pongRandom(seed)),angles=new Set<number>();let hits=0,points=0;

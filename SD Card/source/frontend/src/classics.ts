@@ -203,6 +203,14 @@ export class RallyGame {
         let angle=Math.max(-1,Math.min(1,offset*.85+spin));
         // Keep trajectories readable and avoid an endless nearly-flat exchange.
         if(Math.abs(angle)<.14)angle=(angle<0?-1:angle>0?1:this.vy<0?-1:1)*.14;
+        // A hit must not send the ball almost exactly back along its arrival
+        // path. Preserve impact/spin physics unless the angle would retrace.
+        const retrace=-Math.atan2(this.vy,Math.abs(this.vx));
+        if(Math.abs(angle-retrace)<.2){
+          const direction=angle>=retrace?1:-1;
+          const deflected=retrace+direction*.2;
+          angle=deflected>=-1&&deflected<=1?deflected:retrace-direction*.2;
+        }
         this.vx=(hitLeft?1:-1)*speed*Math.cos(angle);this.vy=speed*Math.sin(angle);this.x=hitLeft?55:645;this.rallies++;
         this.prepareReturn();
       }

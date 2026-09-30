@@ -14,6 +14,7 @@ Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed
 - r12 hardware finding: Pi Connect sign-in failed before requesting a QR because `vnc off` and `shell off` were called while unsigned. Exact-image QEMU preflight reproduced this. r13 source reorders the broker and uses shell-only Connect Lite. Real enrollment and reboot persistence still require owner retesting.
 - The weather discrepancy was a location entry error: Stanford longitude is negative. The owner corrected the Pi's coordinates and reports weather is fixed. Setup now includes an explicit western-longitude hint.
 - Full-screen themed ambient animations and game checkpoints. Existing Tetris timing and score ramp remain unchanged; Pong's ball receives a small, checkpoint-migrated speed lift without changing paddle speed.
+- Post-freeze [r14 game polish](docs/R14_GAME_POLISH.md) in the feature branch addresses Pong's occasional retrace bounce and reduces Space Invaders rendering/simulation work. These changes are **not in the r13 image** and still need Pi-side visual qualification before release.
 
 ## Release gates
 

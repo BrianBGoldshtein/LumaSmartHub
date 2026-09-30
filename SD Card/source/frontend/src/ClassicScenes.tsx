@@ -1,4 +1,4 @@
-import {useEffect,useState} from "react";
+import {memo,useEffect,useState} from "react";
 import {BreakerGame,SnakeGame,RallyGame} from "./classics";
 import {SpaceInvadersGame} from "./spaceInvaders";
 import {restoreGame,saveGame} from "./gameCheckpoint";
@@ -13,6 +13,15 @@ const INVADER_SHAPES=[
   "M4 2h4V0h8v2h4v4h2v8h-3v4h-5v-3h-4v3H5v-4H2V6h2z M6 7h3v3H6z M15 7h3v3h-3z",
   "M3 2h5V0h8v2h5v4h2v8h-4v4h-4v-3h-6v3H5v-4H1V6h2z M6 7h3v3H6z M15 7h3v3h-3z",
 ];
+// The formation moves as a single unit. Rebuild the 55 static sprites only
+// when an alien is hit, not on every animation frame.
+const InvaderSprites=memo(function InvaderSprites({aliveKey}:{aliveKey:string}){
+  return <>{[...aliveKey].map((alive,index)=>{
+    if(alive!=="1")return null;
+    const row=Math.floor(index/11),column=index%11;
+    return <g key={index} transform={`translate(${column*48} ${row*28})`} className="invader-sprite"><path d={INVADER_SHAPES[row]} className={`invader-row invader-row-${row}`}/></g>;
+  })}</>;
+});
 type SceneProps={kind:"snake"|"breaker"|"rally"|"invaders";pixel:boolean};
 export function ClassicScene(props:SceneProps){return <ClassicRun key={props.kind} {...props}/>;}
 function ClassicRun({kind,pixel}:SceneProps){
@@ -43,11 +52,7 @@ function ClassicRun({kind,pixel}:SceneProps){
       <path d={kind==="rally"?"M0 0H700M0 460H700":"M0 460V0H700V460"} className="game-boundary"/>}
     {invaders ? <>
       {pixel&&<path className="invader-subdivisions" d={INVADER_SUBDIVISIONS}/>}
-      {game.alive.map((alive,index)=>{
-        if(!alive)return null;
-        const row=Math.floor(index/11),column=index%11,x=game.fleetX+column*48,y=game.fleetY+row*28;
-        return <g key={index} transform={`translate(${x} ${y})`} className="invader-sprite"><path d={INVADER_SHAPES[row]} className={`invader-row invader-row-${row}`}/></g>;
-      })}
+      <g className="invader-fleet" transform={`translate(${game.fleetX} ${game.fleetY})`}><InvaderSprites aliveKey={game.alive.map(alive=>alive?"1":"0").join("")}/></g>
       {game.shots.map((shot,index)=><rect key={`${shot.enemy?"e":"p"}-${index}`} x={shot.x-2} y={shot.y-7} width="4" height="12" rx={pixel?0:2} className={shot.enemy?"invader-enemy-shot":"invader-player-shot"}/>)}
       <path d={`M${game.playerX-16} 374v-8h5v-5h5v-5h12v5h5v5h5v8z`} className="invader-ship"/>
       {game.phase==="redeploy"&&<text x="320" y="220" textAnchor="middle" className="invader-wave">REDEPLOYING</text>}

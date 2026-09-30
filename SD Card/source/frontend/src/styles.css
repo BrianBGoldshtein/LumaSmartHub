@@ -11,8 +11,9 @@
 .invader-row-0 { fill:var(--game-T); }.invader-row-1 { fill:var(--game-I); }.invader-row-2 { fill:var(--game-J); }.invader-row-3 { fill:var(--game-O); }.invader-row-4 { fill:var(--game-S); }
 .invader-ship { fill:var(--accent); }.invader-player-shot { fill:var(--ink); }.invader-enemy-shot { fill:var(--game-Z); }
 .invader-loss,.invader-wave { fill:var(--ink); font:700 18px var(--heading); letter-spacing:2px; paint-order:stroke; stroke:var(--bg); stroke-width:5px; }
-.invader-sprite { filter:drop-shadow(0 0 3px color-mix(in srgb,var(--accent) 30%,transparent)); }
-.theme-neon-grid .invader-sprite { filter:none; shape-rendering:crispEdges; }
+.invader-fleet { filter:drop-shadow(0 0 3px color-mix(in srgb,var(--accent) 30%,transparent)); }
+.theme-neon-grid .invader-fleet { filter:none; }
+.theme-neon-grid .invader-sprite { shape-rendering:crispEdges; }
 .theme-neon-grid .invader-row,.theme-neon-grid .invader-ship,.theme-neon-grid .invader-player-shot,.theme-neon-grid .invader-enemy-shot { shape-rendering:crispEdges; }
 .ambient-visual { --game-I:#7fbfc6; --game-J:#91aac9; --game-L:#d4a584; --game-O:#d9c58c; --game-S:#a9cfb0; --game-T:#b6a4cd; --game-Z:#cb939b; }
 .theme-neon-grid .ambient-visual { --game-I:#71d8e0; --game-J:#839fe5; --game-L:#e6ae77; --game-O:#e4d48a; --game-S:#a1e8d8; --game-T:#c3a2e3; --game-Z:#e795a7; }

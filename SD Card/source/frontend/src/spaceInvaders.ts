@@ -226,6 +226,8 @@ export class SpaceInvadersGame {
 
   step(dt:number){
     let remaining=clamp(Number.isFinite(dt)?dt:0,0,.1);
-    while(remaining>0){const slice=Math.min(remaining,1/120);this.tick(slice);remaining-=slice;}
+    // Sixty physics steps per second still keep a fast shot well inside its
+    // collision width while halving calculation work on the Pi 4.
+    while(remaining>0){const slice=Math.min(remaining,1/60);this.tick(slice);remaining-=slice;}
   }
 }

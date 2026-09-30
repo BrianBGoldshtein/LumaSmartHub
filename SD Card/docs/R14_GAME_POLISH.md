@@ -6,7 +6,7 @@ An offline-signed `luma-update-0.2.1.lup` candidate was built locally from featu
 
 ## Pong
 
-Paddle impacts use contact offset and shot intent to choose an outgoing angle. That can occasionally coincide with the exact reverse of the incoming trajectory, creating a repetitive rally. r14 keeps the existing collision model but enforces a minimum 0.2-radian separation from the retrace angle. A regression test covers the near-retrace case. Ball and paddle tempo are not otherwise changed in this patch.
+Paddle impacts use contact offset and shot intent to choose an outgoing angle. That can occasionally coincide with the exact reverse of the incoming trajectory, creating a repetitive rally. r14 keeps the existing collision model but enforces a minimum 0.2-radian separation from the retrace angle. A regression test covers the near-retrace case. The requested 12% ball-only speed lift and checkpoint migration were **already in r13** (`PONG_BALL_TEMPO=1.12`, version 5), so r14 does not stack another increase or change paddle tempo. The full 128-test frontend suite passed again on the signed r14 source.
 
 ## Space Invaders
 

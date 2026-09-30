@@ -9,7 +9,7 @@ failed before it could return a verification QR. A disposable QEMU boot of the
 exact r12 image reproduced this. Correct date/time, working weather and a
 successful Internet check do not resolve the command-order bug.
 
-The corrected image source installs the official shell-only Connect Lite
+The corrected r13 image source installs the official shell-only Connect Lite
 client, which has no VNC service. The broker now starts Connect, requests
 sign-in, and displays a locally generated QR. After account approval, it
 disables any default shell permission until the owner explicitly taps
@@ -17,6 +17,18 @@ disables any default shell permission until the owner explicitly taps
 and Pi reboot. This correction is not yet physically verified, and the next
 image still requires owner testing. No account password, auth key or sign-in
 link is placed in the image or project files.
+
+On the physical r13 card, the owner later reported a second failure: Luma
+`0.2.0` remains "Not signed in" and Start sign-in errors after roughly twenty
+seconds, despite working weather, Google OAuth, correct time and trials on
+both eduroam and Stanford Visitor. A disposable boot of that exact image
+measured nearly seventeen seconds for `rpi-connect on` alone, uncomfortably
+close to the broker's twenty-second limit. This is a plausible timeout cause,
+not yet a confirmed physical diagnosis. The signed `0.2.2` app-only candidate
+uses separate longer startup/sign-in deadlines, avoids restarting an already
+running client, and adds a fixed, non-sensitive on-screen `rpi-connect doctor`
+check. It needs the no-flash card recovery route in
+[R14_NO_FLASH_RECOVERY.md](R14_NO_FLASH_RECOVERY.md) until Connect itself works.
 
 ## Set up from the Luma touchscreen
 

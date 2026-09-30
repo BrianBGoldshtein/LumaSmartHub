@@ -9,8 +9,9 @@
 .agenda-hour>span { height:1px; background:var(--line); flex:1; }
 .agenda-appointments { position:absolute; inset:0 0 0 var(--agenda-gutter); }
 .agenda-appointment { position:absolute; top:var(--agenda-top); height:var(--agenda-height); left:var(--agenda-left); width:var(--agenda-width); border:0; border-left:clamp(3px,.5vmin,8px) solid var(--event-color); border-radius:var(--radius); border-right:6px solid var(--bg); border-bottom:4px solid var(--bg); padding:.8vmin 1.4vmin; background:color-mix(in srgb,var(--event-color) 18%,var(--bg)); text-align:left; display:flex; flex-direction:column; gap:.3vmin; overflow:hidden; min-width:0; }
-.agenda-appointment time { font-size:clamp(16px,2.6vmin,42px); font-weight:700; line-height:1.2; white-space:nowrap; flex-shrink:0; }
-.agenda-appointment strong { font:700 var(--agenda-type)/1.12 var(--heading); overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+.agenda-appointment time { font-size:clamp(16px,2.6vmin,42px); font-weight:700; line-height:1.2; white-space:nowrap; min-height:0; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; }
+.agenda-appointment strong { font:700 var(--agenda-type)/1.12 var(--heading); overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; flex-shrink:0; }
+.agenda-appointment.is-compact strong { display:block; white-space:nowrap; text-overflow:ellipsis; }
 .agenda-appointment>span { color:var(--muted); font-size:clamp(14px,2vmin,32px); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .agenda-appointment.is-past { background:color-mix(in srgb,var(--event-color) 9%,var(--bg)); }
 .agenda-now { position:absolute; left:calc(var(--agenda-gutter) - 6px); right:0; height:2px; background:var(--accent); pointer-events:none; }

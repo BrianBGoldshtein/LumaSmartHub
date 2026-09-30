@@ -38,6 +38,30 @@ def test_sleep_bounds_and_outside_appointments_are_not_dropped():
     assert len(result['events'])==2 and result['stale']
 
 
+def test_recognized_sleep_is_hidden_even_when_its_calendar_is_visible():
+    prefs=settings()
+    prefs.visible_calendar_ids.append('rest')
+    items=[event('bed',23,31,'rest',summary=' Sleep '),
+           event('rest-meeting',18,19,'rest',summary='Dinner'),
+           event('other-sleep',20,21,'work',summary='Sleep'),
+           event('all-day',0,24,'rest',summary='Sleep',all_day=True)]
+    result=day_agenda(items,prefs,NOW,fresh=True)
+    assert result['sleep'].startswith('2026-09-28T23:00')
+    assert {item['id'] for item in result['events']}=={'rest-meeting','other-sleep','all-day'}
+
+
+def test_home_and_voice_hide_only_recognized_sleep_events(tmp_path):
+    service=LumaService(Storage(tmp_path/'luma.db'))
+    service.update_settings({'timezone':'UTC','visible_calendar_ids':['work','rest'],
+                             'sleep_calendar_ids':['rest'],'sleep_event_title':'Sleep'})
+    service.replace_events([event('bed',23,31,'rest',summary='Sleep'),
+                            event('sleep-class',19,20,'work',summary='Sleep'),
+                            event('dinner',18,19,'rest',summary='Dinner')],NOW)
+    service.phone_seen(NOW)
+    assert {item['id'] for item in service.snapshot(NOW)['calendar']}=={'sleep-class','dinner'}
+    assert {item['id'] for item in service.voice_snapshot(authorized=True,now=NOW)['voice_calendar']['events']}=={'sleep-class','dinner'}
+
+
 def test_cancelled_declined_other_calendars_and_other_days_filtered():
     events=[event('a',10),event('b',10,status='cancelled'),event('c',10,self_declined=True),event('d',10,calendar='hidden'),event('old',-3,-2),event('future',27,28)]
     assert [e['id'] for e in day_agenda(events,settings(),NOW,fresh=True)['events']]==['a']

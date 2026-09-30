@@ -1,6 +1,6 @@
 # Luma development status
 
-Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed the physical acceptance suite, and `main` must remain untouched until that review and explicit v1 approval. The physically tested [r12 image candidate](image/r12-current-916b5d7-20260930/README.md) revealed failures in Pi Connect enrollment, removable-drive file browsing and microphone input; do not treat it as accepted. The [r13 candidate](image/r13-final-71d91b5-20260930/README.md) has passed software, exact-image and emulated checks and is ready for owner-led physical testing, not production use.
+Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed the physical acceptance suite, and `main` must remain untouched until that review and explicit v1 approval. The physically tested [r12 image candidate](image/r12-current-916b5d7-20260930/README.md) revealed failures in Pi Connect enrollment, removable-drive file browsing and microphone input; do not treat it as accepted. The owner is now running the [r13 candidate](image/r13-final-71d91b5-20260930/README.md), reports working Google Calendar and weather, and has found a further Pi Connect sign-in failure despite working Internet. The combined signed `0.2.2` app-only recovery candidate passed a disposable offline ARM64 one-shot boot/install check using the card's FAT BOOT partition, without reflashing. It is not yet an accepted hardware release.
 
 ## Implemented in source
 
@@ -15,6 +15,8 @@ Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed
 - The weather discrepancy was a location entry error: Stanford longitude is negative. The owner corrected the Pi's coordinates and reports weather is fixed. Setup now includes an explicit western-longitude hint.
 - Full-screen themed ambient animations and game checkpoints. Existing Tetris timing and score ramp remain unchanged; Pong's ball receives a small, checkpoint-migrated speed lift without changing paddle speed.
 - Post-freeze [r14 game polish](docs/R14_GAME_POLISH.md) in the feature branch addresses Pong's occasional retrace bounce and reduces Space Invaders rendering/simulation work. These changes are **not in the r13 image** and still need Pi-side visual qualification before release.
+- The `0.2.2` candidate also adds Pi Connect network diagnostics and longer sign-in/start allowances, hides configured Sleep events from the visible/spoken agenda, prioritizes short-event titles, and adds Bluetooth reconnect/service-resolution diagnostics. The owner reports iPhone Bluetooth showing connected while Luma says paired but disconnected even with Share System Notifications enabled. Preserve fail-closed privacy until the updated status and physical link can be checked; the cause is not yet proven.
+- A pleasant offline female voice is researched in [R14_VOICE_PLAN.md](docs/R14_VOICE_PLAN.md) but **not** included in `0.2.2`; the current `espeak-ng` output remains. A licensed model/runtime and larger signed asset delivery need their own qualification.
 
 ## Release gates
 

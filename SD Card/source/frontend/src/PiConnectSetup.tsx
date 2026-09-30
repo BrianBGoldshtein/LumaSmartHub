@@ -3,17 +3,19 @@ import {MonitorCog,RefreshCw,ShieldCheck,Terminal} from "lucide-react";
 import {useSetupActivity} from "./setupActivity";
 
 type PiConnectStatus={available:boolean;state:string;signed_in:boolean;remote_shell:boolean;verification_url?:string;qr?:string|null};
-type Action="status"|"signin"|"shell_on"|"shell_off";
+type ConnectDiagnostics={available:boolean;checks:{api:boolean|null;websocket:boolean|null;stun:boolean|null;turn:boolean|null}};
+type Action="status"|"diagnose"|"signin"|"shell_on"|"shell_off";
 
-async function request(action:Action):Promise<PiConnectStatus>{
+async function request<T=PiConnectStatus>(action:Action):Promise<T>{
   const response=await fetch("/api/v1/pi-connect",{method:"POST",cache:"no-store",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(typeof data.detail==="string"?data.detail:"Pi Connect setup is unavailable. Refresh and try again.");
-  return data as PiConnectStatus;
+  return data as T;
 }
 
 export function PiConnectSetup({demo=false}:{demo?:boolean}){
   const [status,setStatus]=useState<PiConnectStatus|null>(demo?{available:false,state:"preview",signed_in:false,remote_shell:false}:null);
+  const [diagnostics,setDiagnostics]=useState<ConnectDiagnostics|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState("");
   useSetupActivity(busy);
   async function refresh(){
@@ -33,12 +35,14 @@ export function PiConnectSetup({demo=false}:{demo?:boolean}){
     setBusy(true);setError("");
     try{
       if(demo){setStatus({available:false,state:"preview",signed_in:false,remote_shell:false});return;}
-      setStatus(await request(action));
+      if(action==="diagnose")setDiagnostics(await request<ConnectDiagnostics>(action));
+      else setStatus(await request(action));
     }catch(problem){setError(problem instanceof Error?problem.message:"Pi Connect setup is unavailable.");}
     finally{setBusy(false);}
   }
   const unavailable=error.includes("updated Luma image")||status?.state==="not_installed";
   const label=demo?"Preview only":unavailable?"Not available in this image":status?.state==="awaiting_approval"?"Waiting for your approval":status?.remote_shell?"Admin remote shell is on":status?.signed_in?"Pi linked · shell off":status?.state==="off"?"Pi Connect is off":status?"Not signed in":"Checking Pi Connect…";
+  const checkLabel=(value:boolean|null)=>value===true?"reachable":value===false?"blocked or unavailable":"not determined";
   return <section className="pi-connect-setup" aria-labelledby="pi-connect-heading">
     <h2 id="pi-connect-heading"><MonitorCog aria-hidden="true"/> Raspberry Pi Connect</h2>
     <p>Secure recovery access when local-network SSH is blocked. Sign in with your Raspberry Pi account, then explicitly enable the remote shell.</p>
@@ -53,6 +57,8 @@ export function PiConnectSetup({demo=false}:{demo?:boolean}){
       {status?.signed_in&&!status.remote_shell&&<button disabled={busy} onClick={()=>void run("shell_on")}><Terminal aria-hidden="true"/> Enable admin remote shell</button>}
       {status?.remote_shell&&<><p className="setup-note">Ready: on your phone or computer, open <strong>connect.raspberrypi.com → Devices → Luma → Connect via → Remote shell</strong>. The shell runs as the dedicated Luma administrator and can use sudo. This approval persists across reboots and app-only updates.</p><button disabled={busy} onClick={()=>void run("shell_off")}>Disable remote shell</button></>}
       <button disabled={busy} onClick={()=>void refresh()}><RefreshCw aria-hidden="true"/> Refresh status</button>
+      <button disabled={busy||!status?.available} onClick={()=>void run("diagnose")}>Test Connect network</button>
+      {diagnostics&&<p className="setup-note" role="status">Connect API: {checkLabel(diagnostics.checks.api)} · Live link: {checkLabel(diagnostics.checks.websocket)} · Relay: {checkLabel(diagnostics.checks.turn)}. A network test cannot sign in or enable the remote shell.</p>}
     </>}
     {error&&!unavailable&&<p className="setup-message" role="alert">{error}</p>}
   </section>;

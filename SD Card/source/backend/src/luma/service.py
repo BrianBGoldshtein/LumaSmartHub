@@ -254,7 +254,9 @@ class LumaService:
         full = self.state.privacy == PrivacyLevel.FULL and (not self.display_state or
                (not self.display_state['awaiting_clock'] and (briefing or self.display_state['mode']=='day')))
         selected = set(self.settings.visible_calendar_ids)
-        visible = visible_events(self.events, now=now, calendar_ids=selected) if full else []
+        visible = visible_events(self.events, now=now, calendar_ids=selected,
+                                 sleep_calendar_ids=set(self.settings.sleep_calendar_ids),
+                                 sleep_title=self.settings.sleep_event_title) if full else []
         todos = todo_events(
             self.events,
             todo_calendar_id=self.settings.todo_calendar_id,
@@ -299,7 +301,9 @@ class LumaService:
         now = now or datetime.now(UTC)
         snapshot = self.snapshot(now)
         start = now.astimezone(ZoneInfo(self.settings.timezone)).replace(hour=0, minute=0, second=0, microsecond=0)
-        events = visible_events(self.events, now=start, calendar_ids=set(self.settings.visible_calendar_ids)) if not snapshot['privacy_redacted'] else []
+        events = visible_events(self.events, now=start, calendar_ids=set(self.settings.visible_calendar_ids),
+                                sleep_calendar_ids=set(self.settings.sleep_calendar_ids),
+                                sleep_title=self.settings.sleep_event_title) if not snapshot['privacy_redacted'] else []
         snapshot['voice_calendar'] = {
             'authorized': authorized,
             'fresh': bool(not self.calendar_sync_error and self.calendar_synced_at and timedelta(0) <= now-self.calendar_synced_at <= timedelta(minutes=10)),

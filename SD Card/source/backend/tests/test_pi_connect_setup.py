@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from luma.api import create_app
-from luma.pi_connect_setup import ACTION_SET, CLI, PiConnectSetup, parse_status, validate_request
+from luma.pi_connect_setup import ACTION_SET, CLI, PiConnectSetup, parse_doctor, parse_status, validate_request
 import luma.pi_connect_setup as pi_connect_module
 
 VERIFY = "https://connect.raspberrypi.com/verify/ABCD-EFGH"
@@ -18,6 +18,7 @@ VERIFY = "https://connect.raspberrypi.com/verify/ABCD-EFGH"
 class FakePiConnect:
     def __init__(self):
         self.calls = []
+        self.running = True
         self.signed_in = False
         self.shell = False
         self.signin_output = f"Complete sign in by visiting {VERIFY}".encode()
@@ -26,10 +27,19 @@ class FakePiConnect:
         self.calls.append((args, input_data))
         command = args[1:]
         if command == ("status",):
+            if not self.running:
+                return 0, b"Raspberry Pi Connect is not running"
             return 0, ("Signed in: " + ("yes" if self.signed_in else "no") + "\n"
                        "Remote shell: " + ("allowed" if self.shell else "disabled") + " (0 sessions active)\n").encode()
-        if command == ("on",) or command == ("vnc", "off"):
+        if command == ("on",):
+            self.running = True
             return 0, b""
+        if command == ("vnc", "off"):
+            return 0, b""
+        if command == ("doctor",):
+            return 1, ("✓ Communication with Raspberry Pi Connect API\n"
+                       "✗ Communication with Raspberry Pi Connect WebSocket server\n"
+                       "✓ Peer-to-peer connection candidate via STUN\n").encode()
         if command == ("signin",):
             return 0, self.signin_output
         if command == ("shell", "on"):
@@ -62,6 +72,15 @@ def test_status_parser_returns_only_link_and_remote_shell_state():
     assert "secret-account" not in json.dumps(parse_status(b"Signed in: no\nUser: secret-account\n"))
 
 
+def test_doctor_parser_returns_only_fixed_connectivity_facts():
+    checks = parse_doctor(("✓ Communication with Raspberry Pi Connect API\n"
+                           "✗ Communication with Raspberry Pi Connect WebSocket server\n"
+                           "✓ Peer-to-peer connection candidate via STUN\n"
+                           "User: private-account\n").encode())
+    assert checks == {"api": True, "websocket": False, "stun": True, "turn": None}
+    assert "private-account" not in json.dumps(checks)
+
+
 @pytest.mark.asyncio
 async def test_signin_starts_connect_but_keeps_remote_shell_off_and_qr_local(tmp_path):
     fake = FakePiConnect()
@@ -77,9 +96,64 @@ async def test_signin_starts_connect_but_keeps_remote_shell_off_and_qr_local(tmp
     assert result["state"] == "awaiting_approval"
     assert result["verification_url"] == VERIFY and result["qr"] == "data:image/png;base64,LOCAL"
     assert qr_urls == [VERIFY]
-    assert [call[0][1:] for call in fake.calls] == [("on",), ("signin",), ("status",)]
+    assert [call[0][1:] for call in fake.calls] == [("status",), ("signin",), ("status",)]
     assert not fake.shell
     assert (await setup.execute({"action": "status"}))["verification_url"] == VERIFY
+
+
+@pytest.mark.asyncio
+async def test_signin_starts_an_off_client_but_does_not_restart_a_running_one(tmp_path):
+    fake = FakePiConnect()
+    fake.running = False
+    setup = PiConnectSetup(fake, installed=lambda: True,
+                           shell_approval=tmp_path / "shell-approved")
+    assert (await setup.execute({"action": "signin"}))["state"] == "awaiting_approval"
+    assert [call[0][1:] for call in fake.calls] == [
+        ("status",), ("on",), ("signin",), ("status",)]
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_are_fixed_and_do_not_attempt_signin(tmp_path):
+    fake = FakePiConnect()
+    setup = PiConnectSetup(fake, installed=lambda: True,
+                           shell_approval=tmp_path / "shell-approved")
+    assert await setup.execute({"action": "diagnose"}) == {
+        "available": True, "checks": {"api": True, "websocket": False, "stun": True, "turn": None}}
+    assert [call[0][1:] for call in fake.calls] == [("doctor",)]
+
+
+@pytest.mark.asyncio
+async def test_slow_start_and_signin_have_separate_generous_deadlines(tmp_path):
+    timeouts = {}
+    fake = FakePiConnect()
+    fake.running = False
+
+    async def timed_runner(*args, timeout=15, input_data=None):
+        timeouts[args[1:]] = timeout
+        return await fake(*args, timeout=timeout, input_data=input_data)
+
+    setup = PiConnectSetup(timed_runner, installed=lambda: True,
+                           shell_approval=tmp_path / "shell-approved")
+    assert (await setup.execute({"action": "signin"}))["state"] == "awaiting_approval"
+    assert timeouts[("on",)] >= 40
+    assert timeouts[("signin",)] >= 45
+
+
+@pytest.mark.asyncio
+async def test_start_timeout_has_a_specific_error_and_does_not_attempt_signin(tmp_path):
+    fake = FakePiConnect()
+    fake.running = False
+
+    async def slow_start(*args, timeout=15, input_data=None):
+        if args[1:] == ("on",):
+            raise TimeoutError
+        return await fake(*args, timeout=timeout, input_data=input_data)
+
+    setup = PiConnectSetup(slow_start, installed=lambda: True,
+                           shell_approval=tmp_path / "shell-approved")
+    with pytest.raises(ValueError, match="too long to start"):
+        await setup.execute({"action": "signin"})
+    assert (CLI, "signin") not in [call[0] for call in fake.calls]
 
 
 @pytest.mark.asyncio

@@ -26,9 +26,33 @@ ADMIN = "luma-admin"
 ADMIN_HOME = "/home/luma-admin"
 SHELL_APPROVAL = Path(ADMIN_HOME) / ".config/luma/remote-shell-approved"
 VERIFY_URL = re.compile(r"https://connect\.raspberrypi\.com/verify/[A-Za-z0-9-]{6,80}")
-ACTION_SET = {"status", "signin", "shell_on", "shell_off"}
+ACTION_SET = {"status", "diagnose", "signin", "shell_on", "shell_off"}
 PENDING_SECONDS = 600
 MAX_OUTPUT = 65536
+START_TIMEOUT = 45
+SIGNIN_TIMEOUT = 50
+DIAGNOSE_TIMEOUT = 45
+
+
+def parse_doctor(output: bytes) -> dict[str, bool | None]:
+    """Project official CLI diagnostics onto fixed, non-sensitive checks."""
+    labels = {
+        "api": "Communication with Raspberry Pi Connect API",
+        "websocket": "Communication with Raspberry Pi Connect WebSocket server",
+        "stun": "Peer-to-peer connection candidate via STUN",
+        "turn": "Peer-to-peer connection candidate via TURN",
+    }
+    checks: dict[str, bool | None] = {key: None for key in labels}
+    for line in output.decode("utf-8", "replace").splitlines():
+        for key, label in labels.items():
+            if label not in line:
+                continue
+            marker = line.split(label, 1)[0]
+            if "✓" in marker:
+                checks[key] = True
+            elif "✗" in marker:
+                checks[key] = False
+    return checks
 
 
 def validate_request(value: object) -> dict[str, str]:
@@ -117,12 +141,17 @@ class PiConnectSetup:
         self.pending_until = 0.0
 
     async def _command(self, *args: str) -> bytes:
+        stage = " ".join(args)
+        timeout = START_TIMEOUT if args == ("on",) else SIGNIN_TIMEOUT if args == ("signin",) else 20
         try:
-            code, output = await self.run(CLI, *args, timeout=20)
-        except (OSError, TimeoutError):
-            raise ValueError("Raspberry Pi Connect could not start. Check Internet and the device status.") from None
+            code, output = await self.run(CLI, *args, timeout=timeout)
+        except TimeoutError:
+            if stage == "signin":
+                raise ValueError("Pi Connect timed out requesting sign-in. Check its network diagnostics or try another permitted network.") from None
+            raise ValueError("Pi Connect took too long to start. Refresh status and try again.") from None
+        except OSError:
+            raise ValueError("Pi Connect could not launch on this device. Check its status and diagnostics.") from None
         if code:
-            stage = " ".join(args)
             if stage == "on":
                 raise ValueError("Pi Connect could not start its admin session. Refresh status and try again.")
             if stage == "signin":
@@ -170,11 +199,25 @@ class PiConnectSetup:
         action = validate_request(request)["action"]
         if action == "status":
             return await self._status()
+        if action == "diagnose":
+            if not self.installed():
+                return {"available": False, "checks": parse_doctor(b"")}
+            try:
+                _code, output = await self.run(CLI, "doctor", timeout=DIAGNOSE_TIMEOUT)
+            except (OSError, TimeoutError):
+                raise ValueError("Pi Connect diagnostics could not finish. Check its service or network.") from None
+            return {"available": True, "checks": parse_doctor(output)}
         if action == "signin":
             if not self.installed():
                 return await self._status()
+            current = await self._status()
+            if current["signed_in"]:
+                return current
             self._clear_shell_approval()
-            await self._command("on")
+            # The official client can take almost the old 20-second command
+            # limit merely to start. Don't restart an already-running service.
+            if current["state"] in {"off", "unavailable"}:
+                await self._command("on")
             # Connect rejects shell/vnc changes until account approval. The
             # image uses shell-only Connect Lite, so no VNC endpoint exists.
             output = await self._command("signin")
@@ -220,7 +263,7 @@ async def pi_connect_request(request: object) -> dict[str, object]:
         reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(SOCKET, limit=MAX_OUTPUT), 3)
         writer.write(json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
         await writer.drain()
-        response = json.loads(await asyncio.wait_for(reader.readline(), 25))
+        response = json.loads(await asyncio.wait_for(reader.readline(), 130))
         if not isinstance(response, dict):
             raise ValueError("Invalid Pi Connect response")
         if "error" in response:
@@ -263,7 +306,7 @@ async def serve(*, listener: socket.socket | None = None, owner_uid: int | None 
                 response = {"error": "Pi Connect setup is busy; try again shortly."}
             else:
                 async with lock:
-                    response = await asyncio.wait_for(manager.execute(request), 40)
+                    response = await asyncio.wait_for(manager.execute(request), 125)
         except ValueError as error:
             response = {"error": str(error)}
         except Exception:

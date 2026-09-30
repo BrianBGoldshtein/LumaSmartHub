@@ -1,9 +1,11 @@
 import struct
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
-from luma.bluetooth_runtime import trusted_connection
+from luma.bluetooth_runtime import BluetoothStatusError, trusted_connection, wait_for_trusted_connection
 from luma.integrations.ancs import AttributeResponse, notification, parse_source, request_attributes
 from luma.models import PrivacyLevel, Settings
 from luma.state_machine import StateMachine
@@ -14,6 +16,25 @@ def test_presence_requires_all_bonded_trusted_connection_properties():
     assert trusted_connection(props)
     for key in props:
         assert not trusted_connection({**props, key: False})
+
+
+@pytest.mark.asyncio
+async def test_gatt_resolution_can_finish_after_connected_event():
+    def snapshot(resolved):
+        props = {key: SimpleNamespace(value=True) for key in ("Paired", "Bonded", "Trusted", "Connected")}
+        props["ServicesResolved"] = SimpleNamespace(value=resolved)
+        return {"/phone": {"org.bluez.Device1": props}}
+
+    manager = SimpleNamespace(call_get_managed_objects=AsyncMock(side_effect=[snapshot(False), snapshot(True)]))
+    assert await wait_for_trusted_connection(manager, "/phone", timeout=2) == snapshot(True)
+    assert manager.call_get_managed_objects.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_missing_bond_stays_private_and_reports_fixed_status():
+    manager = SimpleNamespace(call_get_managed_objects=AsyncMock(return_value={}))
+    with pytest.raises(BluetoothStatusError, match="bond is missing"):
+        await wait_for_trusted_connection(manager, "/phone")
 
 
 def test_disconnect_without_prior_presence_cannot_unlock():

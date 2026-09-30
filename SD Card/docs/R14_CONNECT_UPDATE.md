@@ -1,5 +1,12 @@
 # r14 app-only update through Pi Connect
 
+> Superseded for the current physical r13 device: Connect enrollment itself
+> fails before the shell is available. Do not install this older `0.2.1`
+> candidate. Use the signed `0.2.2` no-flash recovery procedure in
+> [R14_NO_FLASH_RECOVERY.md](R14_NO_FLASH_RECOVERY.md) once its offline VM
+> qualification is complete. This file is retained only as the audit trail
+> for the earlier candidate.
+
 This is a controlled **test-candidate** deployment, not the stable one-button
 Settings update. It changes Luma's frontend/backend application from `0.2.0`
 to `0.2.1`; it does not reflash the SD card, overwrite `/var/lib/luma`, change

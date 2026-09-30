@@ -4,16 +4,37 @@
 set -euo pipefail
 IMAGE_DIR=$(realpath "${1:?Path to completed image-luma-pi4 directory}")
 [[ -f "${IMAGE_DIR}/luma-pi4.img" && -f "${IMAGE_DIR}/boot.vfat" ]] || exit 1
-[[ ${2:-} == '' || ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check || ${2:-} == --pi-connect-check || ${2:-} == --pi-connect-preflight ]] || { echo 'Optional second argument: --api-check, --gateway-check, --tailscale-check, --backup-check, --pi-connect-check or --pi-connect-preflight' >&2; exit 1; }
+[[ ${2:-} == '' || ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check || ${2:-} == --pi-connect-check || ${2:-} == --pi-connect-preflight || ${2:-} == --app-update-check || ${2:-} == --boot-recovery-check ]] || { echo 'Optional second argument: --api-check, --gateway-check, --tailscale-check, --backup-check, --pi-connect-check, --pi-connect-preflight, --app-update-check or --boot-recovery-check' >&2; exit 1; }
 [[ $# -le 3 && ( ${3:-} == '' || ${3:-} == --diagnostics || ${3:-} == --diagnostics-unconfined || ${3:-} == --diagnostics-stack ) ]] || { echo 'Optional third argument: --diagnostics, --diagnostics-unconfined or --diagnostics-stack (fresh, unprovisioned images only)' >&2; exit 1; }
 SMOKE_SECONDS=180
 KERNEL_ARGS='console=ttyAMA1,115200 root=/dev/disk/by-slot/system fsck.repair=yes rootwait systemd.show_status=yes'
-if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check || ${2:-} == --pi-connect-check || ${2:-} == --pi-connect-preflight ]]; then
+if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --backup-check || ${2:-} == --pi-connect-check || ${2:-} == --pi-connect-preflight || ${2:-} == --app-update-check || ${2:-} == --boot-recovery-check ]]; then
   # systemd.run normally replaces default.target. Keep the appliance's graphical
   # boot and add the generated diagnostic unit alongside it, only in this VM.
   # Output is health/version/database only; never dump settings or credentials.
   KERNEL_ARGS+=' systemd.unit=graphical.target systemd.wants=kernel-command-line.service systemd.run_success_action=none systemd.run_failure_action=none'
-  if [[ ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]]; then
+  if [[ ${2:-} == --boot-recovery-check ]]; then
+    # Disposable image only: exercise the same FAT script and signed update
+    # used for a no-flash recovery. The image's BOOT FAT must be staged first.
+    SMOKE_SECONDS=900
+    KERNEL_ARGS+=' systemd.run="/usr/bin/bash /boot/firmware/luma-r14-recover.sh"'
+    KERNEL_ARGS+=' systemd.run="/usr/bin/cat /boot/firmware/luma-r14-result.log"'
+    KERNEL_ARGS+=' systemd.run="/usr/bin/curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8742/api/v1/health"'
+  elif [[ ${2:-} == --app-update-check ]]; then
+    # Only a disposable copy of an unprovisioned image may be used here. The
+    # signed bundle must already be staged in that copy, never in the archived
+    # flash image or an owner's live card. The VM remains network-isolated.
+    [[ ${LUMA_QEMU_UPDATE_VERSION:-} =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Set LUMA_QEMU_UPDATE_VERSION to the staged signed bundle version.' >&2; exit 1; }
+    UPDATE_BUNDLE="/home/luma-admin/luma-update-${LUMA_QEMU_UPDATE_VERSION}.lup"
+    # ARM64 system emulation synchronizes a complete staged venv and can be
+    # substantially slower than the Pi's native filesystem. Keep a bounded
+    # run long enough to observe the actual post-switch health result.
+    SMOKE_SECONDS=900
+    KERNEL_ARGS+=' systemd.run="/usr/bin/curl --fail --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 2 http://127.0.0.1:8742/api/v1/health"'
+    KERNEL_ARGS+=" systemd.run=\"/opt/luma/venv/bin/luma-update verify ${UPDATE_BUNDLE}\""
+    KERNEL_ARGS+=" systemd.run=\"/opt/luma/venv/bin/luma-update apply ${UPDATE_BUNDLE}\""
+    KERNEL_ARGS+=' systemd.run="/usr/bin/curl --fail --silent --show-error --retry 60 --retry-connrefused --retry-delay 2 --max-time 2 http://127.0.0.1:8742/api/v1/health"'
+  elif [[ ${2:-} == --gateway-check || ${2:-} == --tailscale-check ]]; then
     # Start the otherwise-disabled unit only in this disposable VM. No token,
     # state mutation, or host network forwarding: an empty POST must get 401.
     KERNEL_ARGS+=' systemd.wants=luma-shortcut-gateway.service'
@@ -116,11 +137,30 @@ timeout --signal=TERM "${SMOKE_SECONDS}" qemu-system-aarch64 -M raspi4b -m 2G -s
 QEMU_STATUS=$?
 set -e
 printf 'Emulator status: %s; inspect %s/serial.log (timeout is not a boot-pass assertion)\n' "${QEMU_STATUS}" "${SMOKE_ROOT}"
-if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --pi-connect-check ]]; then
+if [[ ${2:-} == --api-check || ${2:-} == --gateway-check || ${2:-} == --tailscale-check || ${2:-} == --pi-connect-check || ${2:-} == --app-update-check || ${2:-} == --boot-recovery-check ]]; then
   if grep -Fq '"status":"ok","database":"ok"' "${SMOKE_ROOT}/serial.log"; then
     echo 'API health and database integrity responded in emulation; hardware remains unqualified.'
   else
     echo 'No successful API health response captured.' >&2
+    exit 1
+  fi
+fi
+if [[ ${2:-} == --app-update-check ]]; then
+  if grep -Fq "Verified Luma ${LUMA_QEMU_UPDATE_VERSION}" "${SMOKE_ROOT}/serial.log" &&
+     grep -Fq "Luma ${LUMA_QEMU_UPDATE_VERSION} is active" "${SMOKE_ROOT}/serial.log" &&
+     grep -Fq "\"version\":\"${LUMA_QEMU_UPDATE_VERSION}\"" "${SMOKE_ROOT}/serial.log"; then
+    echo 'The signed application update installed and passed API/database health in an offline ARM64 emulator; physical Pi validation remains required.'
+  else
+    echo 'No confirmed signed update + new-version health response; inspect the disposable VM log.' >&2
+    exit 1
+  fi
+fi
+if [[ ${2:-} == --boot-recovery-check ]]; then
+  if grep -Fq 'SUCCESS: Luma 0.2.2 is running with a healthy API.' "${SMOKE_ROOT}/serial.log" &&
+     grep -Fq '"version":"0.2.2"' "${SMOKE_ROOT}/serial.log"; then
+    echo 'The one-shot BOOT recovery installed the signed application update and reached healthy 0.2.2 in the offline VM; physical Pi validation remains required.'
+  else
+    echo 'No confirmed one-shot recovery + new-version health response; inspect the disposable VM log.' >&2
     exit 1
   fi
 fi

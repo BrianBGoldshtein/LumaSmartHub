@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .serde import to_primitive
+from .calendar_logic import is_sleep_event
 
 
 def day_agenda(events, settings, now, *, fresh):
@@ -12,10 +13,7 @@ def day_agenda(events, settings, now, *, fresh):
     now_utc = now.astimezone(UTC)
     # UTC ordering keeps repeated DST hours distinct. Overnight sleep is normal.
     sleeps = sorted((e.start.astimezone(UTC), e.end.astimezone(UTC)) for e in events
-                    if e.calendar_id in settings.sleep_calendar_ids
-                    and e.summary.strip().casefold() == settings.sleep_event_title.strip().casefold()
-                    and e.status != 'cancelled' and not e.self_declined and not e.all_day
-                    and e.end.astimezone(UTC) > e.start.astimezone(UTC))
+                    if is_sleep_event(e, calendar_ids=set(settings.sleep_calendar_ids), title=settings.sleep_event_title))
     merged = []
     for start, end in sleeps:
         if merged and start <= merged[-1][1]:
@@ -30,6 +28,7 @@ def day_agenda(events, settings, now, *, fresh):
     lower, upper = min(start, day_start.astimezone(UTC)), max(end, day_end.astimezone(UTC))
     selected = sorted((e for e in events if e.calendar_id in settings.visible_calendar_ids
                        and e.status != 'cancelled' and not e.self_declined
+                       and not is_sleep_event(e, calendar_ids=set(settings.sleep_calendar_ids), title=settings.sleep_event_title)
                        and e.start.astimezone(UTC) < upper and e.end.astimezone(UTC) > lower),
                       key=lambda e: (e.start.astimezone(UTC), e.end.astimezone(UTC), e.calendar_id, e.id))
     timed = [e for e in selected if not e.all_day]

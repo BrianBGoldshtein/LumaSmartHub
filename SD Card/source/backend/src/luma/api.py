@@ -86,7 +86,7 @@ class ForgetPhoneRequest(BaseModel):
 
 class PiConnectRequest(BaseModel):
     model_config = {"extra": "forbid"}
-    action: Literal["status", "signin", "shell_on", "shell_off"]
+    action: Literal["status", "diagnose", "signin", "shell_on", "shell_off"]
 
 
 class DeviceReport(BaseModel):

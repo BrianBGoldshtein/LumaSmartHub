@@ -12,11 +12,22 @@ def _friendly_time(value: datetime) -> str:
     return value.strftime("%I:%M %p").lstrip("0")
 
 
+def is_sleep_event(event: CalendarEvent, *, calendar_ids: set[str], title: str) -> bool:
+    """The configured, timed event that controls sleep is not an agenda item."""
+    return (event.calendar_id in calendar_ids
+            and event.summary.strip().casefold() == title.strip().casefold()
+            and event.status != "cancelled" and not event.self_declined
+            and not event.all_day
+            and event.end.astimezone(UTC) > event.start.astimezone(UTC))
+
+
 def visible_events(
     events: list[CalendarEvent],
     *,
     now: datetime,
     calendar_ids: set[str],
+    sleep_calendar_ids: set[str] | None = None,
+    sleep_title: str = "Sleep",
 ) -> list[CalendarEvent]:
     return sorted(
         (
@@ -25,6 +36,7 @@ def visible_events(
             if event.calendar_id in calendar_ids
             and event.status != "cancelled"
             and event.end > now
+            and not is_sleep_event(event, calendar_ids=sleep_calendar_ids or set(), title=sleep_title)
         ),
         key=lambda event: (event.start, event.end, event.summary.casefold()),
     )
@@ -81,12 +93,7 @@ def active_sleep_end(
     intervals = sorted(
         (event.start.astimezone(UTC), event.end.astimezone(UTC))
         for event in events
-        if event.calendar_id in calendar_ids
-        and event.summary.strip().casefold() == normalized_title
-        and event.status != 'cancelled'
-        and not event.all_day
-        and not event.self_declined
-        and event.end.astimezone(UTC) > event.start.astimezone(UTC)
+        if is_sleep_event(event, calendar_ids=calendar_ids, title=normalized_title)
     )
     now = now.astimezone(UTC)
     merged_end = None

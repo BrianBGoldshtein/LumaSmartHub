@@ -2,7 +2,7 @@
 
 This folder contains the Raspberry Pi 4 application source, image builder, documentation and historical build archives. It is not itself a bootable SD card; use Raspberry Pi Imager with a fully built `.img.xz` after confirming the exact target card.
 
-The current source is newer than every archived image in `image/`. **Do not flash an older archive as the current application.** Build and audit a fresh candidate, then conduct owner-led hardware testing. See [CURRENT_STATUS.md](CURRENT_STATUS.md), [flashing precautions](docs/FLASHING.md), and [hardware acceptance](docs/HARDWARE_VALIDATION.md).
+The [r12 image candidate](image/r12-current-916b5d7-20260930/README.md) contains the current source and is software-checked for owner-led hardware testing. **Do not flash an older archive as the current application.** See [CURRENT_STATUS.md](CURRENT_STATUS.md), [flashing precautions](docs/FLASHING.md), and [hardware acceptance](docs/HARDWARE_VALIDATION.md).
 
 Luma provides a large-type themed dashboard, weather, Google Calendar agenda and tasks, scheduled Sleep behavior, privacy standby based on the paired phone, local Hey Luma commands, timers, optional Levoit purifier control and deliberately opt-in scenes. The Settings area also covers campus networking, Pi Connect, Tailscale private iPhone Shortcuts, encrypted removable settings backups and signed app-only updates. Siri remains on the phone. Account, network and device behavior still need real Pi qualification.
 

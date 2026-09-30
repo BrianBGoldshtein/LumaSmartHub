@@ -2,7 +2,7 @@
 
 ## Before writing
 
-All existing image archives predate the current source and are obsolete flash candidates. Build and audit a new image before the next owner-directed hardware test. None is a production release. These are instructions for that future test, not an instruction to flash now.
+The current [r12 image candidate](../image/r12-current-916b5d7-20260930/README.md) is software-checked for owner-led hardware testing. Earlier image archives are obsolete for the current source. None is a production release.
 
 A candidate named `luma-pi4-UNVERIFIED.img.xz` may be handed off for **controlled physical testing** after its software/image checks pass. That testing is how the remaining [hardware acceptance gates](HARDWARE_VALIDATION.md) are evaluated. It is not yet qualified for unattended wall-mounted use. The release name `luma-pi4.img.xz` is reserved for the later qualified delivery.
 
@@ -38,4 +38,4 @@ Imager's custom-image selection, storage precautions and write/verification flow
 
 Do not copy the `SD Card` folder onto a blank FAT-formatted card. The `.img.xz` file contains the partition table, boot firmware, operating system, and application.
 
-The image contains no personal account credentials. Luma provides device settings for location, PIN, Google Calendar, preferred calendars, audio route and the paired iPhone address. The r11 candidate includes the Wi-Fi picker with a pinned Stanford SUNet eduroam profile, captive-portal launcher/status notice, touch Bluetooth matching-code pairing, and the optional PIN-protected Levoit AP. Do not enable campus internet sharing without explicit approval from the responsible network owner. The candidate remains unverified on physical hardware; Tailscale enrollment/certificates and campus behavior remain pending. Follow [campus network requirements](CAMPUS_NETWORK.md), [first-boot instructions](FIRST_BOOT.md), [private commands](TAILSCALE.md) and [iPhone pairing instructions](IPHONE_AND_SIRI.md).
+The image contains no personal account credentials. Luma provides device settings for location, PIN, Google Calendar, preferred calendars, audio route and the paired iPhone address. The r12 candidate includes the Wi-Fi picker with a pinned Stanford SUNet eduroam profile, captive-portal launcher/status notice, touch Bluetooth matching-code pairing, and the optional PIN-protected Levoit AP. Do not enable campus internet sharing without explicit approval from the responsible network owner. The candidate remains unverified on physical hardware; Tailscale enrollment/certificates and campus behavior remain pending. Follow [campus network requirements](CAMPUS_NETWORK.md), [first-boot instructions](FIRST_BOOT.md), [private commands](TAILSCALE.md) and [iPhone pairing instructions](IPHONE_AND_SIRI.md).

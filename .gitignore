@@ -6,6 +6,9 @@
 !/SD Card/image/r7-updater-fix-20260929/
 !/SD Card/image/r8-usb-inventory-20260929/
 !/SD Card/image/r9-campus-network-20260929/
+!/SD Card/image/r12-current-916b5d7-20260930/
+/SD Card/image/r12-current-916b5d7-20260930/*
+!/SD Card/image/r12-current-916b5d7-20260930/README.md
 /SD Card/image/**/*.img.xz
 /SD Card/image/**/*.img.xz.sha256
 SD Card/image/*.img

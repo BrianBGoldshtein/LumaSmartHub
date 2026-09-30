@@ -1,6 +1,6 @@
 # Luma development status
 
-Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed the physical acceptance suite, and `main` must remain untouched until that review and explicit v1 approval. The current source on the feature branch is newer than the last generated SD image; do not flash an older image as if it contains these changes.
+Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed the physical acceptance suite, and `main` must remain untouched until that review and explicit v1 approval. The [r12 image candidate](image/r12-current-916b5d7-20260930/README.md) contains the current application source at `916b5d7` and is ready for owner-led hardware testing, not production use. Earlier images are obsolete for this revision.
 
 ## Implemented in source
 
@@ -13,6 +13,6 @@ Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed
 
 ## Release gates
 
-Run the complete backend, frontend, image-builder and exact-image checks after source changes. A newly built ARM64 Pi image, not an older archive, must be flashed and boot-tested by the owner. Verify screen/touch orientation, audio alarm during sleep, microphone wake phrase, campus Wi-Fi, Google OAuth, Bluetooth presence/re-pairing, Tailscale Shortcuts, Pi Connect, USB detection/backup, purifier enrollment and scene safety, reboot/power-loss persistence, and signed update rollback. Synthetic tests and QEMU are not physical evidence. Do not publish v1 or merge to `main` before acceptance.
+The r12 candidate passed software/image checks. It must still be flashed and boot-tested by the owner. Verify screen/touch orientation, audio alarm during sleep, microphone wake phrase, campus Wi-Fi, Google OAuth, Bluetooth presence/re-pairing, Tailscale Shortcuts, Pi Connect, USB detection/backup, purifier enrollment and scene safety, reboot/power-loss persistence, and signed update rollback. Synthetic tests and QEMU are not physical evidence. Do not publish v1 or merge to `main` before acceptance.
 
 See [README.md](README.md), [REQUIREMENTS_STATUS.md](docs/REQUIREMENTS_STATUS.md), [ROOM_DEVICES.md](docs/ROOM_DEVICES.md), [SCENES.md](docs/SCENES.md), and [CAMPUS_NETWORK.md](docs/CAMPUS_NETWORK.md) for current contracts.

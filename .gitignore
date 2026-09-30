@@ -9,6 +9,9 @@
 !/SD Card/image/r12-current-916b5d7-20260930/
 /SD Card/image/r12-current-916b5d7-20260930/*
 !/SD Card/image/r12-current-916b5d7-20260930/README.md
+!/SD Card/image/r13-final-71d91b5-20260930/
+/SD Card/image/r13-final-71d91b5-20260930/*
+!/SD Card/image/r13-final-71d91b5-20260930/README.md
 /SD Card/image/**/*.img.xz
 /SD Card/image/**/*.img.xz.sha256
 SD Card/image/*.img

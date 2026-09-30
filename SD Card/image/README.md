@@ -1,13 +1,13 @@
 # Luma image delivery — physical testing deferred
 
-> The [r12 image candidate](r12-current-916b5d7-20260930/README.md) is the
+> The [r13 image candidate](r13-final-71d91b5-20260930/README.md) is the
 > current software-checked artifact for owner-led hardware testing. It is not
 > hardware-qualified or v1. Older image archives and receipts below are
 > historical and obsolete for the current source revision.
 
-**Current candidate:** `r12-current-916b5d7-20260930/luma-pi4-UNVERIFIED.img.xz` (643,937,920 bytes), SHA-256 `c9d3478319ddf6bbfe78b75f9f00df85f89920a061147063a86e3e036766d4e8`, built from feature commit `916b5d7`. See its [handoff](r12-current-916b5d7-20260930/README.md) for test evidence and erasure precautions. No physical Pi acceptance has been claimed.
+**Current candidate:** local archive `r13-final-71d91b5-20260930/luma-pi4-UNVERIFIED.img.xz` (644,189,136 bytes), SHA-256 `8c81312502fd29504c62f898ca7a9f398056c6eb036925a0db6743cf1aca68d3`, built from feature commit `71d91b5`. See its [handoff](r13-final-71d91b5-20260930/README.md) for test evidence and erasure precautions. No physical Pi acceptance has been claimed.
 
-The r12 handoff now records an in-place `polkitd` repair needed for native USB file browsing. The immutable archive itself has not changed.
+The r12 handoff records its missing `polkitd` package. The r13 image includes and audits the package, but native USB file browsing must be tested on the Pi. The immutable r12 archive remains historical.
 
 **Historical r10 candidate (2026-09-29):** local archive `r10-candidate-a79f7f4-20260929/luma-pi4-UNVERIFIED.img.xz` (large binaries are excluded from GitHub), with its [handoff and hardware gates](r10-candidate-a79f7f4-20260929/README.md), build/source manifests, raw-image and exhaustive file-audit receipts, and [USB backup](r10-candidate-a79f7f4-20260929/qemu-backup-check-a79f7f4.txt)/[Pi Connect](r10-candidate-a79f7f4-20260929/qemu-pi-connect-check-a79f7f4.txt) emulator assertions. SHA-256: `a00f122c34f02a6d83ca08b78dad9f5cd62a590eb2d89c4fa99acfbad8b3c278`. Built from feature-branch commit `a79f7f4e52a6d06214925c1cee2c230e2b5ef210`. It is obsolete for current-source testing.
 

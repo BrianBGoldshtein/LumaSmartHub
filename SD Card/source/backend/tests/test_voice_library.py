@@ -62,6 +62,42 @@ def test_everyday_time_paraphrases_resolve_identically(phrase):
     assert command.value == 'time'
 
 
+@pytest.mark.parametrize('phrase,intent', [
+    ('what time is it right now', 'time'),
+    ('can you tell me what time it is', 'time'),
+    ('what is the forecast for tomorrow', 'weather_tomorrow'),
+    ('how warm will it be tomorrow', 'weather_tomorrow'),
+    ('what is the weather like outside', 'weather_now'),
+    ('what is the chance of rain today', 'rain_today'),
+    ('what is my agenda today', 'calendar_today'),
+    ('what meetings do I have tomorrow', 'calendar_tomorrow'),
+    ('when does my next meeting start', 'next_event'),
+    ('what am I doing right now', 'ongoing'),
+    ('what do I need to do today', 'tasks_today'),
+    ('what is due soon', 'tasks_soon'),
+    ('what is the date', 'date'),
+    ('how much longer on my timer', 'timer_status'),
+    ('is my phone nearby', 'phone_status'),
+    ('can I see my calendar', 'privacy_status'),
+])
+def test_held_out_everyday_question_variations(phrase, intent):
+    command = parse_local_command('Hey Luma, ' + phrase + '?')
+    assert command is not None and command.name == CommandName.LOCAL_QUERY
+    assert command.value == intent
+
+
+@pytest.mark.parametrize('phrase', [
+    "don't set the brightness to zero",
+    'do not turn off the screen',
+    'please do not start a timer',
+    'never change the theme to arcade',
+    'tell me how to set brightness to zero',
+    'describe the arcade theme',
+])
+def test_negated_speech_cannot_mutate_the_hub(phrase):
+    assert parse_local_command(phrase) is None
+
+
 def test_phrase_preview_exposes_offline_model_without_executing(tmp_path):
     app = create_app(data_dir=tmp_path)
     client = TestClient(app)

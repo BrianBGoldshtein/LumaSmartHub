@@ -24,7 +24,7 @@ test('short adjacent events never visually collide in the same lane',()=>{
 test('a brief event gets visual space for title-first typography',()=>{
   const pages=agendaSections(agenda([event('Short but readable',9,9.2)]));
   const item=pages.flatMap(page=>page.items)[0];
-  assert.ok(item.height>=29 && item.height<=30);
+  assert.ok(item.height>=33 && item.height<=34);
 });
 test('cross-window appointments continue and all-day items paginate without truncation',()=>{
   const events=[event('long',10,16),...Array.from({length:10},(_,i)=>event(`all-${i}`,0,24,{all_day:true}))];

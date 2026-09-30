@@ -18,7 +18,7 @@ export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns
   // Pair it with the first populated time window, keeping its full-detail tap.
   if(allDay.length!==1)for(let i=0;i<allDay.length;i+=3)sections.push({start,end,items:[],allDay:allDay.slice(i,i+3),lane:0,lanes:1});
   for(let from=start;from<end;from+=4*HOUR){
-    const to=Math.min(end,from+4*HOUR),duration=to-from,minHeight=Math.min(70*60000,duration);
+    const to=Math.min(end,from+4*HOUR),duration=to-from,minHeight=Math.min(80*60000,duration);
     const items=agenda.events.filter(e=>!e.all_day && Date.parse(e.start)<to && Date.parse(e.end)>from)
       .map(event=>{
         const top=Math.max(0,Math.min(Date.parse(event.start)-from,duration-minHeight));

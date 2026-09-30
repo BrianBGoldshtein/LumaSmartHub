@@ -91,6 +91,10 @@ def parse_local_command(transcript: str) -> Command | None:
     text = re.sub(r"^(hey\s+)?luma[,.]?\s*", "", text)
     if not text:
         return None
+    # A keyword must never override an explicit negation. In particular,
+    # "don't set brightness to zero" must not become a SET_BRIGHTNESS action.
+    if re.search(r"\b(?:don't|dont|do not|never|not)\b", text):
+        return None
     scene_phrases = {
         "run morning scene": "morning", "run night scene": "night",
         "run arrival scene": "arrive", "run away scene": "away",
@@ -103,7 +107,7 @@ def parse_local_command(transcript: str) -> Command | None:
         return Command(CommandName.LOCAL_QUERY, intent, 'voice')
     # Unsupported questions must not fall through keyword matching into a
     # navigation/mutation command, or ever reach the optional cloud adapter.
-    if re.match(r"^(?:what|what's|when|where|why|how|will|is|are|do|does|can|could|would|ask|question)\b", text):
+    if re.match(r"^(?:what|what's|when|where|why|how|will|is|are|do|does|can|could|would|ask|question|tell me|explain|describe)\b", text):
         return None
     if text in {'screen off','turn screen off'}:
         return Command(CommandName.SCREEN_OFF, source='voice')

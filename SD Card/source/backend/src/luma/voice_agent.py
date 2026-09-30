@@ -18,6 +18,7 @@ import httpx
 from .voice import WakeGate, command_grammar
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
+from .voice_speech import OfflineSpeaker
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -68,6 +69,8 @@ def main() -> None:
 
         leds = StatusLeds()
         atexit.register(leds.close)
+        speaker = OfflineSpeaker()
+        atexit.register(speaker.close)
         def phase(value):
             leds.phase(value)
             try:
@@ -194,8 +197,7 @@ def main() -> None:
                         response.raise_for_status()
                         reply = response.json()["message"]
                         phase("speaking")
-                        # stdin avoids argument interpretation of calendar text beginning with '-'.
-                        subprocess.run(["espeak-ng", "--stdin", "-s", "155"], input=reply, text=True, check=True, timeout=45, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        speaker.speak(reply)
                     except (httpx.HTTPError, subprocess.SubprocessError, OSError):
                         phase("error")
                     finally:

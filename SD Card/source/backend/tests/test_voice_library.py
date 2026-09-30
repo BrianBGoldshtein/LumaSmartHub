@@ -51,6 +51,34 @@ def test_all_presented_library_examples_are_recognized():
     assert gate.accept('when is my next event',3)=='when is my next event'
 
 
+@pytest.mark.parametrize('phrase', [
+    'what time is it', "what's the time", 'what is the time',
+    'tell me the time', 'could you tell me the time',
+    'do you know what time it is',
+])
+def test_everyday_time_paraphrases_resolve_identically(phrase):
+    command = parse_local_command('Hey Luma, ' + phrase + '?')
+    assert command.name == CommandName.LOCAL_QUERY
+    assert command.value == 'time'
+
+
+def test_phrase_preview_exposes_offline_model_without_executing(tmp_path):
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+    before = app.state.luma.settings.theme
+    preview = client.post('/api/v1/voice/phrase-preview', json={'text': "what's the time"})
+    assert preview.status_code == 200
+    assert preview.json()['command'] == CommandName.LOCAL_QUERY.value
+    assert preview.json()['intent'] == 'time'
+    assert preview.json()['model_suggestion'] == 'time'
+    assert preview.json()['executed'] is False
+    assert app.state.luma.settings.theme == before
+    varied = client.post('/api/v1/voice/phrase-preview', json={'text': 'tell me tomorrow weather'})
+    assert varied.json()['intent'] == 'weather_tomorrow'
+    assert varied.json()['model_suggestion'] == 'weather_tomorrow'
+    assert client.get('/api/v1/voice/library').json()['phrase_model'] == 'offline-neural-v1'
+
+
 @pytest.mark.parametrize('phrase,key',[
     ('run morning scene','morning'),('run night scene','night'),
     ('run arrival scene','arrive'),('run away scene','away'),

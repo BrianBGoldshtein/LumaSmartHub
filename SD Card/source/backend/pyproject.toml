@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "luma-smart-screen"
-version = "0.2.3"
+version = "0.2.4"
 description = "Local control plane for the Luma wall-mounted smart screen"
 requires-python = ">=3.11"
 dependencies = [

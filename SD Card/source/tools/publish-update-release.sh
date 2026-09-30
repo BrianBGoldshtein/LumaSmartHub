@@ -6,9 +6,11 @@ usage() {
 Usage:
   bash "SD Card/source/tools/publish-update-release.sh" \
     --notes-file /path/to/release-notes.md [--key /offline/path/key.pem] \
-    [--output /path/to/luma-update-X.Y.Z.lup] [--publish]
+    [--output /path/to/luma-update-X.Y.Z.lup] \
+    [--voice-assets-dir /path/to/pinned-voice-files] \
+    [--voice-output /path/to/luma-voice-kristin-X.Y.Z.lva] [--publish]
 
-Without --publish this builds and signs a local .lup only. Publishing additionally
+Without --publish this builds signed local assets without uploading them. Publishing additionally
 requires the exact main commit to be clean, current, and green in GitHub Actions,
 then asks for a typed confirmation before creating a stable GitHub Release.
 EOF
@@ -23,6 +25,8 @@ REPOSITORY="BrianBGoldshtein/LumaSmartHub"
 KEY_PATH="/home/luma-build/keys/luma-update-ed25519.pem"
 NOTES_FILE=""
 OUTPUT=""
+VOICE_ASSETS_DIR=""
+VOICE_OUTPUT=""
 PUBLISH=0
 
 while (($#)); do
@@ -30,6 +34,8 @@ while (($#)); do
     --key) (($# >= 2)) || { usage >&2; exit 2; }; KEY_PATH="$2"; shift 2 ;;
     --notes-file) (($# >= 2)) || { usage >&2; exit 2; }; NOTES_FILE="$2"; shift 2 ;;
     --output) (($# >= 2)) || { usage >&2; exit 2; }; OUTPUT="$2"; shift 2 ;;
+    --voice-assets-dir) (($# >= 2)) || { usage >&2; exit 2; }; VOICE_ASSETS_DIR="$2"; shift 2 ;;
+    --voice-output) (($# >= 2)) || { usage >&2; exit 2; }; VOICE_OUTPUT="$2"; shift 2 ;;
     --publish) PUBLISH=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
@@ -64,6 +70,18 @@ ASSET="luma-update-${VERSION}.lup"
 OUTPUT="$(realpath -m -- "${OUTPUT}")"
 case "${OUTPUT}" in "${REPO_ROOT}"|"${REPO_ROOT}"/*) die "keep signed archives outside the repository" ;; esac
 [[ ! -e "${OUTPUT}" && ! -L "${OUTPUT}" ]] || die "output already exists; choose a new path"
+if [[ "${VERSION}" == "0.2.4" && -z "${VOICE_ASSETS_DIR}" ]]; then
+  die "0.2.4 requires its separately signed offline voice asset"
+fi
+if [[ -n "${VOICE_ASSETS_DIR}" ]]; then
+  [[ -d "${VOICE_ASSETS_DIR}" && ! -L "${VOICE_ASSETS_DIR}" ]] || die "voice source directory is missing or linked"
+  VOICE_ASSETS_DIR="$(realpath -- "${VOICE_ASSETS_DIR}")"
+  [[ -n "${VOICE_OUTPUT}" ]] || VOICE_OUTPUT="/home/luma-build/luma-voice-kristin-${VERSION}.lva"
+  [[ "$(basename -- "${VOICE_OUTPUT}")" == "luma-voice-kristin-${VERSION}.lva" ]] || die "voice output filename must match the release version"
+  VOICE_OUTPUT="$(realpath -m -- "${VOICE_OUTPUT}")"
+  case "${VOICE_OUTPUT}" in "${REPO_ROOT}"|"${REPO_ROOT}"/*) die "keep signed voice archives outside the repository" ;; esac
+  [[ ! -e "${VOICE_OUTPUT}" && ! -L "${VOICE_OUTPUT}" ]] || die "voice output already exists; choose a new path"
+fi
 
 if ((PUBLISH)); then
   command -v gh >/dev/null || die "GitHub CLI (gh) is required to publish"
@@ -122,6 +140,12 @@ fi
 printf 'Signing locally with the key held outside GitHub Actions and the repository…\n'
 python3 "${DELIVERY_ROOT}/source/tools/build-update-bundle.py" "${DELIVERY_ROOT}" \
   --key "${KEY_PATH}" --output "${OUTPUT}"
+RELEASE_ASSETS=("${OUTPUT}")
+if [[ -n "${VOICE_ASSETS_DIR}" ]]; then
+  python3 "${DELIVERY_ROOT}/source/tools/build-voice-asset.py" "${DELIVERY_ROOT}" \
+    --assets "${VOICE_ASSETS_DIR}" --key "${KEY_PATH}" --output "${VOICE_OUTPUT}"
+  RELEASE_ASSETS+=("${VOICE_OUTPUT}")
+fi
 
 if ((PUBLISH)); then
   git -C "${REPO_ROOT}" tag -a "${TAG}" "${HEAD_SHA}" -m "Luma ${VERSION}"
@@ -129,15 +153,15 @@ if ((PUBLISH)); then
     git -C "${REPO_ROOT}" tag -d "${TAG}" >/dev/null
     die "could not publish the exact tested tag; main or the remote tag changed"
   fi
-  if ! gh release create "${TAG}" "${OUTPUT}" --repo "${REPOSITORY}" --target main \
+  if ! gh release create "${TAG}" "${RELEASE_ASSETS[@]}" --repo "${REPOSITORY}" --target main \
     --verify-tag \
     --title "Luma ${VERSION}" --notes-file "${NOTES_FILE}"
   then
     printf 'The tested tag %s is on GitHub at %s; the release upload did not finish.\n' "${TAG}" "${HEAD_SHA}" >&2
-    printf 'Recover by creating the release for this same tag and attaching %s; do not reuse its version.\n' "${OUTPUT}" >&2
+    printf 'Recover by creating the release for this same tag and attaching all signed assets; do not reuse its version.\n' >&2
     exit 1
   fi
   printf 'Published %s. The private signing key was not sent to GitHub.\n' "${TAG}"
 else
-  printf 'Built signed bundle only (not published): %s\n' "${OUTPUT}"
+  printf 'Built signed assets only (not published): %s\n' "${RELEASE_ASSETS[*]}"
 fi

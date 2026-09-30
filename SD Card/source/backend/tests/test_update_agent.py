@@ -263,6 +263,8 @@ async def test_root_update_broker_does_not_refresh_after_failed_install(tmp_path
 
 @pytest.mark.asyncio
 async def test_update_progress_survives_broker_restart_and_reports_interruption(tmp_path):
+    if sys.platform == "win32":
+        pytest.skip("durable directory fsync for update progress requires POSIX")
     bundle_path,public=make_bundle(tmp_path)
     status_path=tmp_path/'release-status.json'
     phases=[]

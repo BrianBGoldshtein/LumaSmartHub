@@ -14,6 +14,7 @@
 !/SD Card/image/r13-final-71d91b5-20260930/README.md
 /SD Card/image/**/*.img.xz
 /SD Card/image/**/*.img.xz.sha256
+/SD Card/updates/
 SD Card/image/*.img
 SD Card/image/*.img.xz
 SD Card/image/*.bmap

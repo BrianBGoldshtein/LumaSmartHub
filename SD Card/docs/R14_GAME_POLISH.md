@@ -1,6 +1,6 @@
 # r14 game polish (not included in r13 image)
 
-This work began after the r13 image source was frozen. Do not describe it as part of r13 or install an unsigned build on the Pi. Qualify it as an app update after the r13 platform is physically accepted and a safe deployment path is proven.
+This work began after the r13 image source was frozen. Do not describe it as part of r13 or install an unsigned build on the Pi. The app-only bundle is version `0.2.1`, newer than the image's `0.2.0`; its dependency and durable-data schema contracts must remain unchanged. Qualify it after the r13 platform is physically accepted and a safe deployment path is proven.
 
 ## Pong
 

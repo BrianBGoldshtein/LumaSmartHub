@@ -7,6 +7,7 @@ import csv
 import io
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import zipfile
@@ -30,7 +31,6 @@ def make_bundle(tmp_path: Path, *, version: str = "0.3.0", corrupt: bool = False
     public_path.write_bytes(private.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
     pyproject = (Path(__file__).parents[1] / "pyproject.toml").read_text()
-    import re
     pyproject = re.sub(r'^version = "[^"]+"$', f'version = "{version}"', pyproject, count=1, flags=re.M).encode()
     if dependency_change:
         pyproject = pyproject.replace(b'  "httpx>=0.27,<1",', b'  "httpx>=0.27,<1",\n  "requests>=2,<3",')
@@ -104,7 +104,10 @@ def installed_tree(tmp_path: Path, *, real_venv: bool = False):
             (current / "venv/bin/python").symlink_to("/usr/bin/python3")
             (current / "venv/lib").mkdir()
             (current / "venv/lib64").symlink_to("lib", target_is_directory=True)
-    project = (Path(__file__).parents[1] / "pyproject.toml").read_bytes()
+    # The fixture models the already-flashed base image, not the version of
+    # the source tree currently preparing a later app-only update.
+    project = re.sub(rb'(?m)^version = "[^"]+"$', b'version = "0.2.0"',
+                     (Path(__file__).parents[1] / "pyproject.toml").read_bytes(), count=1)
     (current / "backend/pyproject.toml").write_bytes(project)
     (current / "backend/src/luma/storage.py").write_text("SCHEMA_VERSION = 1\n")
     (current / "frontend/index.html").write_text("old app")
@@ -302,7 +305,12 @@ def test_apply_installs_wheel_and_repairs_venv_entrypoint_after_rename(tmp_path)
                              health_check=lambda version: version == "0.3.0")
     command = candidate / "venv/bin/luma-test-command"
     assert command.is_file(), [path.name for path in (candidate / "venv/bin").iterdir()]
-    result = subprocess.run([str(command)], check=True, capture_output=True, text=True)
+    # This smoke checks the installed wheel, so it must not inherit a test
+    # runner's checkout-only PYTHONPATH and accidentally import source instead.
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run([str(command)], check=True, capture_output=True,
+                            text=True, env=environment)
     assert result.stdout.strip() == "wheel-ok"
     assert str(candidate).encode() in command.read_bytes().splitlines()[0]
 

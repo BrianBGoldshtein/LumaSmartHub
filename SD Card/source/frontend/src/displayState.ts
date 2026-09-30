@@ -19,7 +19,15 @@ export function displayFilter(display:DisplayState|undefined|null,elapsedMs=0){
   if(!display)return 1;
   const reference=display.handoff.reference_brightness;
   const denominator=Number.isFinite(reference)&&reference>=1&&reference<=100?reference:100;
-  return Math.min(1,displayLevel(display,elapsedMs)/denominator);
+  const level=displayLevel(display,elapsedMs);
+  const panelRatio=Math.min(1,level/denominator);
+  // LCD panels differ wildly near their minimum setting. Keep the owner's
+  // saved night percentage, but add a software blackout curve so an existing
+  // 5% night clock becomes barely visible even if the panel's 5% is bright.
+  // Zero remains truly black; daytime and wake ramps keep their old behavior.
+  // Keep at least a trace of pixel output on panels that cannot report their
+  // physical dimming level; below ~1% software opacity can round to black.
+  return display.mode==='night-clock'?(level===0?0:Math.max(.012,panelRatio*Math.min(1,level/100))):panelRatio;
 }
 export function previewDisplay(mode:DisplayState['mode'],brightness=70):DisplayState{
   return {mode,brightness:mode==='day'?brightness:mode==='off'?0:5,day_brightness:brightness,night_brightness:5,awaiting_clock:false,quiet:mode!=='day',

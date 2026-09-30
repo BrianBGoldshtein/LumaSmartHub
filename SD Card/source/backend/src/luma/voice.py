@@ -4,6 +4,7 @@ import re
 
 from .models import Command, CommandName, Page, Theme
 from .voice_library import QUERY_PHRASES, query_intent
+from .voice_model import match
 
 
 NUMBER_WORDS = {
@@ -14,6 +15,28 @@ NUMBER_WORDS = {
 
 TIMER_MINUTES = {'five':5, 'ten':10, 'fifteen':15, 'twenty':20, 'twenty five':25,
                  'thirty':30, 'forty five':45, 'sixty':60}
+
+SMALL_NUMBERS = {'one':1,'two':2,'three':3,'four':4,'five':5,'six':6,'seven':7,
+                 'eight':8,'nine':9,'ten':10,'eleven':11,'twelve':12,
+                 'thirteen':13,'fourteen':14,'fifteen':15,'sixteen':16,
+                 'seventeen':17,'eighteen':18,'nineteen':19}
+TENS = {'twenty':20,'thirty':30,'forty':40,'fifty':50,'sixty':60,
+        'seventy':70,'eighty':80,'ninety':90}
+
+
+def _spoken_number(value: str) -> int | None:
+    value=value.strip().replace('-',' ')
+    if value.isascii() and value.isdigit():return int(value)
+    if value in SMALL_NUMBERS:return SMALL_NUMBERS[value]
+    if value in TENS:return TENS[value]
+    words=value.split()
+    if len(words)==2 and words[0] in TENS and words[1] in SMALL_NUMBERS and SMALL_NUMBERS[words[1]]<10:
+        return TENS[words[0]]+SMALL_NUMBERS[words[1]]
+    if words and words[0] in {'a','one','two'} and len(words)>1 and words[1]=='hundred':
+        base=(1 if words[0]=='a' else SMALL_NUMBERS[words[0]])*100
+        remainder=_spoken_number(' '.join(words[2:])) if len(words)>2 else 0
+        return base+remainder if remainder is not None else None
+    return None
 
 
 def command_grammar(wake_phrase: str = "hey luma") -> list[str]:
@@ -90,11 +113,16 @@ def parse_local_command(transcript: str) -> Command | None:
         return Command(CommandName.START_TIMER, 'focus' if 'focus' in text else 'break', 'voice')
     if text in {'pause timer','resume timer','cancel timer','show timer','dismiss timer'}:
         return Command(CommandName(text.replace(' ', '_')), source='voice')
-    timer_match = re.fullmatch(r'(?:start|set)(?: a)? (.+?)(?:-| )minute timer', text)
+    timer_match = re.fullmatch(r'(?:start|set)(?: a)? (.+?)(?:-| )(minute|minutes|hour|hours) timer', text)
     if timer_match:
-        amount = timer_match[1]
-        minutes = int(amount) if amount.isascii() and amount.isdigit() else TIMER_MINUTES.get(amount)
-        return Command(CommandName.START_TIMER, minutes, 'voice') if minutes in TIMER_MINUTES.values() else None
+        amount=_spoken_number(timer_match[1])
+        minutes=amount*(60 if timer_match[2].startswith('hour') else 1) if amount is not None else None
+        return Command(CommandName.START_TIMER, minutes, 'voice') if minutes is not None and 1<=minutes<=120 else None
+    timer_match = re.fullmatch(r'(?:start|set)(?: a)? timer (?:for|of) (.+?) (minute|minutes|hour|hours)', text)
+    if timer_match:
+        amount=_spoken_number(timer_match[1])
+        minutes=amount*(60 if timer_match[2].startswith('hour') else 1) if amount is not None else None
+        return Command(CommandName.START_TIMER, minutes, 'voice') if minutes is not None and 1<=minutes<=120 else None
     if "good morning" in text:
         return Command(CommandName.GOOD_MORNING, source="voice")
     if "good night" in text:
@@ -128,4 +156,26 @@ def parse_local_command(transcript: str) -> Command | None:
         return Command(CommandName.NEXT_PAGE, source="voice")
     if "previous" in text or "go back" in text:
         return Command(CommandName.PREVIOUS_PAGE, source="voice")
+    # The neural matcher may only select reversible local presentation actions.
+    # It never supplies numeric slots, calendar writes, scenes or a privacy key.
+    action=match(text,confidence=.78,margin=1.8)
+    actions={
+        'action:home':(CommandName.SHOW_PAGE,Page.HOME),
+        'action:weather':(CommandName.SHOW_PAGE,Page.WEATHER),
+        'action:agenda':(CommandName.SHOW_PAGE,Page.AGENDA),
+        'action:todos':(CommandName.SHOW_PAGE,Page.TODOS),
+        'action:ambient':(CommandName.SHOW_PAGE,Page.AMBIENT),
+        'action:countdowns':(CommandName.SHOW_PAGE,Page.COUNTDOWNS),
+        'action:transit':(CommandName.SHOW_PAGE,Page.TRANSIT),
+        'action:next_page':(CommandName.NEXT_PAGE,None),
+        'action:previous_page':(CommandName.PREVIOUS_PAGE,None),
+        'action:brightness':(CommandName.SHOW_BRIGHTNESS,None),
+        'action:volume':(CommandName.SHOW_VOLUME,None),
+        'action:glass':(CommandName.SET_THEME,Theme.LUMA_GLASS),
+        'action:hearth':(CommandName.SET_THEME,Theme.HEARTH),
+        'action:arcade':(CommandName.SET_THEME,Theme.NEON_GRID),
+    }
+    if action in actions:
+        name,value=actions[action]
+        return Command(name,value,'voice')
     return None

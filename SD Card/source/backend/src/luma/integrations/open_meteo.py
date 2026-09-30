@@ -83,7 +83,9 @@ def parse_forecast(payload: dict, timezone: str) -> WeatherSnapshot:
                                      _optional(hourly, "apparent_temperature", index, -150, 160),
                                      _optional(hourly, "wind_gusts_10m", index, 0, 300),
                                      _optional(hourly, "precipitation", index, 0, 1000)))
-        if len(hours) == 12:
+        # Keep the remainder of today and all of tomorrow for local spoken
+        # questions. The dashboard still renders only its first few hours.
+        if len(hours) == 48:
             break
     code = int(current["weather_code"])
     return WeatherSnapshot(

@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from datetime import UTC, datetime
 import sys
 from time import monotonic
 
 from .integrations.ancs import SERVICE, SOURCE, DATA, CONTROL, AttributeResponse, notification, parse_source, request_attributes
 from .service import LumaService
 from .scene_presence import ScenePresence, evidence
+
+SERVICE_CHANGED = '00002a05-0000-1000-8000-00805f9b34fb'
 
 
 def trusted_connection(properties: dict) -> bool:
@@ -21,6 +24,33 @@ def plain(properties: dict) -> dict:
 
 class BluetoothStatusError(Exception):
     """A fixed, user-safe explanation; never include BlueZ exception text."""
+
+
+async def scan_for_paired_phone(manager, adapter, phone_path: str, *, pause=asyncio.sleep) -> bool:
+    """Briefly refresh BlueZ's LE view before a normal bonded reconnect.
+
+    Discovery is only a hint that a device may be reachable. It never changes
+    the saved bond or grants presence; ANCS authorization is checked later.
+    BlueZ tracks discovery sessions by D-Bus caller, so stopping ours leaves
+    the pairing wizard's independent discovery session intact.
+    """
+    from dbus_next import Variant
+
+    await asyncio.wait_for(adapter.call_set_discovery_filter({
+        "Transport": Variant("s", "le"), "DuplicateData": Variant("b", False),
+    }), 5)
+    await asyncio.wait_for(adapter.call_start_discovery(), 5)
+    try:
+        for _ in range(6):
+            await pause(0.5)
+            objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
+            device = objects.get(phone_path, {}).get("org.bluez.Device1")
+            if device and plain(device).get("Connected") is True:
+                return True
+        return False
+    finally:
+        with suppress(Exception):
+            await asyncio.wait_for(adapter.call_stop_discovery(), 5)
 
 
 async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: float = 12) -> dict:
@@ -43,12 +73,50 @@ async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: floa
         await asyncio.sleep(0.5)
 
 
+def ancs_characteristics(objects: dict, phone_path: str) -> dict[str,str]:
+    services={path for path,obj in objects.items()
+              if 'org.bluez.GattService1' in obj
+              and plain(obj['org.bluez.GattService1']).get('UUID','').lower()==SERVICE
+              and plain(obj['org.bluez.GattService1']).get('Device')==phone_path}
+    return {plain(obj['org.bluez.GattCharacteristic1'])['UUID'].lower():path
+            for path,obj in objects.items() if 'org.bluez.GattCharacteristic1' in obj
+            and plain(obj['org.bluez.GattCharacteristic1']).get('Service') in services}
+
+
+async def wait_for_ancs(manager,phone_path: str,*,initial=None,timeout=30,pause=asyncio.sleep):
+    """ANCS can appear after GATT resolution or reappear on an existing link."""
+    deadline=monotonic()+timeout
+    objects=initial
+    while True:
+        if objects is None:objects=await asyncio.wait_for(manager.call_get_managed_objects(),5)
+        device=objects.get(phone_path,{}).get('org.bluez.Device1')
+        if device is None or not trusted_connection(plain(device)):
+            raise BluetoothStatusError('iPhone Bluetooth link or services disconnected')
+        chars=ancs_characteristics(objects,phone_path)
+        if {SOURCE,DATA,CONTROL}<=chars.keys():return objects,chars
+        if monotonic()>=deadline:
+            raise BluetoothStatusError('iPhone connected, but notification service is unavailable')
+        await pause(1)
+        objects=None
+
+
+def service_changed_path(objects: dict,phone_path: str) -> str | None:
+    services={path for path,obj in objects.items() if 'org.bluez.GattService1' in obj
+              and plain(obj['org.bluez.GattService1']).get('Device')==phone_path}
+    return next((path for path,obj in objects.items() if 'org.bluez.GattCharacteristic1' in obj
+                 and plain(obj['org.bluez.GattCharacteristic1']).get('Service') in services
+                 and plain(obj['org.bluez.GattCharacteristic1']).get('UUID','').lower()==SERVICE_CHANGED),None)
+
+
 class BluetoothRuntime:
     def __init__(self, service: LumaService):
         self.service = service
         self.status = "Not configured"
         self.scene_presence = ScenePresence()
         self.scene_authorized = None
+        self.last_discovery = -60.0
+        self.last_reconnect_at: str | None = None
+        self.reconnect_attempts = 0
 
     async def scene_presence_worker(self):
         """Independent fresh radio evidence; only sampled for enabled scenes."""
@@ -86,7 +154,7 @@ class BluetoothRuntime:
             self.scene_presence.update('', None)
             if bus: bus.disconnect()
 
-    async def run(self):
+    async def run(self,*,pause=asyncio.sleep,retry_seconds=10):
         if sys.platform != "linux":
             self.status = "Requires Linux BlueZ"
             return
@@ -105,7 +173,7 @@ class BluetoothRuntime:
                         self.service.phone_disconnected()
             else:
                 self.status = "Not configured"
-            await asyncio.sleep(10)
+            await pause(retry_seconds)
 
     async def session(self, address):
         from dbus_next import BusType, Variant
@@ -127,16 +195,42 @@ class BluetoothRuntime:
                 raise BluetoothStatusError("iPhone bond or trust was lost")
             device = await interface(phone_path, "org.bluez.Device1")
             if not properties.get("Connected"):
+                if monotonic() - self.last_discovery >= 45:
+                    self.last_discovery = monotonic()
+                    adapter_path = next((path for path, obj in objects.items() if "org.bluez.Adapter1" in obj), None)
+                    if adapter_path:
+                        self.status = "Looking for paired iPhone"
+                        try:
+                            adapter = await interface(adapter_path, "org.bluez.Adapter1")
+                            await scan_for_paired_phone(manager, adapter, phone_path)
+                        except Exception:
+                            # Some controllers cannot scan while another radio
+                            # operation is active. Still attempt the direct bond.
+                            pass
+                        objects = await manager.call_get_managed_objects()
+                        properties = plain(objects.get(phone_path, {}).get("org.bluez.Device1", {}))
+                if not all(properties.get(key) for key in ("Paired", "Bonded", "Trusted")):
+                    raise BluetoothStatusError("iPhone bond or trust was lost")
+            if not properties.get("Connected"):
                 self.status = "Reconnecting to paired iPhone"
+                self.last_reconnect_at = datetime.now(UTC).isoformat()
+                self.reconnect_attempts += 1
                 try:
                     await asyncio.wait_for(device.call_connect(), 15)
                 except Exception as exc:
-                    raise BluetoothStatusError("iPhone Bluetooth link is disconnected; reconnect failed") from exc
+                    raise BluetoothStatusError("iPhone Bluetooth link is disconnected; Luma will retry automatically") from exc
             objects = await wait_for_trusted_connection(manager, phone_path)
-            service_paths = {path for path, obj in objects.items() if "org.bluez.GattService1" in obj and plain(obj["org.bluez.GattService1"]).get("UUID", "").lower() == SERVICE and plain(obj["org.bluez.GattService1"]).get("Device") == phone_path}
-            chars = {plain(obj["org.bluez.GattCharacteristic1"])["UUID"].lower(): path for path, obj in objects.items() if "org.bluez.GattCharacteristic1" in obj and plain(obj["org.bluez.GattCharacteristic1"]).get("Service") in service_paths}
-            if not {SOURCE, DATA, CONTROL} <= chars.keys():
-                raise BluetoothStatusError("iPhone connected, but notification service is unavailable")
+            changed=service_changed_path(objects,phone_path)
+            if changed:
+                try:
+                    characteristic=await interface(changed,'org.bluez.GattCharacteristic1')
+                    await asyncio.wait_for(characteristic.call_start_notify(),5)
+                except Exception:
+                    # BlueZ may already subscribe internally; periodic GATT
+                    # discovery below remains the fallback.
+                    pass
+            self.status='iPhone connected; waiting for notification service'
+            objects,chars=await wait_for_ancs(manager,phone_path,initial=objects)
             source = await interface(chars[SOURCE], "org.bluez.GattCharacteristic1")
             data = await interface(chars[DATA], "org.bluez.GattCharacteristic1")
             control = await interface(chars[CONTROL], "org.bluez.GattCharacteristic1")

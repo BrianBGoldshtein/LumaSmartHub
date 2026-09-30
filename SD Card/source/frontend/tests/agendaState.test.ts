@@ -21,12 +21,24 @@ test('short adjacent events never visually collide in the same lane',()=>{
     assert.ok(a.top+a.height<=b.top+.00001 || b.top+b.height<=a.top+.00001);
   }
 });
+test('a brief event gets visual space for title-first typography',()=>{
+  const pages=agendaSections(agenda([event('Short but readable',9,9.2)]));
+  const item=pages.flatMap(page=>page.items)[0];
+  assert.ok(item.height>=29 && item.height<=30);
+});
 test('cross-window appointments continue and all-day items paginate without truncation',()=>{
   const events=[event('long',10,16),...Array.from({length:10},(_,i)=>event(`all-${i}`,0,24,{all_day:true}))];
   const pages=agendaSections(agenda(events));
   assert.equal(pages.flatMap(p=>p.allDay).length,10);
   assert.equal(pages.flatMap(p=>p.items).filter(i=>i.event.id==='long').length,3);
   assert.ok(pages.flatMap(p=>p.items).every(item=>item.top>=0&&item.top+item.height<=100.00001));
+});
+test('one all-day item shares the first populated time window instead of taking a blank slide',()=>{
+  const pages=agendaSections(agenda([event('all',0,24,{all_day:true}),event('first',9,10)]));
+  assert.equal(pages.length,4);
+  assert.equal(pages.filter(page=>page.allDay.length>0).length,1);
+  assert.equal(pages.find(page=>page.allDay.length>0)?.items[0]?.event.id,'first');
+  assert.equal(pages.flatMap(page=>page.allDay).length,1);
 });
 test('shared IDs on different calendars stay distinct and event colors override calendar colors',()=>{
   const a=event('same',9,10,{calendar_color:'#abcdef',event_color:'#123456'}),b={...a,calendar_id:'other'};

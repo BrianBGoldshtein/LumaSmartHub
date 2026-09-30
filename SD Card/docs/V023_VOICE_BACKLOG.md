@@ -1,13 +1,49 @@
-# Luma 0.2.3 voice backlog (planning, not in 0.2.2)
+# Luma 0.2.3 offline voice implementation and remaining checks
 
 Part of the broader [0.2.3 feature backlog](V023_FEATURE_BACKLOG.md), which
 also plans the across-the-room typography and layout overhaul.
 
 Owner request: expand **Hey Luma** into a useful, forgiving, fully offline
-command interface. These are candidate requirements for the next feature
-release, not a claim that the microphone or voice pipeline has passed physical
-testing. Keep the existing privacy gate and explicit confirmation for actions
-that change data or devices.
+command interface. The code below is implemented on the 0.2.3 branch but is
+**not a claim of physical microphone success**; the ReSpeaker must pass the
+normal-speech meter and end-to-end spoken tests on the Pi before release.
+Keep the existing privacy gate and explicit confirmation for actions that
+change data or devices.
+
+## Implemented in source
+
+- 34 local spoken-question intents, including today/tomorrow weather,
+  precipitation timing and probabilities, highs/lows, layer guidance,
+  calendar today/tomorrow/next seven days, next-event location, current event,
+  free time, today's/soon/overdue/completed tasks, timer, time/date, transit,
+  phone/privacy/network/sync status, and help. Replies use the saved local
+  snapshot and indicate stale or unavailable information. The detailed
+  weather horizon is two days; later requests say so instead of pretending
+  tomorrow is the requested date. Private calendar and tasks remain gated.
+- Existing exact timer, scene, display, theme, brightness, volume, privacy and
+  greeting commands remain. The matcher also recognizes 14 reversible local
+  presentation intents (page navigation, controls and themes). It **cannot**
+  choose a calendar write, room-device action, numeric setting or privacy
+  unlock. Those still need explicit deterministic parsing and the existing
+  owner/authorization checks.
+- `source/backend/train_voice_model.py` trains a reproducible shallow neural
+  bag-of-character-ngrams classifier using 466 authored/augmented public
+  phrases. `luma/voice_intents.json` contains a ~368 KB quantized model. No
+  user audio, calendar data or calibration sample is part of training. The
+  inference runtime uses only Python's standard library and is included in
+  the signed backend wheel; no model is downloaded by the Pi.
+- Vosk's constrained recognizer remains the wake-word gate. After it accepts
+  wake, a second, unrestricted recognizer replays at most nine seconds of
+  buffered audio so natural phrasing can reach the classifier. This is local
+  and bounded; audio is not sent to a cloud service or persisted.
+- Exact phrases take precedence. Model decisions need both posterior and
+  margin thresholds, and unsupported/uncertain speech leaves settings and
+  devices untouched. A recognized but unavailable output gives a truthful
+  explanation; unsupported speech gives a short command-library prompt.
+
+Automated voice-query, paraphrase, safety and wheel-packaging checks pass in
+the development environment. Pi 4 microphone level, wake distance, latency,
+memory and offline spoken-input behavior remain **unverified on hardware**.
 
 ## Command coverage
 
@@ -37,15 +73,14 @@ examples and a short "What can I ask?" response.
 
 ## Understanding varied wording
 
-Keep the existing offline wake-word and Vosk transcription path, then add a
-small **on-device intent classifier** rather than enumerating every sentence.
-Evaluate a quantized fastText supervised classifier first: it is a shallow
-neural text model intended for fast local classification and has an official
-quantization path. Train it off-device on authored paraphrases plus realistic
-speech-recognition mistakes; ship only the tested model and labels. Compare it
-against the current deterministic matcher and a compact fuzzy baseline on a
-held-out set. A larger ONNX model is a fallback only if it materially improves
-accuracy on the Pi 4 within measured RAM, startup and response-time budgets.
+The implemented model is a tiny quantized neural softmax classifier written in
+standard Python instead of fastText: this avoids introducing a new compiled
+ARM dependency into the Pi image and update path. The intent model is not an
+LLM and cannot answer arbitrary questions. Expand the held-out corpus with
+consenting real-device ASR transcripts and compare exact/model/fuzzy behavior
+before declaring the command surface complete. A larger runtime is a fallback
+only if it materially improves Pi 4 accuracy inside measured memory and
+latency budgets.
 
 Exact high-confidence phrases may bypass the classifier; the classifier only
 selects an intent. Parse dates, numbers, task/event names and safety-sensitive

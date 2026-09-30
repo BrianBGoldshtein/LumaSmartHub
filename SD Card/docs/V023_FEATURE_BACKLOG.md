@@ -1,8 +1,9 @@
-# Luma 0.2.3 feature backlog (planning only)
+# Luma 0.2.3 implementation and hardware acceptance
 
-This document is deliberately separate from the published `0.2.2` bugfix.
-Nothing here has been implemented or pushed to the Pi. Hardware feedback may
-change the details before development begins.
+This document is deliberately separate from the `0.2.2` bugfix. The source is
+being packaged as a signed `0.2.3` no-flash SD test candidate; it has **not**
+been validated on the owner's physical Pi. Hardware feedback may change the
+details before a stable GitHub release.
 
 ## 1. In-room readability and visual harmony
 
@@ -56,14 +57,31 @@ the global clock, home grid, status bar and theme overrides; `agenda.css`,
 spacing rules. Consolidate the scattered `vmin` and pixel overrides only
 after the visual audit; do not globally scale all text blindly.
 
+Implemented in the candidate: the clock is substantially larger in all three
+themes, home uses more of the display for primary events, and dense agenda
+sections share their time window with a lone all-day event rather than making
+a mostly empty slide. Brief events get a title-first minimum visual height
+without hiding their true time range. A full-screen, theme-matched glowing
+Luma orb appears for listening, thinking and speaking; Neon keeps its master
+grid. Headless captures were checked at 2048×1536. Actual viewing distance,
+portrait layout and alert interactions still need physical acceptance.
+
+The saved night-brightness percentage remains intact, but night-clock mode now
+adds a second near-black software curve. A saved 5% setting renders at about
+5% of the panel-output stage (or a 1.2% minimum software output on panels
+without a known physical dimming level).
+Zero is black; daytime and wake ramps are unchanged. Verify this on the LCD
+in a dark room. Software cannot remove physical backlight leakage.
+
 ## 2. Broader offline Hey Luma commands
 
 See the detailed [voice-command plan](V023_VOICE_BACKLOG.md): tomorrow's
 weather, calendar, tasks, timers, hub controls and status, with paraphrase
 handling from a small offline intent classifier. Keep recognition, answers and
 safety decisions local; reject uncertain or unauthorized actions. The
-pleasant offline female speech output is a separate pending dependency and
-hardware-audition task.
+pleasant offline female speech output remains a separate pending runtime,
+voice-asset and hardware-audition task. The app-only `0.2.3` candidate keeps
+the existing `espeak-ng` fallback; do not claim it already has the new voice.
 
 ## 3. Visible software-update progress and recovery
 
@@ -72,15 +90,13 @@ only a mouse pointer for several minutes. That may be a legitimate kiosk
 restart, but the absence of feedback is alarming. Starting with `0.2.3`, an
 update must never look like an unexplained dead screen.
 
-Plan a persistent, theme-matched progress surface **outside the application
-release being replaced**. The current installer stops the Luma user kiosk
-while it switches versions, so an overlay implemented only inside the React
-dashboard cannot cover the critical blank interval. First determine whether
-the existing user session can safely keep a minimal cached update view alive
-while API services restart; otherwise add a small independently supervised
-local progress display before relying on the new UI. If that needs a systemd
-unit/package change, qualify and schedule the required OS maintenance rather
-than pretending an app-only bundle can install it.
+The `0.2.3` installer no longer stops `luma-kiosk.service` during the app
+switch; Chromium keeps the already-loaded update screen while API services
+restart. A root-owned progress record outside the replaceable release stores
+named phases and a non-secret outcome across broker restart. The frontend
+polls it and shows a theme-matched full-screen overlay. The **first** switch
+from physical `0.2.0` still runs the older installer, so it may briefly show
+the old dark-cursor screen; the new progress display starts with later updates.
 
 Show honest named phases—verifying, copying, switching, restarting, checking,
 complete or restoring previous version—plus the target version, elapsed time

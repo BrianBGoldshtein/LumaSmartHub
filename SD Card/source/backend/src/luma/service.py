@@ -309,6 +309,12 @@ class LumaService:
             'fresh': bool(not self.calendar_sync_error and self.calendar_synced_at and timedelta(0) <= now-self.calendar_synced_at <= timedelta(minutes=10)),
             'events': to_primitive([event for event in events if not event.self_declined]),
         }
+        snapshot['voice_todos'] = to_primitive(sorted(
+            (todo_view(event, self.settings.todo_completed_color_id) for event in self.events
+             if not snapshot['privacy_redacted'] and event.calendar_id == self.settings.todo_calendar_id
+             and event.all_day and event.status != 'cancelled'),
+            key=lambda item: (item['due_date'], item['summary'].casefold()),
+        )[:100])
         return snapshot
 
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:

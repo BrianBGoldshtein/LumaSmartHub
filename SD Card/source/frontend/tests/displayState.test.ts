@@ -12,10 +12,10 @@ test('wake interpolation is bounded, smooth and exactly twenty seconds',()=>{
 });
 test('physical reference remains conservative and off is absolutely black',()=>{
   const state=previewDisplay('night-clock');
-  assert.equal(displayFilter(state),.05);
-  assert.equal(displayFilter({...state,handoff:{...state.handoff,reference_brightness:5}}),1);
-  assert.equal(displayFilter({...state,handoff:{...state.handoff,reference_brightness:70}}),5/70);
-  assert.equal(displayFilter({...state,handoff:{...state.handoff,reference_brightness:NaN}}),.05);
+  assert.equal(displayFilter(state),.012);
+  assert.equal(displayFilter({...state,handoff:{...state.handoff,reference_brightness:5}}),.05);
+  assert.equal(displayFilter({...state,handoff:{...state.handoff,reference_brightness:70}}),.012);
+  assert.equal(displayFilter({...state,handoff:{...state.handoff,reference_brightness:NaN}}),.012);
   assert.equal(displayFilter(previewDisplay('off')),0);
   assert.equal(displayFilter(null),1);
 });

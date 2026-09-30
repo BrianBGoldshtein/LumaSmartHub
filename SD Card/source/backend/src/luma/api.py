@@ -248,7 +248,7 @@ def create_app(
                 return {"count": 0}
             now = datetime.now(UTC)
             try:
-                fetched = await asyncio.to_thread(google.fetch_events, ids, now - timedelta(days=1), now + timedelta(days=7), settings.timezone)
+                fetched = await asyncio.to_thread(google.fetch_events, ids, now - timedelta(days=7), now + timedelta(days=7), settings.timezone)
             except Exception:
                 google_status["error"] = "Calendar sync unavailable; showing saved events."
                 service.calendar_sync_error = True
@@ -395,7 +395,9 @@ def create_app(
     @app.get("/api/v1/bluetooth/pairing", dependencies=[Depends(local_only)])
     def pairing_status() -> dict:
         return {**pairing.snapshot(), "phone_address": service.settings.phone_address,
-                "connection_status": bluetooth.status}
+                "connection_status": bluetooth.status,
+                "last_reconnect_at": bluetooth.last_reconnect_at,
+                "reconnect_attempts": bluetooth.reconnect_attempts}
 
     @app.post("/api/v1/bluetooth/pairing/start", dependencies=[Depends(local_only)])
     async def pairing_start() -> dict:
@@ -742,7 +744,9 @@ def create_app(
             task.add_done_callback(lambda finished: finished.exception() if not finished.cancelled() else None)
             return {"accepted": True, "message": f"I started the {key} scene. Check Room devices for each action’s result; uncertain actions are never retried."}
         if parsed.name == CommandName.LOCAL_QUERY:
-            return {'accepted': True, 'message': answer_query(parsed.value, service.voice_snapshot(authorized=google.authorized()))}
+            voice_view = service.voice_snapshot(authorized=google.authorized())
+            voice_view['voice_status'] = {'network': network.snapshot(), 'bluetooth': bluetooth.status}
+            return {'accepted': True, 'message': answer_query(parsed.value, voice_view)}
         result = service.execute(parsed)
         reply = morning_briefing(service.snapshot(briefing=True)) if parsed.name == CommandName.GOOD_MORNING and result.data.get('briefing') else result.message
         return {"accepted": result.accepted, "message": reply}

@@ -11,6 +11,7 @@ import atexit
 import signal
 from array import array
 import math
+import re
 
 import httpx
 
@@ -24,6 +25,13 @@ def _report_diagnostic(client: httpx.Client, code: str) -> None:
         client.post("/api/v1/voice/diagnostic", json={"code": code}).raise_for_status()
     except httpx.HTTPError:
         pass
+
+
+def _free_command(text: str, wake_phrase: str) -> str:
+    """Use unrestricted transcription after the constrained recognizer hears wake."""
+    words=re.sub(r'\s+', ' ', text.casefold()).strip()
+    match=re.search(r'\b'+re.escape(wake_phrase)+r'\b',words)
+    return words[match.end():].strip(' ,.') if match else words
 
 
 def main() -> None:
@@ -48,10 +56,12 @@ def main() -> None:
         try:
             SetLogLevel(-1)
             gate = WakeGate(os.environ.get("LUMA_WAKE_PHRASE", "hey luma"))
+            model = Model(str(model_path))
             recognizer = KaldiRecognizer(
-                Model(str(model_path)), 16000,
+                model, 16000,
                 json.dumps(command_grammar(gate.phrase)),
             )
+            free_recognizer = KaldiRecognizer(model, 16000)
         except Exception:
             _report_diagnostic(client, "model_unavailable")
             raise SystemExit("The installed local speech model could not be loaded.") from None
@@ -83,6 +93,7 @@ def main() -> None:
                 next_meter = 0.0
                 energy = count = peak = 0
                 meter_energy = meter_count = meter_peak = 0
+                utterance: list[bytes] = []
                 while True:
                     now = time.monotonic()
                     if now >= next_heartbeat:
@@ -96,6 +107,7 @@ def main() -> None:
                             fresh = response.json()
                             if (fresh["active"], fresh["session"]) != (calibration["active"], calibration["session"]):
                                 recognizer.Reset()
+                                utterance.clear()
                                 gate.until = 0
                                 energy = count = peak = 0
                                 meter_energy = meter_count = meter_peak = 0
@@ -138,9 +150,14 @@ def main() -> None:
                                 pass
                             meter_energy = meter_count = meter_peak = 0
                             next_meter = now + 1
+                    utterance.append(chunk)
+                    if len(utterance)>36:
+                        utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
                     if not recognizer.AcceptWaveform(chunk):
                         continue
                     text = json.loads(recognizer.Result()).get("text", "")
+                    spoken=utterance
+                    utterance=[]
                     rms, maximum = math.sqrt(energy / max(count, 1)) / 32768, peak / 32768
                     energy = count = peak = 0
                     if calibration["active"]:
@@ -153,8 +170,23 @@ def main() -> None:
                     accepted = gate.accept(text, time.monotonic())
                     if accepted is None:
                         continue
+                    # Light the full-screen listening state as soon as the
+                    # wake phrase is accepted, including one-shot commands.
+                    phase("listening")
+                    # The constrained recognizer verifies wake. Re-transcribe
+                    # just this bounded utterance without a fixed phrase list,
+                    # so the local intent model can hear genuine variations.
+                    free_recognizer.Reset()
+                    parts=[]
+                    for frame in spoken:
+                        if free_recognizer.AcceptWaveform(frame):
+                            parts.append(json.loads(free_recognizer.Result()).get('text',''))
+                    parts.append(json.loads(free_recognizer.FinalResult()).get('text',''))
+                    free_text=' '.join(part for part in parts if part)
+                    varied=_free_command(free_text,gate.phrase)
+                    if varied and varied != gate.phrase and (accepted or len(varied.split())>1):
+                        accepted=varied
                     if not accepted:
-                        phase("listening")
                         continue
                     phase("thinking")
                     try:

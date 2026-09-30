@@ -13,6 +13,6 @@ Luma remains a pre-release Raspberry Pi 4 appliance. The owner has not completed
 
 ## Release gates
 
-The r12 candidate passed software/image checks. It must still be flashed and boot-tested by the owner. Verify screen/touch orientation, audio alarm during sleep, microphone wake phrase, campus Wi-Fi, Google OAuth, Bluetooth presence/re-pairing, Tailscale Shortcuts, Pi Connect, USB detection/backup, purifier enrollment and scene safety, reboot/power-loss persistence, and signed update rollback. Synthetic tests and QEMU are not physical evidence. Do not publish v1 or merge to `main` before acceptance.
+The r12 candidate passed software/image checks. It must still be flashed and boot-tested by the owner. Follow the [ordered r12 owner test sequence](docs/R12_TEST_SEQUENCE.md), then the full [hardware acceptance checklist](docs/HARDWARE_VALIDATION.md). Outstanding physical gates include screen/touch orientation, audio alarm during sleep, microphone wake phrase, campus Wi-Fi, Google OAuth, Bluetooth presence/re-pairing, Tailscale Shortcuts, Pi Connect, USB detection/backup, purifier enrollment and scene safety, reboot/power-loss persistence, and signed update rollback. Synthetic tests and QEMU are not physical evidence. Do not publish v1 or merge to `main` before acceptance.
 
 See [README.md](README.md), [REQUIREMENTS_STATUS.md](docs/REQUIREMENTS_STATUS.md), [ROOM_DEVICES.md](docs/ROOM_DEVICES.md), [SCENES.md](docs/SCENES.md), and [CAMPUS_NETWORK.md](docs/CAMPUS_NETWORK.md) for current contracts.

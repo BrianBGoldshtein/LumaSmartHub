@@ -103,6 +103,7 @@ class OfflineSigningTests(unittest.TestCase):
         self.assertIn("qualify-update-bundle.py", source)
         self.assertIn("verify_and_extract", source)
         self.assertIn("SD Card/image-builder", source)
+        self.assertIn('--store-dir "$(dirname -- "${OUTPUT}")/pnpm-store"', source)
         self.assertLess(source.index("qualify-update-bundle.py"), source.index('read -r CONFIRMATION'))
         self.assertLess(source.index("verify_and_extract"), source.index('read -r CONFIRMATION'))
 

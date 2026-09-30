@@ -126,7 +126,9 @@ fi
 printf 'Running frontend tests and production build for %s…\n' "${TAG}"
 (
   cd -- "${DELIVERY_ROOT}/source/frontend"
-  CI=true pnpm install --frozen-lockfile
+  # Keep pnpm's content store on the Linux build filesystem. WSL can otherwise
+  # choose a Windows-backed store and create incomplete cross-filesystem links.
+  CI=true pnpm install --frozen-lockfile --store-dir "$(dirname -- "${OUTPUT}")/pnpm-store"
   pnpm test
   pnpm run build
 )

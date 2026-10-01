@@ -26,6 +26,26 @@ def has_wake(text: str, phrase: str = 'hey luma') -> bool:
     return bool(re.search(r'\b' + re.escape(phrase.casefold().strip()) + r'\b', words))
 
 
+def wake_near_start(text: str, phrase: str = 'hey luma') -> bool:
+    """Reject a wake quoted deep inside unrelated speech in strict mode.
+
+    An optional short lead-in accommodates a natural hesitation and Vosk's
+    [unk] marker, without accepting arbitrary call/TV conversation prefixes.
+    """
+    if not isinstance(text, str):
+        return False
+    words = re.findall(r'[a-z0-9]+', text.casefold())
+    wake_words = re.findall(r'[a-z0-9]+', phrase.casefold())
+    if not wake_words:
+        return False
+    for prefix_length in range(min(2, len(words) - len(wake_words)) + 1):
+        if (all(word in {'um', 'uh', 'oh', 'ok', 'okay', 'please', 'unk'}
+                for word in words[:prefix_length])
+                and words[prefix_length:prefix_length + len(wake_words)] == wake_words):
+            return True
+    return False
+
+
 def command_after_wake(text: str, phrase: str = 'hey luma') -> str | None:
     if not isinstance(text, str):
         return None
@@ -43,4 +63,5 @@ def wake_confirmed(constrained: str, unrestricted: str, mode: str,
     """
     if not has_wake(constrained, phrase):
         return False
-    return mode != 'dual_decoder' or has_wake(unrestricted, phrase)
+    return mode != 'dual_decoder' or (
+        wake_near_start(constrained, phrase) and wake_near_start(unrestricted, phrase))

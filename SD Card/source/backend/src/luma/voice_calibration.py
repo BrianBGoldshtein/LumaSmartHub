@@ -9,7 +9,7 @@ from statistics import median
 
 from .voice import WakeGate, parse_local_command
 from .voice_signal import AudioProfile, derive_profile, room_noise_level
-from .voice_wake import command_after_wake, has_wake
+from .voice_wake import command_after_wake, wake_near_start
 from .voice_adaptation import LEARNABLE, conflicts_with_existing_command, normalized_phrase
 
 PHRASES = (
@@ -161,7 +161,8 @@ class VoiceCalibration:
         regressed = self.processing_regressed()
         independent_positive = {row['phrase_index'] for row in self.results
                                 if row['phrase_index'] < len(PHRASES) - 2
-                                and row['matched'] and row.get('free_wake')}
+                                and row['matched'] and row.get('free_wake')
+                                and row.get('constrained_wake_near_start')}
         negative_checks = sum(bool(row['phrase_index'] >= len(PHRASES) - 2
                                    and row.get('acoustic_speech')
                                    and not row.get('free_wake')) for row in self.results)
@@ -170,6 +171,7 @@ class VoiceCalibration:
             active and recent and self.results
             and self.last_phrase_index == self.index and self.attempts != self.last_confirmed_attempt
             and self.last_wake_detected and self.last_free_wake_detected and heard_command
+            and self.results[-1].get('constrained_wake_near_start')
             and normalized_phrase(heard_command)
             and PHRASES[self.index].removeprefix('hey luma ') in LEARNABLE
             and not conflicts_with_existing_command(
@@ -380,7 +382,7 @@ class VoiceCalibration:
         self.last_wake_detected = accepted is not None
         self.last_expected_wake = expects_wake
         self.last_selection = selection
-        self.last_free_wake_detected = has_wake(free_text)
+        self.last_free_wake_detected = wake_near_start(free_text)
         self.last_word_match = word_match_fraction(PHRASES[self.index], free_text)
         raw_word_match = (word_match_fraction(PHRASES[self.index], raw_free_text)
                           if raw_compared else None)
@@ -397,6 +399,7 @@ class VoiceCalibration:
         # Aggregate levels/results only, never transcripts or audio samples.
         self.results.append({"phrase_index": self.index, "matched": matched,
                              "free_wake": self.last_free_wake_detected,
+                             "constrained_wake_near_start": wake_near_start(text),
                              "word_match": self.last_word_match,
                              "raw_word_match": raw_word_match,
                              "raw_compared": raw_compared, "raw_match": raw_match,

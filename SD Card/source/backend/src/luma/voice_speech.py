@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import os
 from pathlib import Path
 import select
@@ -17,6 +18,7 @@ from .voice_asset import ASSET_ROOT, MODEL, VOICE_ID, ready
 
 
 MAX_WAV = 10 * 1024 * 1024
+SPEAKER_SINK = "luma_speaker"
 
 
 class VoicePlaybackError(RuntimeError):
@@ -41,8 +43,45 @@ def pulse_playback_environment() -> dict[str, str]:
             raise VoicePlaybackError("audio_session_unavailable")
         env["XDG_RUNTIME_DIR"] = str(runtime)
         env["PULSE_SERVER"] = f"unix:{socket}"
-    env["PULSE_SINK"] = "luma_speaker"
+    env["PULSE_SINK"] = SPEAKER_SINK
     return env
+
+
+def _check_speaker_sink(env: dict[str, str]) -> None:
+    """Confirm that PipeWire exposes the sink before claiming playback works."""
+    try:
+        result = subprocess.run(["pactl", "list", "short", "sinks"], check=True,
+                                capture_output=True, text=True, timeout=6, env=env)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise VoicePlaybackError("speaker_route_unavailable") from exc
+    names = {fields[1] for line in result.stdout.splitlines()
+             if len(fields := line.split()) >= 2}
+    if SPEAKER_SINK not in names:
+        raise VoicePlaybackError("speaker_route_unavailable")
+
+
+def _play_pcm(pcm: bytes, env: dict[str, str]) -> None:
+    _check_speaker_sink(env)
+    try:
+        subprocess.run(["paplay", f"--device={SPEAKER_SINK}", "--raw", "--format=s16le",
+                        "--rate=22050", "--channels=1"], input=pcm, check=True,
+                       timeout=90, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, env=env)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise VoicePlaybackError("speaker_route_unavailable") from exc
+
+
+def play_test_tone() -> None:
+    """A bounded non-speech chime to distinguish the speaker path from Piper."""
+    env = pulse_playback_environment()
+    pcm = bytearray()
+    count = int(22050 * .65)
+    for index in range(count):
+        envelope = min(1.0, index / 440, (count - index - 1) / 440)
+        frequency = 523.25 if index < count // 2 else 659.25
+        value = int(32767 * .16 * envelope * math.sin(2 * math.pi * frequency * index / 22050))
+        pcm.extend(struct.pack("<h", value))
+    _play_pcm(bytes(pcm), env)
 
 
 def wav_to_pcm(data: bytes) -> bytes:
@@ -121,12 +160,7 @@ class OfflineSpeaker:
             pcm = wav_to_pcm(_read_exact(process, size, deadline))
         except (OSError, EOFError, ValueError, wave.Error, TimeoutError, subprocess.SubprocessError) as exc:
             raise VoicePlaybackError("synthesis_unavailable") from exc
-        try:
-            subprocess.run(["paplay", "--raw", "--format=s16le", "--rate=22050", "--channels=1"],
-                           input=pcm, check=True, timeout=90, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, env=env)
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise VoicePlaybackError("speaker_route_unavailable") from exc
+        _play_pcm(pcm, env)
 
     def speak(self, reply: str) -> str:
         # The API already bounds answers; guard the worker regardless.

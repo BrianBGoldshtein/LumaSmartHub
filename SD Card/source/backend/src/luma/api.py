@@ -39,7 +39,7 @@ from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
 from .voice_asset import fetch_and_install as fetch_voice_asset, ready as voice_asset_ready, voice_status
-from .voice_speech import VoicePlaybackError, play_preview as play_voice_preview
+from .voice_speech import VoicePlaybackError, play_preview as play_voice_preview, play_test_tone
 from . import mic_hardware
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
@@ -249,7 +249,7 @@ def create_app(
     voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None,
                                           "dropped_frames": 0}
     voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
-                                          "last_preview_error": None}
+                                          "last_preview_error": None, "last_tone_error": None}
     google_sync_lock = asyncio.Lock()
     google_status: dict[str, Any] = {"last_synced": None, "error": None}
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
@@ -817,6 +817,25 @@ def create_app(
                 raise HTTPException(409, 'The local voice could not synthesize the sample.') from exc
             voice_output_status["last_preview_error"] = None
         return {'played': True}
+
+    @app.post('/api/v1/voice/asset/tone', dependencies=[Depends(local_only)])
+    async def test_voice_speaker_route() -> dict:
+        """Test the named PipeWire sink without involving the speech model."""
+        if voice_preview_lock.locked():
+            raise HTTPException(409, 'Another speaker test is already running.')
+        async with voice_preview_lock:
+            try:
+                await asyncio.to_thread(play_test_tone)
+            except VoicePlaybackError as exc:
+                voice_output_status["last_tone_error"] = exc.code
+                message = ('The Pi audio session is not ready.' if exc.code == 'audio_session_unavailable'
+                           else 'Luma could not find or play through its selected speaker.')
+                raise HTTPException(409, message) from exc
+            except Exception as exc:
+                voice_output_status["last_tone_error"] = "speaker_route_unavailable"
+                raise HTTPException(409, 'The Luma speaker test could not run.') from exc
+            voice_output_status["last_tone_error"] = None
+        return {'sent': True, 'route': 'luma_speaker'}
 
     @app.post('/api/v1/voice/phrase-preview', dependencies=[Depends(local_only)])
     async def voice_phrase_preview(payload: VoicePhrasePreview) -> dict[str, Any]:

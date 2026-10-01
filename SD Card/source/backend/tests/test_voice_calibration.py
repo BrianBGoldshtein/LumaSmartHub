@@ -26,6 +26,14 @@ def test_calibration_rejects_wrong_wake_quiet_clipped_and_expired_samples():
     calibration = VoiceCalibration()
     session = calibration.start(100)["session"]
     assert calibration.submit(session, "set brightness to fifty", .1, .5, 101)["completed"] == 0
+    missing_wake = calibration.status(101)
+    assert missing_wake["last_wake_detected"] is False
+    assert missing_wake["last_intent"] == ""
+    assert "not Hey Luma" in missing_wake["message"]
+    wrong_command = calibration.submit(session, "hey luma good morning", .1, .5, 101)
+    assert wrong_command["last_wake_detected"] is True
+    assert wrong_command["last_intent"] == "good_morning"
+    assert "different command" in wrong_command["message"]
     assert "quiet" in calibration.submit(session, PHRASES[0], .0001, .01, 101)["message"]
     assert "clipping" in calibration.submit(session, PHRASES[0], .1, .999, 101)["message"]
     with pytest.raises(ValueError):
@@ -41,6 +49,8 @@ def test_calibration_level_is_live_ephemeral_and_expires():
     assert live["signal_available"] and live["signal_rms"] == .04 and live["signal_peak"] == .3
     assert not live["results"]
     assert not calibration.status(105)["signal_available"]
+    assert calibration.status(117)["last_wake_detected"] is None
+    assert calibration.status(117)["last_intent"] == ""
     with pytest.raises(ValueError):
         calibration.report_level("old-session", .1, .4, 102)
 

@@ -29,6 +29,8 @@ class VoiceCalibration:
         self.signal_at = 0.0
         self.last_heard = ""
         self.last_heard_at = 0.0
+        self.last_wake_detected = False
+        self.last_intent = ""
         self.applied_gain: int | None = None
         self.gain_adjustments = 0
 
@@ -41,6 +43,8 @@ class VoiceCalibration:
         self.signal_rms = self.signal_peak = self.signal_at = 0.0
         self.last_heard = ""
         self.last_heard_at = 0.0
+        self.last_wake_detected = False
+        self.last_intent = ""
         self.applied_gain = None
         self.gain_adjustments = 0
         self.message = "Wait for the microphone to start, then say the phrase."
@@ -49,7 +53,8 @@ class VoiceCalibration:
     def status(self, now: float | None = None) -> dict:
         now = time.monotonic() if now is None else now
         active = self.until > now and self.index < len(PHRASES) and self.attempts < 20
-        return {"session": self.session, "active": active, "passed": self.index == len(PHRASES), "phrase": PHRASES[self.index] if active else None, "completed": self.index, "total": len(PHRASES), "attempts": self.attempts, "message": self.message if active or self.index == len(PHRASES) else "Start a new check when you are ready.", "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3, "signal_rms": self.signal_rms, "signal_peak": self.signal_peak, "last_heard": self.last_heard if active and now - self.last_heard_at <= 15 else "", "applied_gain": self.applied_gain, "gain_adjustments": self.gain_adjustments, "results": list(self.results)}
+        recent = active and now - self.last_heard_at <= 15
+        return {"session": self.session, "active": active, "passed": self.index == len(PHRASES), "phrase": PHRASES[self.index] if active else None, "completed": self.index, "total": len(PHRASES), "attempts": self.attempts, "message": self.message if active or self.index == len(PHRASES) else "Start a new check when you are ready.", "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3, "signal_rms": self.signal_rms, "signal_peak": self.signal_peak, "last_heard": self.last_heard if recent else "", "last_wake_detected": self.last_wake_detected if recent else None, "last_intent": self.last_intent if recent else "", "applied_gain": self.applied_gain, "gain_adjustments": self.gain_adjustments, "results": list(self.results)}
 
     def gain_step(self, rms: float, peak: float) -> int:
         """Adjust only obvious level faults; never chase a recognition mismatch.
@@ -96,6 +101,13 @@ class VoiceCalibration:
         # Persistent results retain numeric levels and matches, never speech.
         self.last_heard = text[:160]
         self.last_heard_at = now
+        self.last_wake_detected = accepted is not None
+        if command:
+            value = getattr(command.value, "value", command.value)
+            self.last_intent = (f"{command.name.value}: {value}" if value is not None
+                                else command.name.value)
+        else:
+            self.last_intent = ""
         # Aggregate levels/results only, never transcripts or audio samples.
         self.results.append({"phrase_index": self.index, "matched": matched, "rms": round(rms, 4), "peak": round(peak, 4)})
         if matched and level_ok:
@@ -107,10 +119,16 @@ class VoiceCalibration:
             self.message = "The microphone signal is near clipping. Lower its capture gain and repeat."
         elif rms < .002:
             self.message = "The signal is very quiet. Check the microphone, move closer, or raise capture gain."
+        elif accepted is None:
+            self.message = "I heard speech, but not Hey Luma. Repeat the wake phrase clearly."
+        elif command is None:
+            self.message = "I heard Hey Luma, but not a supported command. Try the displayed words again."
         else:
-            self.message = "That phrase did not match. Pause, then repeat it clearly."
+            self.message = "I heard Hey Luma and a different command. Pause, then repeat the displayed words."
         return self.status(now)
 
     def cancel(self) -> None:
         self.until = 0
         self.last_heard = ""
+        self.last_wake_detected = False
+        self.last_intent = ""

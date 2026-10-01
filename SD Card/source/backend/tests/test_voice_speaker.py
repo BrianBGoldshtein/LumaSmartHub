@@ -4,7 +4,8 @@ import math
 import pytest
 
 from luma.voice_speaker import (SpeakerObservation, SpeakerVectorError,
-                                decode_speaker_observation, speaker_similarity)
+                                assess_speaker_trial, decode_speaker_observation,
+                                speaker_similarity)
 
 VOICE_FRAME = b'\xe8\x03\x18\xfc' * 2000  # 250 ms, alternating +/-1000.
 
@@ -92,3 +93,43 @@ def test_speaker_similarity_is_cosine_without_magic_identity_threshold():
         speaker_similarity(a, SpeakerObservation((1.0,), 200, 4.0))
     with pytest.raises(SpeakerVectorError):
         speaker_similarity(a, SpeakerObservation((math.nan, 0.0), 200, 4.0))
+
+
+def observation(primary: float, secondary: float) -> SpeakerObservation:
+    return SpeakerObservation((primary, secondary, *([0.0] * 126)), 250, 5.0)
+
+
+def test_trial_reports_candidate_only_for_independent_observed_separation():
+    enrollment = [observation(1, .05), observation(1, 0), observation(1, -.04)]
+    owner = [observation(1, .1), observation(1, -.08)]
+    nonowner = [observation(.05, 1), observation(-.03, 1), observation(.1, 1)]
+    report = assess_speaker_trial(enrollment, owner, nonowner)
+    assert report.observed_separation is True
+    assert report.owner_holdout_floor > report.candidate_threshold
+    assert report.candidate_threshold > report.nonowner_holdout_ceiling
+    assert report.enrollment_floor > .9
+    confused = assess_speaker_trial(enrollment, owner, nonowner + [observation(1, .005)])
+    assert confused.observed_separation is False
+    assert confused.candidate_threshold is None
+
+
+def test_trial_requires_bounded_independent_and_valid_samples():
+    owner = [observation(1, 0), observation(1, .1)]
+    nonowner = [observation(0, 1), observation(.01, 1), observation(-.01, 1)]
+    with pytest.raises(SpeakerVectorError, match='independent'):
+        assess_speaker_trial([observation(1, 0)] * 2, owner, nonowner)
+    with pytest.raises(SpeakerVectorError, match='invalid sample'):
+        assess_speaker_trial([observation(1, 0), observation(1, .01),
+                              observation(1, -.01)], owner,
+                             [*nonowner[:2], SpeakerObservation((1.0, 0.0), 1, 5)])
+    with pytest.raises(SpeakerVectorError, match='invalid values'):
+        assess_speaker_trial([observation(1, 0), observation(1, .01),
+                              observation(1, -.01)], owner,
+                             [*nonowner[:2], SpeakerObservation((math.nan, *([0.0] * 127)), 1, 5)])
+    with pytest.raises(SpeakerVectorError, match='invalid values'):
+        assess_speaker_trial([observation(1, 0), observation(1, .01),
+                              observation(1, -.01)], owner,
+                             [*nonowner[:2], SpeakerObservation(('bad', *([0.0] * 127)), 1, 5)])
+    with pytest.raises(SpeakerVectorError, match='reuse'):
+        assess_speaker_trial([observation(1, 0), observation(1, .01),
+                              observation(1, -.01)], owner, nonowner)

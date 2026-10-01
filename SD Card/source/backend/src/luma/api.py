@@ -154,8 +154,12 @@ class VoiceHeartbeat(BaseModel):
 
 
 class CalibrationSample(BaseModel):
+    model_config = {"extra": "forbid"}
     session: str = Field(max_length=64)
     text: str = Field(max_length=1000)
+    free_text: str = Field(default="", max_length=1000)
+    selected_text: str | None = Field(default=None, max_length=1000)
+    selection: Literal["", "constrained", "free", "agree", "free_query", "conflict", "negated", "unmatched"] = ""
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
 
@@ -758,7 +762,10 @@ def create_app(
     @app.post("/api/v1/voice/calibration/sample", dependencies=[Depends(local_only)])
     async def calibration_sample(payload: CalibrationSample) -> dict:
         try:
-            result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak)
+            result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak,
+                                        free_text=payload.free_text,
+                                        selected_text=payload.selected_text,
+                                        selection=payload.selection)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         step = calibration.gain_step(payload.rms, payload.peak) if result["active"] else 0

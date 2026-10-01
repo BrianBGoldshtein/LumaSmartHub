@@ -20,6 +20,7 @@ def test_calibration_passes_without_retaining_transcripts():
     assert result["passed"] and not result["active"]
     assert all("text" not in row for row in result["results"])
     assert result["completed"] == len(PHRASES)
+    assert result["total"] == 10
 
 
 def test_calibration_rejects_wrong_wake_quiet_clipped_and_expired_samples():
@@ -37,7 +38,7 @@ def test_calibration_rejects_wrong_wake_quiet_clipped_and_expired_samples():
     assert "quiet" in calibration.submit(session, PHRASES[0], .0001, .01, 101)["message"]
     assert "clipping" in calibration.submit(session, PHRASES[0], .1, .999, 101)["message"]
     with pytest.raises(ValueError):
-        calibration.submit(session, PHRASES[0], .1, .5, 281)
+        calibration.submit(session, PHRASES[0], .1, .5, 401)
     with pytest.raises(ValueError):
         calibration.submit("old-session", PHRASES[0], .1, .5, 101)
 
@@ -53,6 +54,50 @@ def test_calibration_level_is_live_ephemeral_and_expires():
     assert calibration.status(117)["last_intent"] == ""
     with pytest.raises(ValueError):
         calibration.report_level("old-session", .1, .4, 102)
+
+
+def test_calibration_shows_raw_decoder_evidence_and_never_passes_a_conflict():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)["session"]
+    conflicted = calibration.submit(
+        session, PHRASES[0], .05, .4, 101,
+        free_text="hey luma set brightness to sixty", selected_text=None,
+        selection="conflict",
+    )
+    assert conflicted["completed"] == 0
+    assert conflicted["last_heard"] == "hey luma set brightness to sixty"
+    assert conflicted["last_constrained"] == PHRASES[0]
+    assert conflicted["last_wake_detected"] is True
+    assert conflicted["last_intent"] == ""
+    assert "disagreed" in conflicted["message"]
+    selected = calibration.submit(
+        session, "hey luma what time is it", .05, .4, 102,
+        free_text="hey luma set brightness to fifty",
+        selected_text="set brightness to fifty", selection="free",
+    )
+    assert selected["completed"] == 1
+    assert selected["last_heard"] == "hey luma set brightness to fifty"
+    assert selected["last_intent"] == "set_brightness: 50"
+    assert calibration.status(118)["last_heard"] == ""
+    assert calibration.status(118)["last_constrained"] == ""
+    assert calibration.status(118)["last_selection"] == ""
+
+
+def test_negative_control_requires_ordinary_speech_without_a_wake():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)["session"]
+    for phrase in PHRASES[:-2]:
+        calibration.submit(session, phrase, .05, .4, 101)
+    assert calibration.status(101)["expects_wake"] is False
+    false_wake = calibration.submit(session, "hey luma what time is it", .05, .4, 102)
+    assert false_wake["completed"] == len(PHRASES) - 2
+    assert "False wake" in false_wake["message"]
+    assert false_wake["last_expected_wake"] is False
+    assert false_wake["last_wake_detected"] is True
+    ordinary = calibration.submit(session, "what time is it", .05, .4, 103)
+    assert ordinary["completed"] == len(PHRASES) - 1
+    assert ordinary["last_wake_detected"] is False
+    assert ordinary["last_expected_wake"] is False
 
 
 def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():

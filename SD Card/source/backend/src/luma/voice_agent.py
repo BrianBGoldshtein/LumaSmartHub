@@ -269,10 +269,16 @@ def main() -> None:
                             candidate = test_gate.accept(text, now)
                             if candidate is not None:
                                 free_text = _unrestricted_transcript(free_recognizer, spoken)
-                                chosen, _reason = choose_command(candidate, free_text, gate.phrase)
-                                text = f"{gate.phrase} {chosen}".strip() if chosen else free_text or text
+                                chosen, selection = choose_command(candidate, free_text, gate.phrase)
+                            else:
+                                free_text = ""
+                                chosen, selection = None, ""
                             try:
-                                client.post("/api/v1/voice/calibration/sample", json={"session": calibration["session"], "text": text, "rms": rms, "peak": maximum}).raise_for_status()
+                                client.post("/api/v1/voice/calibration/sample", json={
+                                    "session": calibration["session"], "text": text,
+                                    "free_text": free_text, "selected_text": chosen,
+                                    "selection": selection, "rms": rms, "peak": maximum,
+                                }).raise_for_status()
                             except httpx.HTTPError:
                                 pass
                         continue  # Test phrases never change brightness, volume or theme.

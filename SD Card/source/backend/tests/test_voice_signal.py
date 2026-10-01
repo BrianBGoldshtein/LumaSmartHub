@@ -88,6 +88,18 @@ def test_processing_is_bounded_and_default_is_bit_identical():
         processor.process(b'\x00')
 
 
+def test_saved_gain_is_effective_from_first_wake_frame_but_loud_audio_is_limited():
+    processor = AudioPreprocessor(AudioProfile(gain=2, quality='quiet'))
+    wake_start = pcm(*([1000, -1000] * 2000))
+    assert processor.process(wake_start) == pcm(*([2000, -2000] * 2000))
+    processor.reset()
+    assert processor.process(wake_start) == pcm(*([2000, -2000] * 2000))
+    processor.reset()
+    sudden_loud = pcm(*([32000, -32000] * 2000))
+    assert pcm_measurements(processor.process(sudden_loud))['peak'] <= .901
+    assert processor.applied_gain < 1
+
+
 def test_saved_profile_is_strictly_validated():
     profile = derive_profile([.001] * 5, sample_rows()).public()
     assert read_profile(profile).gain > 1

@@ -150,13 +150,16 @@ class AudioPreprocessor:
         self.profile = profile
         self.previous_input = 0.0
         self.previous_output = 0.0
-        self.applied_gain = 1.0
+        # A wake phrase may last less than the old one-second gain ramp. The
+        # profile was measured during setup, so use it from the first frame;
+        # process() still reduces it immediately when a loud frame arrives.
+        self.applied_gain = profile.gain
 
     def reset(self, profile: AudioProfile | None = None) -> None:
         if profile is not None:
             self.profile = profile
         self.previous_input = self.previous_output = 0.0
-        self.applied_gain = 1.0
+        self.applied_gain = self.profile.gain
 
     def process(self, pcm: bytes) -> bytes:
         if self.profile.gain == 1 and not self.profile.high_pass:

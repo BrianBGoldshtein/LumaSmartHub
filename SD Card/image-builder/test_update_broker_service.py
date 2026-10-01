@@ -32,7 +32,8 @@ class UpdateBrokerImageTests(unittest.TestCase):
         self.assertEqual(service["ExecStart"], "/opt/luma/venv/bin/luma-update-broker")
         self.assertEqual(service["NoNewPrivileges"], "yes")
         self.assertEqual(service["ProtectSystem"], "strict")
-        self.assertEqual(service["ReadWritePaths"].split(), ["/opt/luma", "/opt/luma-releases"])
+        self.assertEqual(service["ReadWritePaths"].split(), ["/opt"])
+        self.assertEqual(service["UMask"], "0022")
         self.assertEqual(service["RestrictAddressFamilies"].split(), ["AF_UNIX", "AF_INET", "AF_INET6"])
 
         installer = (SYSTEM / "install.sh").read_text()
@@ -61,7 +62,7 @@ class UpdateBrokerImageTests(unittest.TestCase):
             writable.mkdir()
             service = (SYSTEM / "luma-update.service").read_text()
             service = service.replace("/opt/luma/venv/bin/luma-update-broker", sys.executable)
-            service = service.replace("/opt/luma /opt/luma-releases", f"{writable} {writable}")
+            service = service.replace("ReadWritePaths=/opt", f"ReadWritePaths={writable}")
             (staging / "luma-update.service").write_text(service)
             shutil.copyfile(SYSTEM / "luma-update.socket", staging / "luma-update.socket")
             result = subprocess.run(

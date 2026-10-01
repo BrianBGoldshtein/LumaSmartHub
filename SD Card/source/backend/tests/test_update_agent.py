@@ -346,6 +346,22 @@ def test_systemd_updater_leaves_kiosk_running_while_api_is_switched():
     assert any('luma-api.service' in command for command in calls)
 
 
+def test_systemd_restart_attempts_api_even_when_backup_socket_fails():
+    calls=[]
+    def runner(command,**kwargs):
+        calls.append(command)
+        if command[:2] == ['systemctl', 'start'] and command[-1] == 'luma-backup.socket':
+            raise subprocess.CalledProcessError(1, command)
+        return SimpleNamespace(returncode=0,stdout='active\n')
+    controller=SystemdController(runner=runner)
+    calls.clear()
+    with pytest.raises(UpdateError, match='luma-backup.socket'):
+        controller.start()
+    assert ['systemctl', 'start', 'luma-api.service'] in calls
+    assert any(command[-1] == 'luma-device.service' for command in calls)
+    assert any(command[-1] == 'luma-voice.service' for command in calls)
+
+
 def test_apply_installs_wheel_and_repairs_venv_entrypoint_after_rename(tmp_path):
     if sys.platform == "win32":
         pytest.skip("the updater's Linux venv layout and atomic switch are Linux-only")
@@ -413,6 +429,58 @@ def test_directory_sync_failure_after_pointer_replace_rolls_back(tmp_path, monke
     assert current.exists()
     assert not (releases / "0.3.0").exists()
     assert controller.actions == ["stop", "stop", "start"]
+
+
+def test_read_only_pointer_parent_restores_services_without_second_switch(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("the updater's atomic symlink rollback is Linux-only")
+    bundle, public = make_bundle(tmp_path)
+    app, releases, current = installed_tree(tmp_path)
+    controller = FakeController()
+    original_symlink = update_agent.os.symlink
+    failures=[]
+
+    def read_only_parent(target, link_name, *args, **kwargs):
+        if Path(link_name).parent == app.parent and Path(link_name).name.startswith('.luma.next-'):
+            failures.append(link_name)
+            raise OSError("simulated read-only /opt parent")
+        return original_symlink(target, link_name, *args, **kwargs)
+
+    monkeypatch.setattr(update_agent.os, "symlink", read_only_parent)
+    with pytest.raises(UpdateError, match="previous release was restored"):
+        apply_bundle(bundle, app_root=app, releases_root=releases,
+                     public_key_path=public, controller=controller,
+                     health_check=lambda _: True, install_wheel=no_install)
+    assert len(failures) == 1  # Do not repeat the forbidden pointer operation.
+    assert app.resolve() == current
+    assert controller.actions == ["stop", "start"]
+    assert not (releases / "0.3.0").exists()
+
+
+def test_failed_pointer_rollback_still_attempts_service_restart(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("the updater's atomic symlink switch is Linux-only")
+    bundle, public = make_bundle(tmp_path)
+    app, releases, current = installed_tree(tmp_path)
+    controller = FakeController()
+    original_link = update_agent._atomic_link
+    switches = []
+
+    def fail_restore(app_root, release):
+        switches.append(release)
+        if release == current:
+            raise OSError("simulated restore failure")
+        return original_link(app_root, release)
+
+    monkeypatch.setattr(update_agent, "_atomic_link", fail_restore)
+    with pytest.raises(UpdateError, match="local service status"):
+        apply_bundle(bundle, app_root=app, releases_root=releases,
+                     public_key_path=public, controller=controller,
+                     health_check=lambda _: False, install_wheel=no_install)
+    assert switches == [releases / "0.3.0", current]
+    assert controller.actions == ["stop", "start", "stop", "start"]
+    assert app.resolve() == releases / "0.3.0"
+    assert (releases / "0.3.0").exists()  # Active candidate must never be deleted.
 
 
 def test_dependency_change_requires_full_image_even_with_valid_signature(tmp_path):

@@ -8,14 +8,20 @@ ExecStart=/opt/luma/venv/bin/luma-update-broker
 User=root
 Group=root
 Environment=PYTHONDONTWRITEBYTECODE=1
-UMask=0077
+# The broker's status/lock files are explicitly 0600 and update payloads stay
+# inside private staging directories. Installed Python modules and frontend
+# assets must be readable by the unprivileged Luma services after the switch.
+UMask=0022
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 AmbientCapabilities=
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/opt/luma /opt/luma-releases
+# The atomic release pointer and its temporary sibling both live directly in
+# /opt. Allowing only /opt/luma (a symlink) and /opt/luma-releases leaves the
+# parent read-only under ProtectSystem=strict and strands stopped services.
+ReadWritePaths=/opt
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

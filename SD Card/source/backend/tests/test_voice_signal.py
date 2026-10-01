@@ -143,6 +143,20 @@ def test_saved_gain_is_effective_from_first_wake_frame_but_loud_audio_is_limited
     assert processor.applied_gain < 1
 
 
+def test_high_pass_boundary_transient_is_limited_before_recognition():
+    processor = AudioPreprocessor(AudioProfile(gain=2, high_pass=True,
+                                               quality='quiet'))
+    # The first frame leaves a large previous_input in the filter state.
+    # The next raw frame is digital silence, yet its first filtered sample
+    # swings downward. Raw-peak-only limiting clipped this boundary.
+    processor.process(pcm(*([20000] * 4000)))
+    quiet = pcm(*([0] * 4000))
+    processed = processor.process(quiet)
+    assert pcm_measurements(quiet)['peak'] == 0
+    assert .4 < pcm_measurements(processed)['peak'] <= .901
+    assert pcm_measurements(processed)['clipped_fraction'] == 0
+
+
 def test_saved_profile_is_strictly_validated():
     profile = derive_profile([.001] * 5, sample_rows()).public()
     assert read_profile(profile).gain > 1

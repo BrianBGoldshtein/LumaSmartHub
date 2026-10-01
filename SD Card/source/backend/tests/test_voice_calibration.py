@@ -92,6 +92,18 @@ def test_calibration_does_not_treat_missing_room_baseline_as_quiet_speech():
     assert status['room_noise_rms'] is None
 
 
+def test_calibration_distinguishes_all_zero_capture_from_low_gain():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    calibration.report_level(session, 0, 0, 101)
+    calibration.report_level(session, 0, 0, 120)
+    status = calibration.status(120)
+    assert status['attempts'] == 0
+    assert 'all-zero audio' in status['message']
+    assert 'raising gain will not help' in status['message']
+    assert calibration.gain_step(0, 0) == 0
+
+
 def test_ambient_clock_begins_with_real_capture_and_profile_precedes_intents():
     calibration = VoiceCalibration()
     started = calibration.start(100, ambient_seconds=4)

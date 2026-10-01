@@ -187,7 +187,10 @@ class VoiceCalibration:
         if (active and not ambient_remaining and self.signal_at > 0
                 and now - self.signal_at <= 3 and self.phrase_prompt_at > 0
                 and now - self.phrase_prompt_at >= 12):
-            if self.ambient_duration and not self.room_floors:
+            if self.signal_peak <= .0001 and self.signal_rms <= .0001:
+                message = ("The microphone stream contains all-zero audio. If you have been speaking, "
+                           "check the selected ReSpeaker/PipeWire source or mute state; raising gain will not help.")
+            elif self.ambient_duration and not self.room_floors:
                 message = "Room sound was not measured. Restart the voice check before changing gain."
             elif self.signal_peak >= .995:
                 message = "The microphone is clipping before a phrase completes. Lower capture gain and try again."

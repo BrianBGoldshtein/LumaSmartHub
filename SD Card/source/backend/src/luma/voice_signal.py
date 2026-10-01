@@ -214,18 +214,26 @@ class AudioPreprocessor:
         samples.frombytes(pcm)
         if sys.byteorder != "little":
             samples.byteswap()
+        # Filter state crosses frame boundaries. A newly quiet raw frame can
+        # still begin with a large high-pass transient from the prior frame;
+        # limit the actual post-filter signal that Vosk will receive.
+        if self.profile.high_pass:
+            filtered_samples = []
+            for sample in samples:
+                filtered = HIGH_PASS_ALPHA * (
+                    self.previous_output + sample - self.previous_input)
+                self.previous_input = float(sample)
+                self.previous_output = filtered
+                filtered_samples.append(filtered)
+            signal = filtered_samples
+        else:
+            signal = samples
         # Gain rises gradually, but drops immediately for sudden loud sounds.
-        raw_peak = max(abs(value) for value in samples) / 32768
-        target = min(self.profile.gain, .90 / max(raw_peak, .0001))
+        signal_peak = max(abs(value) for value in signal) / 32768
+        target = min(self.profile.gain, .90 / max(signal_peak, .0001))
         self.applied_gain = min(target, self.applied_gain + .25)
         output = array("h")
-        for sample in samples:
-            value = float(sample)
-            if self.profile.high_pass:
-                filtered = HIGH_PASS_ALPHA * (self.previous_output + value - self.previous_input)
-                self.previous_input = value
-                self.previous_output = filtered
-                value = filtered
+        for value in signal:
             output.append(max(-32768, min(32767, round(value * self.applied_gain))))
         if sys.byteorder != "little":
             output.byteswap()

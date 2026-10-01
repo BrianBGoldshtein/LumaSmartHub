@@ -20,7 +20,8 @@ from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
 from .voice_speech import OfflineSpeaker, VoicePlaybackError, play_test_tone
-from .voice_signal import AudioPreprocessor, CalibrationSegmenter, pcm_measurements, read_profile
+from .voice_signal import (AudioPreprocessor, CalibrationSegmenter, pcm_measurements,
+                           read_profile, speech_measurements)
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -349,7 +350,8 @@ def main() -> None:
                         if segment is None:
                             continue
                         raw_spoken, spoken = segment
-                        signal = pcm_measurements(b''.join(raw_spoken))
+                        signal = speech_measurements(
+                            raw_spoken, noise_rms=float(calibration.get('room_noise_rms') or 0))
                         # Acoustic boundaries make this check useful even if
                         # Vosk would never emit an endpoint or any words.
                         text = _unrestricted_transcript(recognizer, spoken)

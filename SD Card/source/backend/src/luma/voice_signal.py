@@ -79,6 +79,26 @@ def pcm_measurements(pcm: bytes) -> dict[str, float]:
             "clipped_fraction": clipped / count}
 
 
+def speech_measurements(frames: list[bytes], *, noise_rms: float) -> dict[str, float]:
+    """Measure voiced level without letting calibration pre/post-roll dilute it.
+
+    Always retain the worst peak and clipped *frame* from the complete acoustic
+    segment. A brief clipped syllable must not disappear in a seven-second
+    average, even when the longer phrase has a comfortable RMS.
+    """
+    if not frames or len(frames) > 28 or not 0 <= noise_rms <= 1:
+        raise ValueError("Invalid acoustic calibration segment")
+    levels = [pcm_measurements(frame) for frame in frames]
+    voiced = [level for level in levels
+              if level["rms"] >= max(.0006, noise_rms * 2.5)
+              and level["peak"] >= max(.005, noise_rms * 4)]
+    chosen = voiced or levels
+    return {"rms": math.sqrt(sum(level["rms"] ** 2 for level in chosen) / len(chosen)),
+            "peak": max(level["peak"] for level in levels),
+            "dc": median(level["dc"] for level in levels),
+            "clipped_fraction": max(level["clipped_fraction"] for level in levels)}
+
+
 def room_noise_level(floors: list[float]) -> float | None:
     """Use the upper quartile of quiet-room intervals, not their best moment."""
     valid = sorted(value for value in floors if math.isfinite(value) and 0 < value <= 1)

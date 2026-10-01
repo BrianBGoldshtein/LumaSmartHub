@@ -4,7 +4,8 @@ import struct
 import pytest
 
 from luma.voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter,
-                               derive_profile, pcm_measurements, read_profile, room_noise_level)
+                               derive_profile, pcm_measurements, read_profile, room_noise_level,
+                               speech_measurements)
 
 
 def pcm(*samples: int) -> bytes:
@@ -24,6 +25,22 @@ def test_raw_pcm_measurements_detect_level_clipping_and_bias():
     assert result['dc'] < .02
     with pytest.raises(ValueError):
         pcm_measurements(b'\x01')
+
+
+def test_speech_level_ignores_silent_tail_but_clipping_never_disappears():
+    quiet = pcm(*([12] * 4000))
+    voiced = pcm(*([1700, -1700] * 2000))
+    frames = [quiet, voiced, voiced, *([quiet] * 6)]
+    result = speech_measurements(frames, noise_rms=.001)
+    assert result['rms'] > .05
+    assert result['rms'] > pcm_measurements(b''.join(frames))['rms'] * 1.8
+    clipped = pcm(*([32767] * 100 + [1700, -1700] * 1950))
+    with_clip = speech_measurements([quiet, voiced, clipped, *([quiet] * 6)],
+                                    noise_rms=.001)
+    assert with_clip['peak'] > .995
+    assert with_clip['clipped_fraction'] > .02
+    with pytest.raises(ValueError):
+        speech_measurements([], noise_rms=.001)
 
 
 def test_profile_amplifies_only_clean_quiet_speech():

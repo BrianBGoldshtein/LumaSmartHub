@@ -103,6 +103,19 @@ def test_ambient_clock_begins_with_real_capture_and_profile_precedes_intents():
     assert 'text' not in json.dumps(result['audio_profile'])
 
 
+def test_unstable_room_baseline_never_saves_audio_amplification():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    for now, floor in zip((101, 102, 103, 104), (.001, .0012, .0011, .006)):
+        calibration.report_level(session, floor, floor * 4, now, floor_rms=floor)
+    for phrase in PHRASES:
+        result = calibration.submit(session, phrase, .025, .25, 106)
+    assert result['passed']
+    assert result['audio_profile']['quality'] == 'unstable'
+    assert result['audio_profile']['gain'] == 1
+    assert 'Room sound changed sharply' in result['message']
+
+
 def test_audio_candidate_is_derived_even_when_no_words_are_understood():
     calibration = VoiceCalibration()
     session = calibration.start(100)['session']

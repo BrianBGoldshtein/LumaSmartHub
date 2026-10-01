@@ -293,6 +293,8 @@ class VoiceCalibration:
                     self.message += " Room noise is high; Luma left the audio untouched. Recheck placement before relying on voice."
                 elif self.audio_profile['quality'] == 'clipped':
                     self.message += " Some speech clipped; lower ReSpeaker capture gain and repeat."
+                elif self.audio_profile['quality'] == 'unstable':
+                    self.message += " Room sound changed sharply during measurement; audio remains untouched. Repeat the quiet-room check."
                 elif self.audio_profile['quality'] == 'bypass':
                     self.message += " Room sound was not measured well enough to tune processing; audio remains untouched."
         elif self.processing_regressed():

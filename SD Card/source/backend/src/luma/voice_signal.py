@@ -52,9 +52,9 @@ def read_profile(value: object) -> AudioProfile:
                                      or not -60 <= snr <= 90))):
         return AudioProfile()
     quality = value.get("quality")
-    if quality not in {"clear", "quiet", "noisy", "clipped", "bypass"}:
+    if quality not in {"clear", "quiet", "noisy", "clipped", "unstable", "bypass"}:
         return AudioProfile()
-    if quality in {"noisy", "clipped", "bypass"} and (gain != 1 or high_pass):
+    if quality in {"noisy", "clipped", "unstable", "bypass"} and (gain != 1 or high_pass):
         return AudioProfile()
     return AudioProfile(float(gain), high_pass, float(noise), float(speech),
                         None if snr is None else float(snr), quality)
@@ -135,6 +135,11 @@ def derive_profile(room_floors: list[float], speech_samples: list[dict]) -> Audi
         return AudioProfile(1, False, noise, speech, snr, "clipped")
     if snr < 10 or noise >= .012:
         return AudioProfile(1, False, noise, speech, snr, "noisy")
+    # A large swing during an otherwise quiet-room window means the baseline
+    # is not a stable reference. It may be transient noise or upstream AGC
+    # settling; do not infer which or calibrate gain from that window.
+    if max(floors) > min(floors) * 4:
+        return AudioProfile(1, False, noise, speech, snr, "unstable")
     gain = 1.0
     if peak < .38 and speech < .04:
         gain = min(2.0, .65 / max(peak, .1))

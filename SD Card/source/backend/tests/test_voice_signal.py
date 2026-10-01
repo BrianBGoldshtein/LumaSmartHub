@@ -65,6 +65,17 @@ def test_profile_amplifies_only_clean_quiet_speech():
     assert derive_profile(mixed_room, sample_rows()).quality == 'noisy'
 
 
+def test_unstable_room_floor_never_becomes_an_amplifying_profile():
+    profile = derive_profile([.001, .0012, .0011, .006], sample_rows())
+    assert profile.quality == 'unstable'
+    assert profile.gain == 1 and not profile.high_pass
+    assert read_profile(profile.public()).quality == 'unstable'
+    assert read_profile({**profile.public(), 'gain': 2}).quality == 'unmeasured'
+    clipped = derive_profile([.001, .0012, .0011, .006],
+                             sample_rows(peak=.999, clipped=.01))
+    assert clipped.quality == 'clipped'
+
+
 def test_dc_bias_triggers_high_pass_without_removing_speech():
     profile = derive_profile([.001] * 5, sample_rows(rms=.08, peak=.5, dc=.03))
     assert profile.high_pass and profile.gain == 1

@@ -20,7 +20,7 @@ from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
 from .voice_speech import OfflineSpeaker, VoicePlaybackError, play_test_tone
-from .voice_signal import (AudioPreprocessor, CalibrationSegmenter, pcm_measurements,
+from .voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter, pcm_measurements,
                            read_profile, speech_measurements)
 
 
@@ -47,6 +47,31 @@ def _unrestricted_transcript(recognizer, frames: list[bytes]) -> str:
             parts.append(json.loads(recognizer.Result()).get('text', ''))
     parts.append(json.loads(recognizer.FinalResult()).get('text', ''))
     return ' '.join(part for part in parts if part)
+
+
+def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[bytes],
+                                 spoken: list[bytes], *, wake_phrase: str,
+                                 noise_rms: float, profile: AudioProfile,
+                                 now: float) -> dict:
+    """Decode a setup-only segment after audio conditioning, without acting.
+
+    The raw comparison reuses the unrestricted decoder only after the tuned
+    decode has completed. No captured audio or transcript leaves this local
+    process except the short-lived check payload sent to the loopback API.
+    """
+    signal = speech_measurements(raw_spoken, noise_rms=noise_rms)
+    text = _unrestricted_transcript(constrained, spoken)
+    free_text = _unrestricted_transcript(unrestricted, spoken)
+    raw_compared = profile.gain > 1 or profile.high_pass
+    raw_free_text = (_unrestricted_transcript(unrestricted, raw_spoken)
+                     if raw_compared else "")
+    candidate = WakeGate(wake_phrase).accept(text, now)
+    chosen, selection = (choose_command(candidate, free_text, wake_phrase)
+                         if candidate is not None else (None, ""))
+    return {"text": text, "free_text": free_text, "selected_text": chosen,
+            "raw_free_text": raw_free_text, "raw_compared": raw_compared,
+            "selection": selection, "rms": signal['rms'], "peak": signal['peak'],
+            "dc": signal['dc'], "clipped_fraction": signal['clipped_fraction']}
 
 
 def partial_has_wake(partial_result: str, wake_phrase: str) -> bool:
@@ -355,33 +380,16 @@ def main() -> None:
                         if segment is None:
                             continue
                         raw_spoken, spoken = segment
-                        signal = speech_measurements(
-                            raw_spoken, noise_rms=float(calibration.get('room_noise_rms') or 0))
                         # Acoustic boundaries make this check useful even if
                         # Vosk would never emit an endpoint or any words.
-                        text = _unrestricted_transcript(recognizer, spoken)
-                        free_text = _unrestricted_transcript(free_recognizer, spoken)
-                        raw_compared = preprocessor.profile.gain > 1 or preprocessor.profile.high_pass
-                        raw_free_text = ""
-                        if raw_compared:
-                            # Reuse the same decoder after its explicit reset;
-                            # setup-only A/B need not load another Vosk model.
-                            raw_free_text = _unrestricted_transcript(free_recognizer, raw_spoken)
-                        test_gate = WakeGate(gate.phrase)
-                        candidate = test_gate.accept(text, now)
-                        if candidate is not None:
-                            chosen, selection = choose_command(candidate, free_text, gate.phrase)
-                        else:
-                            chosen, selection = None, ""
+                        payload = calibration_decoding_payload(
+                            recognizer, free_recognizer, raw_spoken, spoken,
+                            wake_phrase=gate.phrase,
+                            noise_rms=float(calibration.get('room_noise_rms') or 0),
+                            profile=preprocessor.profile, now=now)
                         try:
                             client.post("/api/v1/voice/calibration/sample", json={
-                                "session": calibration["session"], "text": text,
-                                "free_text": free_text, "selected_text": chosen,
-                                "raw_free_text": raw_free_text, "raw_compared": raw_compared,
-                                "selection": selection,
-                                "rms": signal['rms'], "peak": signal['peak'],
-                                "dc": signal['dc'],
-                                "clipped_fraction": signal['clipped_fraction'],
+                                "session": calibration["session"], **payload,
                             }).raise_for_status()
                             next_check = 0.0  # A gain change may restart the quiet-room baseline.
                         except httpx.HTTPError:

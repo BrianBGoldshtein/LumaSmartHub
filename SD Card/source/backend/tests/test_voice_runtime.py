@@ -1,11 +1,58 @@
 from datetime import UTC, datetime, timedelta
+import json
+import struct
 
 from fastapi.testclient import TestClient
 
 from luma.api import create_app
 from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
-from luma.voice_agent import choose_command, partial_has_wake
+from luma.voice_agent import calibration_decoding_payload, choose_command, partial_has_wake
+from luma.voice_signal import AudioPreprocessor, AudioProfile
+
+
+def test_calibration_decodes_tuned_audio_before_raw_comparison_or_intent():
+    raw = struct.pack('<h', 1000) * 4000
+    profile = AudioProfile(gain=2, quality='quiet')
+    tuned = AudioPreprocessor(profile).process(raw)
+    assert tuned != raw
+
+    class Recorder:
+        def __init__(self, transcript):
+            self.transcript = transcript
+            self.frames = []
+            self.replays = []
+
+        def Reset(self):
+            self.frames = []
+
+        def AcceptWaveform(self, frame):
+            self.frames.append(frame)
+            return False
+
+        def FinalResult(self):
+            self.replays.append(list(self.frames))
+            return json.dumps({'text': self.transcript(self.frames[0])})
+
+    constrained = Recorder(lambda _frame: 'hey luma what time is it')
+    unrestricted = Recorder(lambda frame: (
+        "hey luma what's the time" if frame == tuned else 'hey luma what time is it'))
+    result = calibration_decoding_payload(
+        constrained, unrestricted, [raw], [tuned], wake_phrase='hey luma',
+        noise_rms=.001, profile=profile, now=100)
+    assert constrained.replays == [[tuned]]
+    assert unrestricted.replays == [[tuned], [raw]]
+    assert result['selection'] == 'agree'
+    assert result['selected_text'] == "what's the time"
+    assert result['raw_compared'] and result['raw_free_text'] == 'hey luma what time is it'
+    assert result['rms'] > .02 and result['peak'] < .995
+
+    untouched = Recorder(lambda _frame: 'hey luma what time is it')
+    result = calibration_decoding_payload(
+        constrained, untouched, [raw], [raw], wake_phrase='hey luma',
+        noise_rms=.001, profile=AudioProfile(), now=101)
+    assert untouched.replays == [[raw]]
+    assert not result['raw_compared'] and result['raw_free_text'] == ''
 
 
 def test_wake_gate_requires_phrase_and_expires():

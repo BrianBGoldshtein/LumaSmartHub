@@ -8,6 +8,10 @@ First source slice on `codex/luma-voice-025`: the API and voice service explicit
 
 Second source slice: the guided check now covers six phrases, including the two commands the owner reported failing ("what time is it" and "good morning"). It reuses the **same unrestricted second transcription pass** as live commands, briefly shows the effective words heard on the local setup screen, and can persist up to three bounded four-step ReSpeaker gain changes for clearly quiet or clipped attempts. It does not tune Vosk's acoustic weights, wake detector or intent network, and does not claim that automatic gain fixes recognition errors with an adequate signal.
 
+Third source slice: live commands now compare constrained and unrestricted decoding instead of always replacing a valid constrained command with garbled free dictation. Disagreement on a consequential action or numeric value does not execute either command; safe query disagreements favor unrestricted wording. An incomplete utterance caused by a full audio queue is discarded and counted. Non-command API calls have a short timeout so they cannot stall the four-second capture queue. A held-out authored paraphrase set revealed a missing "what's the time now" variant; common time, calendar and weather wordings were added and the local intent weights regenerated. This is still not a physical speech-accuracy benchmark.
+
+Full backend suite on this branch before updater integration: 1,086 passed, one updater symlink-layout test failed in the `main` snapshot. That failure belongs to the separate updater recovery branch and is an explicit integration gate, not a voice failure.
+
 ## What 0.2.4 actually does
 
 1. ReSpeaker capture is read from the PipeWire `luma_mic` source at 16 kHz. A fixed Vosk grammar listens for `hey luma`; the whole utterance is then retranscribed with an unrestricted Vosk recognizer. The wake indicator is only shown after Vosk ends the utterance. The small neural intent classifier sees *text after transcription*, so it cannot recover a missed wake word or badly transcribed speech.

@@ -148,6 +148,11 @@ class VoiceOutputReport(BaseModel):
     ] | None = None
 
 
+class VoiceHeartbeat(BaseModel):
+    model_config = {"extra": "forbid"}
+    dropped_frames: int = Field(default=0, strict=True, ge=0, le=1_000_000)
+
+
 class CalibrationSample(BaseModel):
     session: str = Field(max_length=64)
     text: str = Field(max_length=1000)
@@ -241,7 +246,8 @@ def create_app(
     voice_asset_root = data_root / "voice-assets"
     voice_asset_retry = asyncio.Event()
     voice_preview_lock = asyncio.Lock()
-    voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None}
+    voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None,
+                                          "dropped_frames": 0}
     voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
                                           "last_preview_error": None}
     google_sync_lock = asyncio.Lock()
@@ -687,10 +693,12 @@ def create_app(
         return {"accepted": True}
 
     @app.post("/api/v1/voice/heartbeat", dependencies=[Depends(local_only)])
-    async def voice_heartbeat() -> dict[str, bool]:
+    async def voice_heartbeat(payload: VoiceHeartbeat | None = None) -> dict[str, bool]:
         if not service.settings.voice_enabled:
             return {"accepted": False}
         voice_agent_status["last_seen"] = monotonic()
+        if payload is not None:
+            voice_agent_status["dropped_frames"] = payload.dropped_frames
         return {"accepted": True}
 
     @app.post("/api/v1/voice/output-report", dependencies=[Depends(local_only)])
@@ -709,7 +717,8 @@ def create_app(
                      and monotonic() - seen <= 15 and diagnostic is None)
         return {**result, "agent_available": available,
                 "agent_phase": voice_agent_status["phase"] if available else "unavailable",
-                "agent_error": diagnostic}
+                "agent_error": diagnostic,
+                "dropped_frames": voice_agent_status["dropped_frames"]}
 
     @app.get("/api/v1/voice/calibration", dependencies=[Depends(local_only)])
     async def calibration_status() -> dict:
@@ -1042,7 +1051,8 @@ def create_app(
             raise HTTPException(422, str(exc)) from exc
         if updates.get("voice_enabled") is False:
             calibration.cancel()
-            voice_agent_status.update(last_seen=0.0, phase="idle", diagnostic=None)
+            voice_agent_status.update(last_seen=0.0, phase="idle", diagnostic=None,
+                                      dropped_frames=0)
             service.state.assistant_phase = AssistantPhase.IDLE
             service.publish("voice.disabled")
         if weather.location() != old_location:

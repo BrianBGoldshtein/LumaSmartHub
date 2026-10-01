@@ -15,7 +15,8 @@ import re
 
 import httpx
 
-from .voice import WakeGate, command_grammar
+from .voice import WakeGate, command_grammar, parse_local_command
+from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
 from .voice_speech import OfflineSpeaker
@@ -46,12 +47,60 @@ def _unrestricted_transcript(recognizer, frames: list[bytes]) -> str:
     return ' '.join(part for part in parts if part)
 
 
+def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> tuple[str | None, str]:
+    """Choose a valid interpretation, never override it with invalid dictation.
+
+    The grammar often recognizes a supported command more reliably, while the
+    unrestricted decoder is needed for varied phrasing. Neither decoder may
+    silently change a numeric slot or a command with side effects.
+    """
+    varied = _free_command(free_transcript, wake_phrase)
+    if not varied or varied == wake_phrase:
+        return (constrained or None), "constrained"
+    if re.search(r"\b(?:don't|dont|do not|never|not)\b", varied):
+        return None, "negated"
+    constrained_command = parse_local_command(constrained) if constrained else None
+    varied_command = parse_local_command(varied)
+    if constrained_command and varied_command:
+        if (constrained_command.name, constrained_command.value) == (varied_command.name, varied_command.value):
+            return varied, "agree"
+        if constrained_command.name == varied_command.name == CommandName.LOCAL_QUERY:
+            return varied, "free_query"
+        return None, "conflict"
+    if constrained_command:
+        return constrained, "constrained"
+    if varied_command:
+        return varied, "free"
+    return varied if len(varied.split()) > 1 else (constrained or varied), "unmatched"
+
+
+def _discard_pending_audio(chunks: queue.Queue) -> None:
+    """Drop speech feedback while preserving a capture failure or EOF."""
+    while not chunks.empty():
+        try:
+            pending = chunks.get_nowait()
+        except queue.Empty:
+            break
+        if isinstance(pending, AudioCaptureError) or pending is None:
+            try:
+                chunks.put_nowait(pending)
+            except queue.Full:
+                # A producer may refill the queue between get and put.
+                try:
+                    chunks.get_nowait()
+                    chunks.put_nowait(pending)
+                except (queue.Empty, queue.Full):
+                    pass
+            break
+
+
 def main() -> None:
     def stop(signum, frame):
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, stop)
     chunks: queue.Queue[bytes | AudioCaptureError | None] = queue.Queue(maxsize=16)
-    with httpx.Client(base_url="http://127.0.0.1:8742", timeout=8) as client:
+    # Non-command status calls must not stall a four-second audio queue.
+    with httpx.Client(base_url="http://127.0.0.1:8742", timeout=1) as client:
         # Optional dependencies and models live outside the API process. Report
         # startup failures through a fixed local code instead of silently
         # leaving calibration waiting for a service heartbeat.
@@ -89,9 +138,11 @@ def main() -> None:
             except httpx.HTTPError:
                 pass
 
-        def heartbeat():
+        def heartbeat(dropped_frames: int):
             try:
-                client.post("/api/v1/voice/heartbeat").raise_for_status()
+                client.post("/api/v1/voice/heartbeat", json={
+                    "dropped_frames": dropped_frames,
+                }).raise_for_status()
             except httpx.HTTPError:
                 pass
 
@@ -99,7 +150,7 @@ def main() -> None:
             # parec is a PulseAudio-protocol client. Supplying the source name
             # explicitly guarantees capture from PipeWire's echo-cancelled
             # ReSpeaker node instead of PortAudio's machine-dependent default.
-            with PulseCapture(chunks):
+            with PulseCapture(chunks) as capture:
                 phase("idle")
                 calibration = {"active": False, "session": ""}
                 next_check = 0.0
@@ -108,10 +159,11 @@ def main() -> None:
                 energy = count = peak = 0
                 meter_energy = meter_count = meter_peak = 0
                 utterance: list[bytes] = []
+                seen_drops = recognition_drops = 0
                 while True:
                     now = time.monotonic()
                     if now >= next_heartbeat:
-                        heartbeat()
+                        heartbeat(recognition_drops)
                         next_heartbeat = now + 5
                     if now >= next_check:
                         next_check = now + 2
@@ -142,6 +194,17 @@ def main() -> None:
                         raise chunk
                     if chunk is None:
                         raise AudioCaptureError("capture_stream_stopped")
+                    if capture.dropped_frames != seen_drops:
+                        recognition_drops += capture.dropped_frames - seen_drops
+                        seen_drops = capture.dropped_frames
+                        recognizer.Reset()
+                        free_recognizer.Reset()
+                        gate.until = 0
+                        utterance.clear()
+                        energy = count = peak = 0
+                        _discard_pending_audio(chunks)
+                        phase("listening" if calibration["active"] else "idle")
+                        continue  # Never execute a command from a gapped recording.
                     now = time.monotonic()
                     samples = array("h", chunk)
                     squared = sum(value * value for value in samples)
@@ -183,10 +246,8 @@ def main() -> None:
                             candidate = test_gate.accept(text, now)
                             if candidate is not None:
                                 free_text = _unrestricted_transcript(free_recognizer, spoken)
-                                varied = _free_command(free_text, gate.phrase)
-                                if varied and varied != gate.phrase and (candidate or len(varied.split()) > 1):
-                                    candidate = varied
-                                text = f"{gate.phrase} {candidate}".strip()
+                                chosen, _reason = choose_command(candidate, free_text, gate.phrase)
+                                text = f"{gate.phrase} {chosen}".strip() if chosen else free_text or text
                             try:
                                 client.post("/api/v1/voice/calibration/sample", json={"session": calibration["session"], "text": text, "rms": rms, "peak": maximum}).raise_for_status()
                             except httpx.HTTPError:
@@ -202,14 +263,21 @@ def main() -> None:
                     # just this bounded utterance without a fixed phrase list,
                     # so the local intent model can hear genuine variations.
                     free_text = _unrestricted_transcript(free_recognizer, spoken)
-                    varied=_free_command(free_text,gate.phrase)
-                    if varied and varied != gate.phrase and (accepted or len(varied.split())>1):
-                        accepted=varied
+                    accepted, selection = choose_command(accepted, free_text, gate.phrase)
+                    if selection in {"conflict", "negated"}:
+                        if selection == "conflict":
+                            phase("speaking")
+                            speaker.speak("I heard two different commands. Please repeat that.")
+                        _discard_pending_audio(chunks)
+                        seen_drops = capture.dropped_frames
+                        recognizer.Reset()
+                        phase("idle")
+                        continue
                     if not accepted:
                         continue
                     phase("thinking")
                     try:
-                        response = client.post("/api/v1/voice/command", json={"text": accepted})
+                        response = client.post("/api/v1/voice/command", json={"text": accepted}, timeout=8)
                         response.raise_for_status()
                         reply = response.json()["message"]
                         phase("speaking")
@@ -223,17 +291,8 @@ def main() -> None:
                     except (httpx.HTTPError, subprocess.SubprocessError, OSError):
                         phase("error")
                     finally:
-                        while not chunks.empty():
-                            try:
-                                pending = chunks.get_nowait()
-                            except queue.Empty:
-                                break
-                            if isinstance(pending, AudioCaptureError):
-                                chunks.put_nowait(pending)
-                                break
-                            if pending is None:
-                                chunks.put_nowait(None)
-                                break
+                        _discard_pending_audio(chunks)
+                        seen_drops = capture.dropped_frames
                         recognizer.Reset()
                         phase("idle")
         except AudioCaptureError as error:

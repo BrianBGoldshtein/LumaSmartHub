@@ -105,6 +105,9 @@ def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp
     assert client.post("/api/v1/voice/phase", json={"phase": "listening"}).json()["accepted"]
     health = client.get("/api/v1/voice/calibration").json()
     assert health["agent_available"] and health["agent_phase"] == "listening" and health["agent_error"] is None
+    assert client.post("/api/v1/voice/heartbeat", json={"dropped_frames": 3}).status_code == 200
+    assert client.get("/api/v1/voice/calibration").json()["dropped_frames"] == 3
+    assert client.post("/api/v1/voice/heartbeat", json={"dropped_frames": -1}).status_code == 422
     level = client.post("/api/v1/voice/calibration/level", json={"session": session, "rms": .04, "peak": .3}).json()
     assert level["signal_available"] and level["signal_rms"] == .04
     assert not client.post("/api/v1/voice/command", json={"text": "brightness zero"}).json()["accepted"]

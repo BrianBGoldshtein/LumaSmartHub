@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from luma.api import create_app
 from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
+from luma.voice_agent import choose_command
 
 
 def test_wake_gate_requires_phrase_and_expires():
@@ -16,6 +17,25 @@ def test_wake_gate_requires_phrase_and_expires():
     assert gate.accept("hey luma good morning", 110) == "good morning"
     assert gate.accept("hey luma", 120) == ""
     assert gate.accept("good night", 128) is None
+
+
+def test_dual_decoder_keeps_known_command_when_free_dictation_is_bad():
+    assert choose_command("good morning", "hey luma blue marlin", "hey luma") == (
+        "good morning", "constrained")
+    assert choose_command("what time is it", "hey luma blue marlin", "hey luma") == (
+        "what time is it", "constrained")
+    assert choose_command("", "hey luma what's the time", "hey luma") == (
+        "what's the time", "free")
+
+
+def test_dual_decoder_never_guesses_conflicting_actions_or_negations():
+    assert choose_command("set brightness to fifty", "hey luma set brightness to sixty", "hey luma") == (
+        None, "conflict")
+    assert choose_command("good morning", "hey luma good night", "hey luma") == (None, "conflict")
+    assert choose_command("set brightness to fifty", "hey luma do not set brightness to fifty", "hey luma") == (
+        None, "negated")
+    assert choose_command("what is the weather today", "hey luma what's the weather tomorrow", "hey luma") == (
+        "what's the weather tomorrow", "free_query")
 
 
 def test_one_hundred_is_not_parsed_as_zero():

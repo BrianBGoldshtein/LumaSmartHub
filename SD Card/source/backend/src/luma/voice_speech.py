@@ -48,7 +48,12 @@ def pulse_playback_environment() -> dict[str, str]:
 
 
 def _speaker_routes(env: dict[str, str]) -> list[str]:
-    """Prefer Luma's echo-cancel sink; allow only the selected local ALSA fallback."""
+    """Use the selected physical speaker first, then the echo-cancel sink.
+
+    The virtual sink's playback stream may still be linked to an old physical
+    target after a user changes outputs. The selected local ALSA default is
+    explicit and testable; never select a Bluetooth or phone output here.
+    """
     try:
         result = subprocess.run(["pactl", "list", "short", "sinks"], check=True,
                                 capture_output=True, text=True, timeout=6, env=env)
@@ -56,7 +61,7 @@ def _speaker_routes(env: dict[str, str]) -> list[str]:
         raise VoicePlaybackError("speaker_route_unavailable") from exc
     names = {fields[1] for line in result.stdout.splitlines()
              if len(fields := line.split()) >= 2}
-    routes = [SPEAKER_SINK] if SPEAKER_SINK in names else []
+    routes: list[str] = []
     try:
         default = subprocess.run(["pactl", "get-default-sink"], check=True,
                                  capture_output=True, text=True, timeout=6, env=env).stdout.strip()
@@ -66,6 +71,8 @@ def _speaker_routes(env: dict[str, str]) -> list[str]:
     # or an arbitrary first sink. Device Setup owns the local ALSA selection.
     if default in names and default.startswith("alsa_output.") and default not in routes:
         routes.append(default)
+    if SPEAKER_SINK in names:
+        routes.append(SPEAKER_SINK)
     if not routes:
         raise VoicePlaybackError("speaker_route_unavailable")
     return routes

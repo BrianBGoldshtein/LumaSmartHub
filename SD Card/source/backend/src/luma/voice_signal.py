@@ -86,8 +86,10 @@ def derive_profile(room_floors: list[float], speech_samples: list[dict]) -> Audi
     digital gain that raises noise together with speech. A clipped source must
     be fixed at the hardware mixer, not digitally attenuated after clipping.
     """
-    valid = [item for item in speech_samples if item.get("matched") and item.get("level_ok", True) and
-             .002 <= item.get("rms", 0) <= 1 and 0 < item.get("peak", 0) < .995]
+    # Acoustic evidence must not depend on Vosk hearing words or the command
+    # parser accepting an intent: the point is to help those earlier stages.
+    valid = [item for item in speech_samples if item.get("acoustic_speech", True) and
+             .0005 <= item.get("rms", 0) <= 1 and .005 < item.get("peak", 0) < .995]
     floors = [value for value in room_floors if 0 < value <= 1]
     if len(valid) < 3 or len(floors) < 3:
         return AudioProfile(quality="bypass")
@@ -149,3 +151,54 @@ class AudioPreprocessor:
         if sys.byteorder != "little":
             output.byteswap()
         return output.tobytes()
+
+
+class CalibrationSegmenter:
+    """Bounded acoustic phrase boundaries, independent of ASR endpoints.
+
+    Only used during an owner-initiated voice check. It cannot authorize a
+    command; the returned frames are subsequently evaluated by both decoders.
+    Frames are 250 ms at 16 kHz. Keep a little leading room sound so initial
+    consonants are not cut off, and always finish after seven seconds.
+    """
+
+    def __init__(self):
+        self.preroll: list[tuple[bytes, bytes]] = []
+        self.frames: list[tuple[bytes, bytes]] = []
+        self.loud_frames = 0
+        self.quiet_frames = 0
+
+    def reset(self) -> None:
+        self.preroll.clear()
+        self.frames.clear()
+        self.loud_frames = self.quiet_frames = 0
+
+    def feed(self, raw: bytes, processed: bytes, *, noise_rms: float) -> tuple[list[bytes], list[bytes]] | None:
+        if len(raw) != 8000 or len(processed) != 8000:
+            raise ValueError("Calibration requires complete quarter-second frames")
+        if not 0 <= noise_rms <= 1:
+            raise ValueError("Invalid room-noise level")
+        level = pcm_measurements(raw)
+        loud = (level["rms"] >= max(.0006, noise_rms * 2.5)
+                and level["peak"] >= max(.005, noise_rms * 4))
+        pair = (raw, processed)
+        if not self.frames:
+            self.preroll.append(pair)
+            self.preroll = self.preroll[-4:]
+            self.loud_frames = self.loud_frames + 1 if loud else 0
+            if self.loud_frames >= 2:
+                self.frames = list(self.preroll)
+                self.preroll.clear()
+                self.quiet_frames = 0
+            return None
+        self.frames.append(pair)
+        if loud:
+            self.loud_frames += 1
+            self.quiet_frames = 0
+        else:
+            self.quiet_frames += 1
+        if self.quiet_frames < 3 and len(self.frames) < 28:
+            return None
+        completed = list(self.frames)
+        self.reset()
+        return [frame[0] for frame in completed], [frame[1] for frame in completed]

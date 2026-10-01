@@ -87,7 +87,39 @@ class VoiceCalibration:
         recent = active and now - self.last_heard_at <= 15
         floors = sorted(self.room_floors)
         quiet_half = floors[:max(1, len(floors) // 2)]
-        return {"session": self.session, "active": active, "passed": self.index == len(PHRASES), "phrase": PHRASES[self.index] if active and not ambient_remaining else None, "ambient_remaining": ambient_remaining, "expects_wake": PHRASES[self.index].startswith("hey luma ") if active and not ambient_remaining else None, "completed": self.index, "total": len(PHRASES), "attempts": self.attempts, "message": ("Stay quiet while Luma measures room sound." if ambient_remaining else self.message) if active or self.index == len(PHRASES) else "Start a new check when you are ready.", "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3, "signal_rms": self.signal_rms, "signal_peak": self.signal_peak, "last_heard": self.last_heard if recent else "", "last_free_available": self.last_free_available if recent else False, "last_constrained": self.last_constrained if recent else "", "last_wake_detected": self.last_wake_detected if recent else None, "last_expected_wake": self.last_expected_wake if recent else None, "last_intent": self.last_intent if recent else "", "last_selection": self.last_selection if recent else "", "applied_gain": self.applied_gain, "gain_adjustments": self.gain_adjustments, "room_noise_rms": round(quiet_half[len(quiet_half)//2], 5) if quiet_half else None, "audio_profile": self.audio_profile, "results": list(self.results)}
+        candidate = (derive_profile(self.room_floors, self.results).public()
+                     if active and not ambient_remaining and len(self.room_floors) >= 3
+                     and sum(bool(item.get('acoustic_speech')) for item in self.results) >= 3
+                     else None)
+        return {
+            "session": self.session, "active": active,
+            "passed": self.index == len(PHRASES),
+            "phrase": PHRASES[self.index] if active and not ambient_remaining else None,
+            "ambient_remaining": ambient_remaining,
+            "expects_wake": PHRASES[self.index].startswith("hey luma ")
+            if active and not ambient_remaining else None,
+            "completed": self.index, "total": len(PHRASES), "attempts": self.attempts,
+            "message": (("Stay quiet while Luma measures room sound."
+                         if ambient_remaining else self.message)
+                        if active or self.index == len(PHRASES)
+                        else "Start a new check when you are ready."),
+            "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3,
+            "signal_rms": self.signal_rms, "signal_peak": self.signal_peak,
+            "last_heard": self.last_heard if recent else "",
+            "last_free_available": self.last_free_available if recent else False,
+            "last_constrained": self.last_constrained if recent else "",
+            "last_wake_detected": self.last_wake_detected if recent else None,
+            "last_expected_wake": self.last_expected_wake if recent else None,
+            "last_intent": self.last_intent if recent else "",
+            "last_selection": self.last_selection if recent else "",
+            "applied_gain": self.applied_gain,
+            "gain_adjustments": self.gain_adjustments,
+            "room_noise_rms": round(quiet_half[len(quiet_half)//2], 5)
+            if quiet_half else None,
+            "audio_profile": self.audio_profile,
+            "audio_candidate": candidate,
+            "results": list(self.results),
+        }
 
     def gain_step(self, rms: float, peak: float, clipped_fraction: float = 0) -> int:
         """Adjust only obvious level faults; never chase a recognition mismatch.
@@ -161,6 +193,11 @@ class VoiceCalibration:
             heard = parse_local_command(free_text or text) if accepted is None else None
             matched = bool(heard and expected and selected_text is None
                            and (heard.name, heard.value) == (expected.name, expected.value))
+        floors = sorted(self.room_floors)
+        quiet_half = floors[:max(1, len(floors) // 2)]
+        noise = quiet_half[len(quiet_half) // 2] if quiet_half else 0.0
+        acoustic_speech = (rms >= max(.0005, noise * 2.5)
+                           and peak >= max(.005, noise * 4))
         level_ok = .002 <= rms and peak < .995 and clipped_fraction <= .002
         self.attempts += 1
         # Only the live local setup page can see this short-lived transcript.
@@ -181,6 +218,7 @@ class VoiceCalibration:
         # Aggregate levels/results only, never transcripts or audio samples.
         self.results.append({"phrase_index": self.index, "matched": matched,
                              "level_ok": level_ok,
+                             "acoustic_speech": acoustic_speech,
                              "rms": round(rms, 5), "peak": round(peak, 5),
                              "dc": round(dc, 5),
                              "clipped_fraction": round(clipped_fraction, 5)})

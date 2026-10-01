@@ -149,7 +149,7 @@ def test_tone_uses_selected_local_alsa_when_virtual_sink_missing(monkeypatch):
     assert '--device=alsa_output.platform-hdmi' in calls[-1][0]
 
 
-def test_tone_recovers_when_virtual_sink_rejects_pcm(monkeypatch):
+def test_tone_prefers_selected_physical_sink_then_tries_virtual_sink(monkeypatch):
     import luma.voice_speech as speech
     monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
     played = []
@@ -159,13 +159,14 @@ def test_tone_recovers_when_virtual_sink_rejects_pcm(monkeypatch):
         if command[:2] == ['pactl', 'get-default-sink']:
             return SimpleNamespace(stdout='alsa_output.platform-hdmi\n')
         played.append(command)
-        if '--device=luma_speaker' in command:
+        if '--device=alsa_output.platform-hdmi' in command:
             raise subprocess.CalledProcessError(1, command)
         return SimpleNamespace()
     monkeypatch.setattr(speech.subprocess, 'run', run)
-    assert play_test_tone() == 'system_speaker'
+    assert play_test_tone() == 'luma_speaker'
     assert len(played) == 2
-    assert '--device=alsa_output.platform-hdmi' in played[-1]
+    assert '--device=alsa_output.platform-hdmi' in played[0]
+    assert '--device=luma_speaker' in played[-1]
 
 
 def test_tone_never_falls_back_to_bluetooth_default(monkeypatch):

@@ -9,7 +9,6 @@ import subprocess
 import time
 import atexit
 import signal
-from array import array
 import math
 import re
 
@@ -20,7 +19,7 @@ from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
 from .voice_speech import OfflineSpeaker, VoicePlaybackError
-from .voice_signal import AudioPreprocessor, AudioProfile, pcm_measurements, read_profile
+from .voice_signal import AudioPreprocessor, CalibrationSegmenter, pcm_measurements, read_profile
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -144,6 +143,7 @@ def main() -> None:
         speaker = OfflineSpeaker()
         atexit.register(speaker.close)
         preprocessor = AudioPreprocessor()
+        calibration_segmenter = CalibrationSegmenter()
         def say(reply: str) -> str:
             try:
                 engine = speaker.speak(reply)
@@ -187,7 +187,6 @@ def main() -> None:
                 handled_preview_id = None
                 next_heartbeat = time.monotonic() + 5
                 next_meter = 0.0
-                energy = count = peak = 0
                 meter_energy = meter_count = meter_peak = 0
                 meter_floors: list[float] = []
                 utterance: list[bytes] = []
@@ -224,8 +223,8 @@ def main() -> None:
                             recognizer.Reset()
                             free_recognizer.Reset()
                             utterance.clear()
+                            calibration_segmenter.reset()
                             early_wake = False
-                            energy = count = peak = 0
                             preprocessor.reset()
                             phase('listening' if calibration['active'] else 'idle')
                             continue
@@ -238,23 +237,22 @@ def main() -> None:
                             if (fresh["active"], fresh["session"]) != (calibration["active"], calibration["session"]):
                                 recognizer.Reset()
                                 utterance.clear()
+                                calibration_segmenter.reset()
                                 early_wake = False
                                 gate.until = 0
-                                energy = count = peak = 0
                                 meter_energy = meter_count = meter_peak = 0
                                 meter_floors.clear()
                                 next_meter = now
                                 phase("listening" if fresh["active"] else "idle")
-                            target_profile = (AudioProfile() if fresh['active'] else
-                                              read_profile(fresh.get('audio_profile')))
+                            target_profile = read_profile(fresh.get('audio_profile'))
                             if preprocessor.profile != target_profile:
                                 preprocessor.reset(target_profile)
                                 recognizer.Reset()
                                 free_recognizer.Reset()
                                 utterance.clear()
+                                calibration_segmenter.reset()
                                 early_wake = False
                                 gate.until = 0
-                                energy = count = peak = 0
                                 _discard_pending_audio(chunks)
                             calibration = fresh
                         except httpx.HTTPError:
@@ -278,29 +276,25 @@ def main() -> None:
                         free_recognizer.Reset()
                         gate.until = 0
                         utterance.clear()
+                        calibration_segmenter.reset()
                         early_wake = False
-                        energy = count = peak = 0
                         preprocessor.reset()
                         _discard_pending_audio(chunks)
                         phase("listening" if calibration["active"] else "idle")
                         continue  # Never execute a command from a gapped recording.
                     now = time.monotonic()
                     raw_level = pcm_measurements(chunk)
+                    raw_chunk = chunk
                     chunk = preprocessor.process(chunk)
-                    samples = array("h", chunk)
-                    squared = sum(value * value for value in samples)
-                    chunk_peak = max((abs(value) for value in samples), default=0)
-                    energy += squared
-                    count += len(samples)
-                    peak = max(peak, chunk_peak)
                     if calibration["active"]:
-                        meter_energy += squared
-                        meter_count += len(samples)
-                        meter_peak = max(meter_peak, chunk_peak)
+                        frame_samples = len(raw_chunk) // 2
+                        meter_energy += raw_level['rms'] ** 2 * frame_samples
+                        meter_count += frame_samples
+                        meter_peak = max(meter_peak, raw_level['peak'])
                         meter_floors.append(raw_level['rms'])
                         if now >= next_meter and meter_count:
-                            level_rms = math.sqrt(meter_energy / meter_count) / 32768
-                            level_peak = meter_peak / 32768
+                            level_rms = math.sqrt(meter_energy / meter_count)
+                            level_peak = meter_peak
                             try:
                                 client.post("/api/v1/voice/calibration/level", json={
                                     "session": calibration["session"], "rms": level_rms, "peak": level_peak,
@@ -314,7 +308,39 @@ def main() -> None:
                     if calibration['active'] and calibration.get('ambient_remaining', 0) > 0:
                         # The first four seconds measure the room, not words.
                         # Do not allow a speech fragment to leak into phrase 1.
+                        calibration_segmenter.reset()
                         continue
+                    if calibration['active']:
+                        segment = calibration_segmenter.feed(
+                            raw_chunk, chunk,
+                            noise_rms=float(calibration.get('room_noise_rms') or 0),
+                        )
+                        if segment is None:
+                            continue
+                        raw_spoken, spoken = segment
+                        signal = pcm_measurements(b''.join(raw_spoken))
+                        # Acoustic boundaries make this check useful even if
+                        # Vosk would never emit an endpoint or any words.
+                        text = _unrestricted_transcript(recognizer, spoken)
+                        free_text = _unrestricted_transcript(free_recognizer, spoken)
+                        test_gate = WakeGate(gate.phrase)
+                        candidate = test_gate.accept(text, now)
+                        if candidate is not None:
+                            chosen, selection = choose_command(candidate, free_text, gate.phrase)
+                        else:
+                            chosen, selection = None, ""
+                        try:
+                            client.post("/api/v1/voice/calibration/sample", json={
+                                "session": calibration["session"], "text": text,
+                                "free_text": free_text, "selected_text": chosen,
+                                "selection": selection,
+                                "rms": signal['rms'], "peak": signal['peak'],
+                                "dc": signal['dc'],
+                                "clipped_fraction": signal['clipped_fraction'],
+                            }).raise_for_status()
+                        except httpx.HTTPError:
+                            pass
+                        continue  # Calibration never executes commands.
                     utterance.append(chunk)
                     if len(utterance)>36:
                         utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
@@ -332,32 +358,6 @@ def main() -> None:
                     early_wake = False
                     spoken=utterance
                     utterance=[]
-                    rms, maximum = math.sqrt(energy / max(count, 1)) / 32768, peak / 32768
-                    energy = count = peak = 0
-                    if calibration["active"]:
-                        signal = pcm_measurements(b''.join(spoken))
-                        # In setup, decode the full phrase even if the wake
-                        # grammar heard nothing. This reveals a missed wake
-                        # without changing live command authorization.
-                        free_text = _unrestricted_transcript(free_recognizer, spoken)
-                        if text or free_text:
-                            test_gate = WakeGate(gate.phrase)
-                            candidate = test_gate.accept(text, now)
-                            if candidate is not None:
-                                chosen, selection = choose_command(candidate, free_text, gate.phrase)
-                            else:
-                                chosen, selection = None, ""
-                            try:
-                                client.post("/api/v1/voice/calibration/sample", json={
-                                    "session": calibration["session"], "text": text,
-                                    "free_text": free_text, "selected_text": chosen,
-                                    "selection": selection, "rms": rms, "peak": maximum,
-                                    "dc": signal['dc'],
-                                    "clipped_fraction": signal['clipped_fraction'],
-                                }).raise_for_status()
-                            except httpx.HTTPError:
-                                pass
-                        continue  # Test phrases never change brightness, volume or theme.
                     accepted = gate.accept(text, time.monotonic())
                     if accepted is None:
                         if had_early_wake and gate.until <= time.monotonic():

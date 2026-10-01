@@ -74,6 +74,18 @@ def test_ambient_clock_begins_with_real_capture_and_profile_precedes_intents():
     assert 'text' not in json.dumps(result['audio_profile'])
 
 
+def test_audio_candidate_is_derived_even_when_no_words_are_understood():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for now in (105, 106, 107):
+        status = calibration.submit(session, '', .025, .25, now)
+    assert status['completed'] == 0 and status['attempts'] == 3
+    assert status['audio_candidate']['gain'] > 1
+    assert all(item['acoustic_speech'] and not item['matched'] for item in status['results'])
+
+
 def test_calibration_shows_raw_decoder_evidence_and_never_passes_a_conflict():
     calibration = VoiceCalibration()
     session = calibration.start(100)["session"]
@@ -272,6 +284,62 @@ def test_profile_persists_as_numeric_data_and_can_be_reset(tmp_path, monkeypatch
         assert client.get('/api/v1/voice/calibration').json()['audio_profile'] == reset
         remote = TestClient(app, client=('192.168.1.7', 5000))
         assert remote.post('/api/v1/voice/audio-profile/reset').status_code == 403
+
+
+def test_api_exposes_trial_audio_profile_before_intent_recognition_succeeds(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(4):
+            client.post('/api/v1/voice/calibration/level', json={
+                'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
+            })
+        for _ in range(3):
+            result = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'rms': .025, 'peak': .25,
+            }).json()
+        assert result['completed'] == 0
+        assert result['audio_profile']['gain'] > 1
+        assert result['audio_candidate']['gain'] == result['audio_profile']['gain']
+
+
+def test_owner_can_save_clean_audio_tuning_before_any_phrase_matches(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        assert client.post('/api/v1/voice/calibration/save-audio', json={
+            'session': session,
+        }).status_code == 409
+        for _ in range(4):
+            client.post('/api/v1/voice/calibration/level', json={
+                'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
+            })
+        for _ in range(3):
+            client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'rms': .025, 'peak': .25,
+            })
+        assert client.post('/api/v1/voice/calibration/save-audio', json={
+            'session': '0' * 32,
+        }).status_code == 409
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post('/api/v1/voice/calibration/save-audio', json={
+            'session': session,
+        }).status_code == 403
+        saved = client.post('/api/v1/voice/calibration/save-audio', json={
+            'session': session,
+        })
+        assert saved.status_code == 200
+        assert not saved.json()['active']
+        profile = app.state.luma.storage.get_cache('voice', 'audio_profile')
+        assert profile['gain'] > 1 and profile['quality'] == 'quiet'
+        assert 'hey luma' not in json.dumps(profile)
 
 
 def test_command_grammar_covers_supported_controls_and_unknown_audio():

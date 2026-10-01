@@ -193,6 +193,11 @@ class CalibrationLevel(BaseModel):
     floor_rms: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
 
 
+class CalibrationSaveAudio(BaseModel):
+    model_config = {"extra": "forbid"}
+    session: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
 class MicGainRequest(BaseModel):
     model_config = {"extra": "forbid"}
     gain: int = Field(strict=True, ge=0, le=63)
@@ -749,7 +754,8 @@ def create_app(
         available = (service.settings.voice_enabled and seen > 0
                      and monotonic() - seen <= 15 and diagnostic is None)
         saved_profile = read_profile(storage.get_cache("voice", "audio_profile"))
-        return {**result, "audio_profile": saved_profile.public(),
+        active_profile = read_profile(result.get('audio_candidate')) if result['active'] else saved_profile
+        return {**result, "audio_profile": active_profile.public(),
                 "agent_available": available,
                 "agent_phase": voice_agent_status["phase"] if available else "unavailable",
                 "agent_error": diagnostic,
@@ -783,6 +789,21 @@ def create_app(
         profile = AudioProfile().public()
         storage.set_cache('voice', 'audio_profile', profile)
         return {'audio_profile': profile}
+
+    @app.post('/api/v1/voice/calibration/save-audio', dependencies=[Depends(local_only)])
+    async def save_calibrated_audio(payload: CalibrationSaveAudio) -> dict:
+        """Save clean acoustic tuning even when no phrase passed the word test."""
+        result = calibration.status()
+        candidate = result.get('audio_candidate')
+        if not result['active'] or result['session'] != payload.session or not candidate:
+            raise HTTPException(409, 'No active room-audio measurement is ready to save.')
+        profile = read_profile(candidate)
+        if (profile.quality not in {'quiet', 'clear'}
+                or (profile.gain == 1 and not profile.high_pass)):
+            raise HTTPException(409, 'The measured audio does not need safe processing.')
+        storage.set_cache('voice', 'audio_profile', profile.public())
+        calibration.cancel()
+        return calibration_payload()
 
     @app.post("/api/v1/voice/calibration/cancel", dependencies=[Depends(local_only)])
     async def calibration_cancel() -> dict:

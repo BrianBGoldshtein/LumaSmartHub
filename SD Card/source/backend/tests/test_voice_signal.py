@@ -3,7 +3,8 @@ import struct
 
 import pytest
 
-from luma.voice_signal import AudioPreprocessor, AudioProfile, derive_profile, pcm_measurements, read_profile
+from luma.voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter,
+                               derive_profile, pcm_measurements, read_profile)
 
 
 def pcm(*samples: int) -> bytes:
@@ -36,6 +37,8 @@ def test_profile_amplifies_only_clean_quiet_speech():
     assert clipped.quality == 'clipped' and clipped.gain == 1
     insufficient = derive_profile([.001], sample_rows())
     assert insufficient.quality == 'bypass' and insufficient.gain == 1
+    missed_words = [{**item, 'matched': False} for item in sample_rows()]
+    assert derive_profile([.001] * 5, missed_words).gain > 1
 
 
 def test_dc_bias_triggers_high_pass_without_removing_speech():
@@ -68,3 +71,40 @@ def test_saved_profile_is_strictly_validated():
     assert read_profile({**profile, 'gain': math.nan}).gain == 1
     assert read_profile({**profile, 'high_pass': 'yes'}).gain == 1
     assert read_profile({**profile, 'quality': 'arbitrary'}).gain == 1
+
+
+def test_calibration_segments_speech_without_a_recognizer_endpoint():
+    segmenter = CalibrationSegmenter()
+    quiet = pcm(*([12] * 4000))
+    voiced = pcm(*([1700, -1700] * 2000))
+    assert segmenter.feed(quiet, quiet, noise_rms=.0004) is None
+    assert segmenter.feed(voiced, voiced, noise_rms=.0004) is None
+    assert segmenter.feed(voiced, voiced, noise_rms=.0004) is None
+    assert segmenter.feed(voiced, voiced, noise_rms=.0004) is None
+    assert segmenter.feed(quiet, quiet, noise_rms=.0004) is None
+    assert segmenter.feed(quiet, quiet, noise_rms=.0004) is None
+    captured = segmenter.feed(quiet, quiet, noise_rms=.0004)
+    assert captured is not None
+    raw, processed = captured
+    assert len(raw) == len(processed) == 7
+    assert pcm_measurements(b''.join(raw))['rms'] > .01
+    assert segmenter.frames == []
+
+
+def test_calibration_rejects_transient_noise_and_bounds_continuous_speech():
+    segmenter = CalibrationSegmenter()
+    quiet = pcm(*([16] * 4000))
+    voiced = pcm(*([2000, -2000] * 2000))
+    assert segmenter.feed(voiced, voiced, noise_rms=.001) is None
+    for _ in range(4):
+        assert segmenter.feed(quiet, quiet, noise_rms=.001) is None
+    completed = None
+    for _ in range(30):
+        completed = segmenter.feed(voiced, voiced, noise_rms=.001)
+        if completed is not None:
+            break
+    assert completed is not None
+    assert len(completed[0]) <= 28
+    assert segmenter.frames == []
+    with pytest.raises(ValueError):
+        segmenter.feed(b'bad', b'bad', noise_rms=.001)

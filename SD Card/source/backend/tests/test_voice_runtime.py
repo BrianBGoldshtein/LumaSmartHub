@@ -7,8 +7,9 @@ from fastapi.testclient import TestClient
 from luma.api import create_app
 from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
-from luma.voice_agent import calibration_decoding_payload, choose_command, partial_has_wake
+from luma.voice_agent import calibration_decoding_payload, choose_command, partial_has_wake, select_command
 from luma.voice_signal import AudioPreprocessor, AudioProfile
+from luma.voice_adaptation import PhraseAdaptations
 
 
 def test_calibration_decodes_tuned_audio_before_raw_comparison_or_intent():
@@ -54,6 +55,16 @@ def test_calibration_decodes_tuned_audio_before_raw_comparison_or_intent():
     assert untouched.replays == [[raw]]
     assert not result['raw_compared'] and result['raw_free_text'] == ''
 
+    learned = PhraseAdaptations()
+    assert learned.add('whats the tea', 'what time is it')
+    result = calibration_decoding_payload(
+        Recorder(lambda _frame: 'hey luma good morning'),
+        Recorder(lambda _frame: 'hey luma whats the tea'),
+        [raw], [raw], wake_phrase='hey luma', noise_rms=.001,
+        profile=AudioProfile(), now=102, adaptations=learned)
+    assert result['selected_text'] == 'what time is it'
+    assert result['selection'] == 'learned'
+
 
 def test_wake_gate_requires_phrase_and_expires():
     gate = WakeGate()
@@ -92,6 +103,17 @@ def test_dual_decoder_never_guesses_conflicting_actions_or_negations():
         None, "negated")
     assert choose_command("what is the weather today", "hey luma what's the weather tomorrow", "hey luma") == (
         "what's the weather tomorrow", "free_query")
+
+
+def test_live_phrase_learning_resolves_only_a_confirmed_nonnegated_post_wake_phrase():
+    learned = PhraseAdaptations()
+    assert learned.add('whats the tea', 'what time is it')
+    assert select_command('good morning', 'hey luma whats the tea', 'hey luma', learned) == (
+        'what time is it', 'learned')
+    assert select_command('good morning', 'hey luma do not whats the tea', 'hey luma', learned) == (
+        None, 'negated')
+    assert select_command('good morning', 'whats the tea', 'hey luma', learned) == (
+        'good morning', 'constrained')
 
 
 def test_one_hundred_is_not_parsed_as_zero():

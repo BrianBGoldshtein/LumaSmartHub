@@ -75,9 +75,11 @@ def test_status_parser_returns_only_link_and_remote_shell_state():
 def test_doctor_parser_returns_only_fixed_connectivity_facts():
     checks = parse_doctor(("✓ Communication with Raspberry Pi Connect API\n"
                            "✗ Communication with Raspberry Pi Connect WebSocket server\n"
+                           "✗ Authentication with Raspberry Pi Connect API\n"
                            "✓ Peer-to-peer connection candidate via STUN\n"
                            "User: private-account\n").encode())
-    assert checks == {"api": True, "websocket": False, "stun": True, "turn": None}
+    assert checks == {"api": True, "websocket": False, "authentication": False,
+                      "stun": True, "turn": None}
     assert "private-account" not in json.dumps(checks)
 
 
@@ -118,7 +120,8 @@ async def test_diagnostics_are_fixed_and_do_not_attempt_signin(tmp_path):
     setup = PiConnectSetup(fake, installed=lambda: True,
                            shell_approval=tmp_path / "shell-approved")
     assert await setup.execute({"action": "diagnose"}) == {
-        "available": True, "checks": {"api": True, "websocket": False, "stun": True, "turn": None}}
+        "available": True, "checks": {"api": True, "websocket": False,
+                                       "authentication": None, "stun": True, "turn": None}}
     assert [call[0][1:] for call in fake.calls] == [("doctor",)]
 
 
@@ -137,6 +140,85 @@ async def test_slow_start_and_signin_have_separate_generous_deadlines(tmp_path):
     assert (await setup.execute({"action": "signin"}))["state"] == "awaiting_approval"
     assert timeouts[("on",)] >= 40
     assert timeouts[("signin",)] >= 45
+
+
+@pytest.mark.asyncio
+async def test_real_signin_stream_returns_link_before_cli_finishes(monkeypatch, tmp_path):
+    """The official CLI may wait for owner approval after printing the URL."""
+    done = asyncio.Event()
+
+    class Output:
+        def __init__(self):
+            self.chunks = [b"Complete sign in by visiting https://connect.raspberrypi.com/",
+                           b"verify/ABCD-EFGH\n"]
+
+        async def read(self, _limit):
+            if self.chunks:
+                return self.chunks.pop(0)
+            await done.wait()
+            return b""
+
+    class Process:
+        def __init__(self):
+            self.stdout = Output()
+            self.returncode = None
+            self.killed = False
+
+        async def wait(self):
+            await done.wait()
+            return self.returncode
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+            done.set()
+
+    process = Process()
+    async def launch(*_args, **_kwargs):
+        return process
+    monkeypatch.setattr(pi_connect_module.asyncio, 'create_subprocess_exec', launch)
+    setup = PiConnectSetup(shell_approval=tmp_path / 'shell-approved')
+    code, output = await asyncio.wait_for(setup._start_signin_stream(), 1)
+    assert code == 0 and VERIFY.encode() in output
+    assert setup.signin_task is not None and not process.killed
+    process.returncode = 0
+    done.set()
+    await asyncio.wait_for(setup.signin_task, 1)
+    assert setup.signin_task is None and not process.killed
+
+
+@pytest.mark.asyncio
+async def test_signin_stream_without_link_is_killed_on_timeout(monkeypatch, tmp_path):
+    done = asyncio.Event()
+
+    class Output:
+        async def read(self, _limit):
+            await done.wait()
+            return b""
+
+    class Process:
+        stdout = Output()
+        returncode = None
+        killed = False
+
+        async def wait(self):
+            await done.wait()
+            return self.returncode
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+            done.set()
+
+    process = Process()
+    async def launch(*_args, **_kwargs):
+        return process
+    monkeypatch.setattr(pi_connect_module.asyncio, 'create_subprocess_exec', launch)
+    monkeypatch.setattr(pi_connect_module, 'SIGNIN_TIMEOUT', .01)
+    setup = PiConnectSetup(shell_approval=tmp_path / 'shell-approved')
+    with pytest.raises(TimeoutError):
+        await setup._start_signin_stream()
+    assert process.killed and setup.signin_task is None
 
 
 @pytest.mark.asyncio

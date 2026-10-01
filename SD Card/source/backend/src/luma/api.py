@@ -42,9 +42,12 @@ from .voice_asset import (fetch_and_install as fetch_voice_asset,
                           ready as voice_asset_ready, recover_interrupted_repair,
                           voice_status)
 from .voice_speech import (VoicePlaybackError, play_fallback_preview,
-                           play_preview as play_voice_preview, play_test_tone)
+                           play_preview as play_voice_preview, play_test_tone,
+                           speaker_route_warning)
 from .voice_health import load_history as load_voice_health, record as record_voice_health
 from .voice_signal import AudioProfile, read_profile
+from .voice_wake import read_wake_mode
+from .voice_adaptation import PhraseAdaptations
 from . import mic_hardware
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
@@ -131,6 +134,16 @@ class VoicePhrasePreview(BaseModel):
     text: str = Field(min_length=1, max_length=160)
 
 
+class WakeConfirmationChoice(BaseModel):
+    model_config = {'extra': 'forbid'}
+    mode: Literal['standard', 'dual_decoder']
+
+
+class PhraseCorrectionConfirm(BaseModel):
+    model_config = {'extra': 'forbid'}
+    session: str = Field(pattern=r'^[0-9a-f]{32}$')
+
+
 class VoicePhase(BaseModel):
     phase: AssistantPhase
 
@@ -148,6 +161,7 @@ class VoiceOutputReport(BaseModel):
     model_config = {"extra": "forbid"}
     engine: Literal["piper", "fallback", "silent"]
     route: Literal["luma_speaker", "system_speaker"] | None = None
+    sink_warning: Literal["muted", "very_low"] | None = None
     error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable",
         "speaker_playback_failed", "piper_start_failed", "piper_start_timeout",
@@ -167,6 +181,7 @@ class VoicePreviewResult(BaseModel):
     model_config = {"extra": "forbid"}
     request_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     route: Literal["luma_speaker", "system_speaker"] | None = None
+    sink_warning: Literal["muted", "very_low"] | None = None
     error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
         "piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
@@ -193,7 +208,7 @@ class CalibrationSample(BaseModel):
     raw_free_text: str = Field(default="", max_length=1000)
     raw_compared: bool = Field(default=False, strict=True)
     selected_text: str | None = Field(default=None, max_length=1000)
-    selection: Literal["", "constrained", "free", "agree", "free_query", "conflict", "negated", "unmatched"] = ""
+    selection: Literal["", "constrained", "free", "agree", "free_query", "conflict", "negated", "unmatched", "learned"] = ""
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
     dc: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
@@ -289,6 +304,7 @@ def create_app(
     weather = WeatherRuntime(service, weather_client)
     bluetooth = BluetoothRuntime(service)
     calibration = VoiceCalibration()
+    phrase_adaptations = PhraseAdaptations(storage.get_cache('voice', 'phrase_adaptations'))
     voice_asset_root = data_root / "voice-assets"
     voice_asset_retry = asyncio.Event()
     voice_asset_repair_requested = False
@@ -300,10 +316,13 @@ def create_app(
                                           "dropped_frames": 0}
     voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
                                           "last_reply_primary_error": None, "last_reply_at": None,
-                                          "last_reply_route": None, "last_preview_error": None,
-                                          "last_preview_route": None, "last_fallback_error": None,
-                                          "last_fallback_route": None, "last_tone_error": None,
-                                          "last_tone_route": None}
+                                          "last_reply_route": None, "last_reply_sink_warning": None,
+                                          "last_preview_error": None, "last_preview_route": None,
+                                          "last_preview_sink_warning": None,
+                                          "last_fallback_error": None, "last_fallback_route": None,
+                                          "last_fallback_sink_warning": None,
+                                          "last_tone_error": None, "last_tone_route": None,
+                                          "last_tone_sink_warning": None}
     voice_health_history = load_voice_health(storage)
     for event in voice_health_history:
         if event['kind'] == 'reply':
@@ -790,7 +809,8 @@ def create_app(
                                    last_reply_error=payload.error,
                                    last_reply_primary_error=payload.primary_error,
                                    last_reply_at=event['at'],
-                                   last_reply_route=payload.route)
+                                   last_reply_route=payload.route,
+                                   last_reply_sink_warning=payload.sink_warning)
         return {"accepted": True}
 
     def calibration_payload() -> dict[str, Any]:
@@ -805,7 +825,11 @@ def create_app(
         # the saved everyday profile is restored when this check ends.
         active_profile = (read_profile(result.get('audio_candidate'))
                           if result['active'] else saved_profile)
+        wake_mode = read_wake_mode(storage.get_cache('voice', 'wake_confirmation'))
         return {**result, "audio_profile": active_profile.public(),
+                "wake_confirmation": {'version': 1, 'mode': wake_mode},
+                "phrase_adaptations": phrase_adaptations.public(),
+                "learned_phrase_count": len(phrase_adaptations.entries),
                 "agent_available": available,
                 "agent_phase": voice_agent_status["phase"] if available else "unavailable",
                 "agent_error": diagnostic,
@@ -814,6 +838,38 @@ def create_app(
     @app.get("/api/v1/voice/calibration", dependencies=[Depends(local_only)])
     async def calibration_status() -> dict:
         return calibration_payload()
+
+    @app.post('/api/v1/voice/wake-confirmation', dependencies=[Depends(local_only)])
+    async def set_wake_confirmation(payload: WakeConfirmationChoice) -> dict:
+        """Owner-local false-wake filter; never described as voice identity."""
+        if payload.mode == 'dual_decoder' and not calibration.status()['strict_wake_ready']:
+            raise HTTPException(409, 'Run the local voice check first: Luma needs four independently heard wakes and one no-wake sample before enabling this filter.')
+        value = {'version': 1, 'mode': payload.mode}
+        storage.set_cache('voice', 'wake_confirmation', value)
+        return {'wake_confirmation': value}
+
+    @app.post('/api/v1/voice/calibration/confirm-correction', dependencies=[Depends(local_only)])
+    async def confirm_phrase_correction(payload: PhraseCorrectionConfirm) -> dict:
+        """A prompt-specific owner confirmation, never an automatic audio guess."""
+        try:
+            heard, canonical, confirmations = calibration.confirm_correction(payload.session)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        saved = False
+        if confirmations >= 2:
+            if not phrase_adaptations.add(heard, canonical):
+                calibration.message = 'Personal phrase limit reached; no correction was saved.'
+                raise HTTPException(409, calibration.message)
+            storage.set_cache('voice', 'phrase_adaptations', phrase_adaptations.public())
+            saved = True
+        return {**calibration_payload(), 'correction_saved': saved}
+
+    @app.post('/api/v1/voice/adaptations/reset', dependencies=[Depends(local_only)])
+    async def reset_phrase_adaptations() -> dict:
+        nonlocal phrase_adaptations
+        phrase_adaptations = PhraseAdaptations()
+        storage.set_cache('voice', 'phrase_adaptations', phrase_adaptations.public())
+        return {'learned_phrase_count': 0}
 
     @app.get("/api/v1/voice/hardware", dependencies=[Depends(local_only)])
     async def mic_hardware_status() -> dict:
@@ -968,6 +1024,7 @@ def create_app(
                         route = result.route
                         if route is None:
                             raise VoicePlaybackError('speaker_playback_failed')
+                        sink_warning = result.sink_warning
                     except asyncio.TimeoutError as exc:
                         raise VoicePlaybackError('fallback_playback_failed' if variant == 'fallback'
                                                  else 'piper_synthesis_failed') from exc
@@ -976,10 +1033,12 @@ def create_app(
                 else:
                     preview = play_fallback_preview if variant == 'fallback' else play_voice_preview
                     route = await asyncio.to_thread(preview, voice_asset_root)
+                    sink_warning = await asyncio.to_thread(speaker_route_warning, route)
             except VoicePlaybackError as exc:
                 status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
                 voice_output_status[f'{status_prefix}_error'] = exc.code
                 voice_output_status[f'{status_prefix}_route'] = None
+                voice_output_status[f'{status_prefix}_sink_warning'] = None
                 record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
                                     error=exc.code)
                 messages = {
@@ -1002,12 +1061,14 @@ def create_app(
                 status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
                 voice_output_status[f'{status_prefix}_error'] = code
                 voice_output_status[f'{status_prefix}_route'] = None
+                voice_output_status[f'{status_prefix}_sink_warning'] = None
                 record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
                                     error=code)
                 raise HTTPException(409, 'The local voice could not play the sample.') from exc
             status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
             voice_output_status[f'{status_prefix}_error'] = None
             voice_output_status[f'{status_prefix}_route'] = route
+            voice_output_status[f'{status_prefix}_sink_warning'] = sink_warning
             record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
                                 route=route)
         return {'played': True, 'route': route}
@@ -1048,15 +1109,18 @@ def create_app(
                         if result.route is None:
                             raise VoicePlaybackError('speaker_playback_failed')
                         route = result.route
+                        sink_warning = result.sink_warning
                     except asyncio.TimeoutError as exc:
                         raise VoicePlaybackError('speaker_playback_failed') from exc
                     finally:
                         voice_tone_job.clear()
                 else:
                     route = await asyncio.to_thread(play_test_tone)
+                    sink_warning = await asyncio.to_thread(speaker_route_warning, route)
             except VoicePlaybackError as exc:
                 voice_output_status["last_tone_error"] = exc.code
                 voice_output_status["last_tone_route"] = None
+                voice_output_status["last_tone_sink_warning"] = None
                 record_voice_health(voice_health_history, storage, kind='tone', error=exc.code)
                 message = ('The Pi audio session is not ready.' if exc.code == 'audio_session_unavailable'
                            else 'No safe local speaker was found; select HDMI or HAT in Device setup.'
@@ -1066,11 +1130,13 @@ def create_app(
             except Exception as exc:
                 voice_output_status["last_tone_error"] = "speaker_route_unavailable"
                 voice_output_status["last_tone_route"] = None
+                voice_output_status["last_tone_sink_warning"] = None
                 record_voice_health(voice_health_history, storage, kind='tone',
                                     error='speaker_route_unavailable')
                 raise HTTPException(409, 'The Luma speaker test could not run.') from exc
             voice_output_status["last_tone_error"] = None
             voice_output_status["last_tone_route"] = route
+            voice_output_status["last_tone_sink_warning"] = sink_warning
             record_voice_health(voice_health_history, storage, kind='tone', route=route)
         return {'sent': True, 'route': route}
 
@@ -1090,12 +1156,14 @@ def create_app(
     @app.post('/api/v1/voice/phrase-preview', dependencies=[Depends(local_only)])
     async def voice_phrase_preview(payload: VoicePhrasePreview) -> dict[str, Any]:
         """Explain local intent matching without running a command or reading private data."""
-        parsed = parse_local_command(payload.text)
+        learned = phrase_adaptations.resolve(payload.text)
+        parsed = parse_local_command(learned or payload.text)
         model = predict_voice_intent(payload.text)
         return {
             'understood': parsed is not None,
             'command': parsed.name.value if parsed else None,
             'intent': str(parsed.value) if parsed and parsed.name == CommandName.LOCAL_QUERY else None,
+            'personal_correction': learned is not None,
             'model_suggestion': model[0] if model else None,
             'model_confidence': round(model[1], 2) if model else None,
             'executed': False,

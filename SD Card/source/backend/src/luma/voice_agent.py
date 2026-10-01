@@ -19,9 +19,12 @@ from .voice import WakeGate, command_grammar, parse_local_command
 from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
-from .voice_speech import OfflineSpeaker, VoicePlaybackError, play_test_tone
+from .voice_speech import (OfflineSpeaker, VoicePlaybackError, play_test_tone,
+                           speaker_route_warning)
 from .voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter, pcm_measurements,
                            read_profile, speech_measurements)
+from .voice_wake import command_after_wake, has_wake, read_wake_mode, wake_confirmed
+from .voice_adaptation import PhraseAdaptations
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -52,7 +55,7 @@ def _unrestricted_transcript(recognizer, frames: list[bytes]) -> str:
 def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[bytes],
                                  spoken: list[bytes], *, wake_phrase: str,
                                  noise_rms: float, profile: AudioProfile,
-                                 now: float) -> dict:
+                                 now: float, adaptations: PhraseAdaptations | None = None) -> dict:
     """Decode a setup-only segment after audio conditioning, without acting.
 
     The raw comparison reuses the unrestricted decoder only after the tuned
@@ -66,7 +69,7 @@ def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[byt
     raw_free_text = (_unrestricted_transcript(unrestricted, raw_spoken)
                      if raw_compared else "")
     candidate = WakeGate(wake_phrase).accept(text, now)
-    chosen, selection = (choose_command(candidate, free_text, wake_phrase)
+    chosen, selection = (select_command(candidate, free_text, wake_phrase, adaptations)
                          if candidate is not None else (None, ""))
     return {"text": text, "free_text": free_text, "selected_text": chosen,
             "raw_free_text": raw_free_text, "raw_compared": raw_compared,
@@ -110,6 +113,16 @@ def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> 
     if varied_command:
         return varied, "free"
     return varied if len(varied.split()) > 1 else (constrained or varied), "unmatched"
+
+
+def select_command(constrained: str, free_transcript: str, wake_phrase: str,
+                   adaptations: PhraseAdaptations | None = None) -> tuple[str | None, str]:
+    """Apply only owner-confirmed, post-wake corrections before intent choice."""
+    learned = (adaptations.resolve(command_after_wake(free_transcript, wake_phrase) or '')
+               if adaptations is not None and has_wake(free_transcript, wake_phrase)
+               else None)
+    return (learned, 'learned') if learned is not None else choose_command(
+        constrained, free_transcript, wake_phrase)
 
 
 def _discard_pending_audio(chunks: queue.Queue) -> None:
@@ -184,6 +197,7 @@ def main() -> None:
                     'engine': engine, 'error': speaker.last_error,
                     'primary_error': speaker.last_primary_error,
                     'route': speaker.last_route,
+                    'sink_warning': speaker_route_warning(speaker.last_route),
                 }).raise_for_status()
             except httpx.HTTPError:
                 pass
@@ -210,6 +224,8 @@ def main() -> None:
             with PulseCapture(chunks) as capture:
                 phase("idle")
                 calibration = {"active": False, "session": ""}
+                wake_mode = 'standard'
+                adaptations = PhraseAdaptations()
                 next_check = 0.0
                 next_preview_check = 0.0
                 handled_preview_id = None
@@ -243,7 +259,8 @@ def main() -> None:
                                     speaker._fallback("Hello, I'm Luma. It's good to see you.")
                                 else:
                                     speaker._piper("Hello, I'm Luma. It's good to see you.")
-                                result = {'request_id': request_id, 'route': speaker.last_route}
+                                result = {'request_id': request_id, 'route': speaker.last_route,
+                                          'sink_warning': speaker_route_warning(speaker.last_route)}
                             except VoicePlaybackError as exc:
                                 speaker.close()
                                 result = {'request_id': request_id, 'error': exc.code}
@@ -272,7 +289,8 @@ def main() -> None:
                             phase('speaking')
                             try:
                                 route = play_test_tone()
-                                result = {'request_id': tone_id, 'route': route}
+                                result = {'request_id': tone_id, 'route': route,
+                                          'sink_warning': speaker_route_warning(route)}
                             except VoicePlaybackError as exc:
                                 result = {'request_id': tone_id, 'error': exc.code}
                             try:
@@ -306,6 +324,16 @@ def main() -> None:
                                 meter_floors.clear()
                                 next_meter = now
                                 phase("listening" if fresh["active"] else "idle")
+                            next_wake_mode = read_wake_mode(fresh.get('wake_confirmation'))
+                            if next_wake_mode != wake_mode:
+                                wake_mode = next_wake_mode
+                                recognizer.Reset()
+                                free_recognizer.Reset()
+                                utterance.clear()
+                                early_wake = False
+                                gate.until = 0
+                                phase("listening" if fresh["active"] else "idle")
+                            adaptations = PhraseAdaptations(fresh.get('phrase_adaptations'))
                             target_profile = read_profile(fresh.get('audio_profile'))
                             if preprocessor.profile != target_profile:
                                 preprocessor.reset(target_profile)
@@ -386,7 +414,8 @@ def main() -> None:
                             recognizer, free_recognizer, raw_spoken, spoken,
                             wake_phrase=gate.phrase,
                             noise_rms=float(calibration.get('room_noise_rms') or 0),
-                            profile=preprocessor.profile, now=now)
+                            profile=preprocessor.profile, now=now,
+                            adaptations=adaptations)
                         try:
                             client.post("/api/v1/voice/calibration/sample", json={
                                 "session": calibration["session"], **payload,
@@ -399,7 +428,7 @@ def main() -> None:
                     if len(utterance)>36:
                         utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
                     if not recognizer.AcceptWaveform(chunk):
-                        if (not calibration["active"] and not early_wake
+                        if (not calibration["active"] and wake_mode == 'standard' and not early_wake
                                 and partial_has_wake(recognizer.PartialResult(), gate.phrase)):
                             # Show the full-screen orb while the owner is
                             # still speaking. Only a final, exact wake match
@@ -412,9 +441,24 @@ def main() -> None:
                     early_wake = False
                     spoken=utterance
                     utterance=[]
+                    # The constrained grammar can hallucinate its nearest
+                    # allowed phrase over unrelated speech. In the optional
+                    # strict mode, a *new* wake must also be present in the
+                    # unrestricted transcription before opening the window.
+                    new_wake = has_wake(text, gate.phrase)
+                    free_text = None
+                    if wake_mode == 'dual_decoder' and new_wake:
+                        free_text = _unrestricted_transcript(free_recognizer, spoken)
+                        if not wake_confirmed(text, free_text, wake_mode, gate.phrase):
+                            gate.until = 0
+                            recognizer.Reset()
+                            phase('idle')
+                            continue
                     accepted = gate.accept(text, time.monotonic())
                     if accepted is None:
-                        if had_early_wake and gate.until <= time.monotonic():
+                        if new_wake and gate.until > time.monotonic():
+                            phase('listening')
+                        elif had_early_wake and gate.until <= time.monotonic():
                             phase("idle")
                         continue
                     # Light the full-screen listening state as soon as the
@@ -423,8 +467,10 @@ def main() -> None:
                     # The constrained recognizer verifies wake. Re-transcribe
                     # just this bounded utterance without a fixed phrase list,
                     # so the local intent model can hear genuine variations.
-                    free_text = _unrestricted_transcript(free_recognizer, spoken)
-                    accepted, selection = choose_command(accepted, free_text, gate.phrase)
+                    if free_text is None:
+                        free_text = _unrestricted_transcript(free_recognizer, spoken)
+                    accepted, selection = select_command(accepted, free_text, gate.phrase,
+                                                         adaptations)
                     if selection in {"conflict", "negated"}:
                         if selection == "conflict":
                             phase("speaking")

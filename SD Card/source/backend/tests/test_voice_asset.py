@@ -20,7 +20,9 @@ from luma.voice_asset import (CONFIG, MODEL, PREVIOUS_VOICE, VOICE_ID, VOICE_ASS
                               VOICE_RELEASE_URL, VoiceAssetError, fetch_and_install,
                               install_asset, ready, recover_interrupted_repair,
                               verify_and_extract, voice_status, write_status)
-from luma.voice_speech import OfflineSpeaker, VoicePlaybackError, fallback_wav_to_pcm, play_test_tone, pulse_playback_environment, wav_to_pcm
+from luma.voice_speech import (OfflineSpeaker, VoicePlaybackError, fallback_wav_to_pcm,
+                               play_test_tone, pulse_playback_environment,
+                               speaker_route_warning, wav_to_pcm)
 
 
 def make_asset(tmp_path: Path, *, corrupt=False, extra=None):
@@ -184,6 +186,35 @@ def test_tone_never_falls_back_to_bluetooth_default(monkeypatch):
         play_test_tone()
 
 
+@pytest.mark.parametrize(('route', 'muted', 'volume', 'expected'), [
+    ('system_speaker', True, 65536, 'muted'),
+    ('system_speaker', False, 2000, 'very_low'),
+    ('system_speaker', False, 65536, None),
+    ('luma_speaker', True, 65536, 'muted'),
+])
+def test_speaker_route_warning_is_advisory_and_sanitized(monkeypatch, route, muted, volume, expected):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
+    sinks = [{'name': 'alsa_output.hdmi', 'mute': muted,
+              'volume': {'front-left': {'value': volume}}},
+             {'name': 'luma_speaker', 'mute': muted,
+              'volume': {'front-left': {'value': volume}}}]
+    def run(command, **_kwargs):
+        if command[:2] == ['pactl', '--format=json']:
+            return SimpleNamespace(stdout=json.dumps(sinks))
+        return SimpleNamespace(stdout='alsa_output.hdmi\n')
+    monkeypatch.setattr(speech.subprocess, 'run', run)
+    assert speaker_route_warning(route) == expected
+
+
+def test_speaker_route_warning_does_not_guess_when_volume_probe_fails(monkeypatch):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
+    monkeypatch.setattr(speech.subprocess, 'run', lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError()))
+    assert speaker_route_warning('system_speaker') is None
+    assert speaker_route_warning(None) is None
+
+
 def test_piper_failure_reports_actual_fallback_engine(monkeypatch, tmp_path):
     import luma.voice_speech as speech
     monkeypatch.setattr(speech, 'sys', SimpleNamespace(platform='linux'))
@@ -299,10 +330,12 @@ def test_preview_reuses_live_voice_worker_without_starting_second_model(monkeypa
         assert pending
         assert client.post('/api/v1/voice/asset/preview/result', json={
             'request_id': pending, 'route': 'luma_speaker', 'error': None,
+            'sink_warning': 'muted',
         }).json() == {'accepted': True}
         thread.join(timeout=5)
         assert not thread.is_alive()
         assert result[0].json() == {'played': True, 'route': 'luma_speaker'}
+        assert client.get('/api/v1/voice/asset').json()['last_preview_sink_warning'] == 'muted'
         assert client.get('/api/v1/voice/asset/preview/pending').json()['request_id'] is None
 
 
@@ -430,12 +463,14 @@ def test_live_speaker_tone_uses_voice_agent_and_reports_its_actual_route(monkeyp
         assert pending
         assert client.post('/api/v1/voice/asset/tone/result', json={
             'request_id': pending, 'route': 'system_speaker',
+            'sink_warning': 'very_low',
         }).json() == {'accepted': True}
         thread.join(timeout=5)
         assert not thread.is_alive()
         assert responses[0].json() == {'sent': True, 'route': 'system_speaker'}
         assert client.get('/api/v1/voice/asset/tone/pending').json()['request_id'] is None
         assert client.get('/api/v1/voice/asset').json()['last_tone_route'] == 'system_speaker'
+        assert client.get('/api/v1/voice/asset').json()['last_tone_sink_warning'] == 'very_low'
         remote = TestClient(client.app, client=('192.168.1.7', 5000))
         assert remote.get('/api/v1/voice/asset/tone/pending').status_code == 403
         assert remote.post('/api/v1/voice/asset/tone/result', json={
@@ -463,8 +498,10 @@ def test_reply_engine_is_reported_without_speech_text(tmp_path):
         assert failed['last_reply_primary_error'] == 'piper_start_failed'
         assert client.post('/api/v1/voice/output-report', json={
             'engine': 'piper', 'route': 'system_speaker', 'error': None,
+            'sink_warning': 'muted',
         }).status_code == 200
         assert client.get('/api/v1/voice/asset').json()['last_reply_route'] == 'system_speaker'
+        assert client.get('/api/v1/voice/asset').json()['last_reply_sink_warning'] == 'muted'
         assert client.post('/api/v1/voice/output-report', json={
             'engine': 'piper', 'error': None, 'text': 'private speech',
         }).status_code == 422

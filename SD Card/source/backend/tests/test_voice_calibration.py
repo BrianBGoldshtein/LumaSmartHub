@@ -9,7 +9,14 @@ from luma.api import create_app
 from luma.hardware import AudioController, VoiceController
 from luma.leds import status_frame
 from luma.voice import command_grammar, parse_local_command
-from luma.voice_calibration import PHRASES, VoiceCalibration
+from luma.voice_calibration import PHRASES, VoiceCalibration, word_match_fraction
+
+
+def test_word_match_is_a_separate_bounded_transcription_measure():
+    assert word_match_fraction('Hey Luma, what time is it?', 'hey luma what time is it') == 1
+    assert word_match_fraction('hey luma what time is it', 'hey luma what date is it') == .83
+    assert word_match_fraction('hey luma good morning', '') is None
+    assert word_match_fraction('hey luma good morning', 'unrelated call audio') == 0
 
 
 def test_calibration_passes_without_retaining_transcripts():
@@ -153,6 +160,23 @@ def test_raw_recognition_wins_twice_and_disables_harmful_trial():
     assert finished['audio_profile']['quality'] == 'bypass'
 
 
+def test_learned_intent_cannot_hide_worse_pre_recognizer_audio():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for phrase in PHRASES[:3]:
+        calibration.submit(session, phrase, .05, .4, 101)
+    for phrase in PHRASES[3:5]:
+        result = calibration.submit(
+            session, phrase, .05, .4, 102,
+            free_text='hey luma whats the tea', raw_free_text=phrase,
+            raw_compared=True, selected_text=phrase.removeprefix('hey luma '),
+            selection='learned')
+        assert result['results'][-1]['matched']
+        assert result['results'][-1]['raw_word_match'] == 1
+    assert result['processing_regressed']
+    assert calibration.measured_profile().quality == 'bypass'
+
+
 def test_calibration_shows_raw_decoder_evidence_and_never_passes_a_conflict():
     calibration = VoiceCalibration()
     session = calibration.start(100)["session"]
@@ -214,6 +238,112 @@ def test_negative_control_requires_ordinary_speech_without_a_wake():
     completed = calibration.submit(session, "", .05, .4, 104,
                                    free_text="good morning", selected_text=None)
     assert completed["passed"] is True
+
+
+def test_independent_wake_evidence_tracks_words_without_saving_transcripts():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for phrase in PHRASES[:-2]:
+        result = calibration.submit(session, phrase, .05, .4, 101, free_text=phrase)
+    assert result['independent_wakes'] == 8
+    assert not result['strict_wake_ready']
+    result = calibration.submit(session, PHRASES[-2], .05, .4, 102,
+                                free_text=PHRASES[-2])
+    assert result['negative_wake_checks'] == 1
+    assert result['strict_wake_ready']
+    assert result['last_free_wake_detected'] is False
+    assert result['last_word_match'] == 1
+    assert result['results'][-1]['word_match'] == 1
+    assert all('text' not in row and 'free_text' not in row for row in result['results'])
+
+
+def test_owner_confirms_the_same_safe_mishearing_twice_before_it_can_be_saved():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for phrase in PHRASES[:3]:
+        calibration.submit(session, phrase, .05, .4, 101)
+    for attempt in (1, 2):
+        missed = calibration.submit(session, 'hey luma good morning', .05, .4, 102 + attempt,
+                                    free_text='hey luma whats the tea')
+        assert missed['correction_available']
+        heard, canonical, count = calibration.confirm_correction(session, 102 + attempt)
+        assert (heard, canonical, count) == ('whats the tea', 'what time is it', attempt)
+        assert not calibration.status(102 + attempt)['correction_available']
+        with pytest.raises(ValueError):
+            calibration.confirm_correction(session, 102 + attempt)
+    assert 'whats the tea' not in json.dumps(calibration.status(105)['results'])
+    assert not calibration.status(125)['correction_available']
+
+
+def test_dual_decoder_mode_requires_local_calibration_evidence(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        endpoint = '/api/v1/voice/wake-confirmation'
+        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 409
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for phrase in PHRASES[:-2]:
+            response = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': phrase, 'free_text': phrase,
+                'rms': .05, 'peak': .4,
+            })
+            assert response.status_code == 200
+        assert not response.json()['strict_wake_ready']
+        response = client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': PHRASES[-2], 'free_text': PHRASES[-2],
+            'rms': .05, 'peak': .4,
+        })
+        assert response.json()['strict_wake_ready']
+        enabled = client.post(endpoint, json={'mode': 'dual_decoder'})
+        assert enabled.status_code == 200
+        assert enabled.json()['wake_confirmation']['mode'] == 'dual_decoder'
+        assert client.get('/api/v1/voice/calibration').json()['wake_confirmation']['mode'] == 'dual_decoder'
+        assert app.state.luma.storage.get_cache('voice', 'wake_confirmation') == {
+            'version': 1, 'mode': 'dual_decoder',
+        }
+        assert client.post(endpoint, json={'mode': 'off'}).status_code == 422
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post(endpoint, json={'mode': 'standard'}).status_code == 403
+        assert client.post(endpoint, json={'mode': 'standard'}).status_code == 200
+
+
+def test_confirmed_phrase_correction_persists_without_raw_words_and_can_reset(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        endpoint = '/api/v1/voice/calibration/confirm-correction'
+        assert client.post(endpoint, json={'session': session}).status_code == 409
+        for phrase in PHRASES[:3]:
+            client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': phrase, 'rms': .05, 'peak': .4,
+            })
+        for count in (1, 2):
+            missed = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': 'hey luma good morning',
+                'free_text': 'hey luma whats the tea', 'rms': .05, 'peak': .4,
+            }).json()
+            assert missed['correction_available']
+            confirmed = client.post(endpoint, json={'session': session})
+            assert confirmed.status_code == 200
+            assert confirmed.json()['correction_saved'] is (count == 2)
+            assert client.post(endpoint, json={'session': session}).status_code == 409
+        saved = app.state.luma.storage.get_cache('voice', 'phrase_adaptations')
+        assert 'whats the tea' not in json.dumps(saved)
+        assert saved['entries'] and client.get('/api/v1/voice/calibration').json()['learned_phrase_count'] == 1
+        preview = client.post('/api/v1/voice/phrase-preview', json={'text': 'whats the tea'}).json()
+        assert preview['personal_correction'] and preview['intent'] == 'time'
+        assert preview['executed'] is False
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post('/api/v1/voice/adaptations/reset').status_code == 403
+        assert client.post('/api/v1/voice/adaptations/reset').json()['learned_phrase_count'] == 0
+        assert not app.state.luma.storage.get_cache('voice', 'phrase_adaptations')['entries']
 
 
 def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():

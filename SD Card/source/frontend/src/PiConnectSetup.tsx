@@ -3,7 +3,7 @@ import {MonitorCog,RefreshCw,ShieldCheck,Terminal} from "lucide-react";
 import {useSetupActivity} from "./setupActivity";
 
 type PiConnectStatus={available:boolean;state:string;signed_in:boolean;remote_shell:boolean;verification_url?:string;qr?:string|null};
-type ConnectDiagnostics={available:boolean;checks:{api:boolean|null;websocket:boolean|null;stun:boolean|null;turn:boolean|null}};
+type ConnectDiagnostics={available:boolean;checks:{api:boolean|null;websocket:boolean|null;authentication:boolean|null;stun:boolean|null;turn:boolean|null}};
 type Action="status"|"diagnose"|"signin"|"shell_on"|"shell_off";
 
 async function request<T=PiConnectStatus>(action:Action):Promise<T>{
@@ -58,7 +58,7 @@ export function PiConnectSetup({demo=false}:{demo?:boolean}){
       {status?.remote_shell&&<><p className="setup-note">Ready: on your phone or computer, open <strong>connect.raspberrypi.com → Devices → Luma → Connect via → Remote shell</strong>. The shell runs as the dedicated Luma administrator and can use sudo. This approval persists across reboots and app-only updates.</p><button disabled={busy} onClick={()=>void run("shell_off")}>Disable remote shell</button></>}
       <button disabled={busy} onClick={()=>void refresh()}><RefreshCw aria-hidden="true"/> Refresh status</button>
       <button disabled={busy||!status?.available} onClick={()=>void run("diagnose")}>Test Connect network</button>
-      {diagnostics&&<p className="setup-note" role="status">Connect API: {checkLabel(diagnostics.checks.api)} · Live link: {checkLabel(diagnostics.checks.websocket)} · Relay: {checkLabel(diagnostics.checks.turn)}. A network test cannot sign in or enable the remote shell.</p>}
+      {diagnostics&&<p className="setup-note" role="status">Connect API: {checkLabel(diagnostics.checks.api)} · Live link: {checkLabel(diagnostics.checks.websocket)} · Connect auth: {checkLabel(diagnostics.checks.authentication)} · Relay: {checkLabel(diagnostics.checks.turn)}. Authentication may be unavailable before sign-in. A network test cannot sign in or enable the remote shell.</p>}
     </>}
     {error&&!unavailable&&<p className="setup-message" role="alert">{error}</p>}
   </section>;

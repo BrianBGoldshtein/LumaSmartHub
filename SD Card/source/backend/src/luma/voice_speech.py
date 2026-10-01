@@ -78,6 +78,49 @@ def _speaker_routes(env: dict[str, str]) -> list[str]:
     return routes
 
 
+def speaker_route_warning(route: str | None) -> str | None:
+    """Best-effort check of the sink that accepted speech, not acoustic proof.
+
+    Pulse/PipeWire can accept and drain PCM even when that sink is muted or
+    nearly silent. Keep this advisory separate from playback success and never
+    infer a physical connection from a virtual sink's volume alone.
+    """
+    if route not in {"system_speaker", "luma_speaker"}:
+        return None
+    try:
+        env = pulse_playback_environment()
+        listed = subprocess.run(["pactl", "--format=json", "list", "sinks"],
+                                check=True, capture_output=True, text=True,
+                                timeout=6, env=env)
+        sinks = json.loads(listed.stdout)
+        if not isinstance(sinks, list):
+            return None
+        if route == "luma_speaker":
+            name = SPEAKER_SINK
+        else:
+            default = subprocess.run(["pactl", "get-default-sink"], check=True,
+                                     capture_output=True, text=True, timeout=6,
+                                     env=env)
+            name = default.stdout.strip()
+            if not name.startswith("alsa_output."):
+                return None
+        sink = next((item for item in sinks if isinstance(item, dict)
+                     and item.get("name") == name), None)
+        if sink is None:
+            return None
+        if sink.get("mute") is True:
+            return "muted"
+        channels = sink.get("volume")
+        if isinstance(channels, dict):
+            values = [channel.get("value") for channel in channels.values()
+                      if isinstance(channel, dict) and type(channel.get("value")) is int]
+            if values and max(values) <= 3277:  # 5% of PulseAudio's 65536 unity.
+                return "very_low"
+    except (OSError, ValueError, subprocess.SubprocessError, VoicePlaybackError):
+        pass
+    return None
+
+
 def _play_pcm(pcm: bytes, env: dict[str, str], *, rate: int = 22050) -> str:
     if not 8000 <= rate <= 48000 or not pcm or len(pcm) % 2:
         raise VoicePlaybackError("speaker_playback_failed")

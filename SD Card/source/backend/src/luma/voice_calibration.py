@@ -4,9 +4,12 @@ from __future__ import annotations
 import time
 import uuid
 import math
+import re
 
 from .voice import WakeGate, parse_local_command
 from .voice_signal import AudioProfile, derive_profile, room_noise_level
+from .voice_wake import command_after_wake, has_wake
+from .voice_adaptation import LEARNABLE, normalized_phrase
 
 PHRASES = (
     "hey luma set brightness to fifty",
@@ -20,6 +23,29 @@ PHRASES = (
     "what time is it",
     "good morning",
 )
+
+
+def word_match_fraction(expected: str, heard: str) -> float | None:
+    """Bounded word accuracy for a prompted sample; no transcript is saved.
+
+    This is transcription quality, not intent correctness. A paraphrase can
+    select the right intent while receiving a low word score, which is useful
+    evidence when deciding whether audio processing helped recognition.
+    """
+    if not heard.strip():
+        return None
+    tokens = lambda text: re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", text.casefold())[:32]
+    reference, decoded = tokens(expected), tokens(heard)
+    if not reference or not decoded:
+        return None
+    previous = list(range(len(decoded) + 1))
+    for index, word in enumerate(reference, 1):
+        row = [index]
+        for column, candidate in enumerate(decoded, 1):
+            row.append(min(row[-1] + 1, previous[column] + 1,
+                           previous[column - 1] + (word != candidate)))
+        previous = row
+    return round(max(0.0, 1 - previous[-1] / max(len(reference), len(decoded))), 2)
 
 
 class VoiceCalibration:
@@ -42,6 +68,13 @@ class VoiceCalibration:
         self.last_expected_wake = True
         self.last_intent = ""
         self.last_selection = ""
+        self.last_free_wake_detected = False
+        self.last_word_match: float | None = None
+        self.last_free_text = ''
+        self.last_phrase_index = -1
+        self.last_confirmed_attempt = -1
+        self.correction_counts: dict[tuple[str, str], int] = {}
+        self.last_correction_count = 0
         self.applied_gain: int | None = None
         self.gain_adjustments = 0
         self.room_floors: list[float] = []
@@ -52,11 +85,17 @@ class VoiceCalibration:
         self.phrase_prompt_at = 0.0
 
     def processing_regressed(self) -> bool:
-        """Two raw-only phrase wins reject the trial for this whole check."""
-        raw_wins = sum(bool(row.get('raw_match') and not row.get('matched'))
-                       for row in self.results if row.get('raw_compared'))
-        tuned_wins = sum(bool(row.get('matched') and not row.get('raw_match'))
-                         for row in self.results if row.get('raw_compared'))
+        """Compare *words*, not learned intent, to decide audio processing.
+
+        A personalized phrase correction must never make tuned PCM look
+        acoustically superior to an untouched recording of the same speech.
+        """
+        comparisons = [(row.get('word_match') or 0, row.get('raw_word_match') or 0)
+                       for row in self.results if row.get('raw_compared')
+                       and (row.get('word_match') is not None
+                            or row.get('raw_word_match') is not None)]
+        raw_wins = sum(raw >= tuned + .12 for tuned, raw in comparisons)
+        tuned_wins = sum(tuned >= raw + .12 for tuned, raw in comparisons)
         return raw_wins >= tuned_wins + 2
 
     def measured_profile(self) -> AudioProfile:
@@ -90,6 +129,13 @@ class VoiceCalibration:
         self.last_expected_wake = True
         self.last_intent = ""
         self.last_selection = ""
+        self.last_free_wake_detected = False
+        self.last_word_match = None
+        self.last_free_text = ''
+        self.last_phrase_index = -1
+        self.last_confirmed_attempt = -1
+        self.correction_counts.clear()
+        self.last_correction_count = 0
         self.applied_gain = None
         self.gain_adjustments = 0
         self.room_floors = []
@@ -106,6 +152,22 @@ class VoiceCalibration:
         recent = active and now - self.last_heard_at <= 15
         noise = room_noise_level(self.room_floors)
         regressed = self.processing_regressed()
+        independent_positive = {row['phrase_index'] for row in self.results
+                                if row['phrase_index'] < len(PHRASES) - 2
+                                and row['matched'] and row.get('free_wake')}
+        negative_checks = sum(bool(row['phrase_index'] >= len(PHRASES) - 2
+                                   and row.get('acoustic_speech')
+                                   and not row.get('free_wake')) for row in self.results)
+        heard_command = command_after_wake(self.last_free_text)
+        correction_available = bool(
+            active and recent and self.results
+            and self.last_phrase_index == self.index and self.attempts != self.last_confirmed_attempt
+            and self.last_wake_detected and self.last_free_wake_detected and heard_command
+            and normalized_phrase(heard_command)
+            and PHRASES[self.index].removeprefix('hey luma ') in LEARNABLE
+            and self.results[-1]['acoustic_speech'] and self.results[-1]['level_ok']
+            and not self.results[-1]['matched']
+        )
         candidate = (self.measured_profile().public()
                      if active and not ambient_remaining and len(self.room_floors) >= 3
                      and sum(bool(item.get('acoustic_speech')) for item in self.results) >= 3
@@ -143,6 +205,8 @@ class VoiceCalibration:
             "last_free_available": self.last_free_available if recent else False,
             "last_constrained": self.last_constrained if recent else "",
             "last_wake_detected": self.last_wake_detected if recent else None,
+            "last_free_wake_detected": self.last_free_wake_detected if recent else None,
+            "last_word_match": self.last_word_match if recent else None,
             "last_expected_wake": self.last_expected_wake if recent else None,
             "last_intent": self.last_intent if recent else "",
             "last_selection": self.last_selection if recent else "",
@@ -152,8 +216,29 @@ class VoiceCalibration:
             "audio_profile": self.audio_profile,
             "audio_candidate": candidate,
             "processing_regressed": regressed,
+            "independent_wakes": len(independent_positive),
+            "negative_wake_checks": negative_checks,
+            "strict_wake_ready": len(independent_positive) >= 4 and negative_checks >= 1,
+            "correction_available": correction_available,
+            "correction_confirmations": self.last_correction_count,
             "results": list(self.results),
         }
+
+    def confirm_correction(self, session: str, now: float | None = None) -> tuple[str, str, int]:
+        """Owner confirms the displayed prompt was spoken, twice per pattern."""
+        now = time.monotonic() if now is None else now
+        if session != self.session or not self.status(now)['correction_available']:
+            raise ValueError('No recent, safe phrase correction is ready to confirm.')
+        heard = normalized_phrase(command_after_wake(self.last_free_text) or '')
+        canonical = PHRASES[self.index].removeprefix('hey luma ')
+        self.last_confirmed_attempt = self.attempts
+        key = (heard, canonical)
+        self.correction_counts[key] = min(2, self.correction_counts.get(key, 0) + 1)
+        self.last_correction_count = self.correction_counts[key]
+        self.message = ('Confirmed. Say the same displayed phrase once more so Luma can verify the pattern.'
+                        if self.last_correction_count < 2 else
+                        'Personal phrase correction saved. Repeat the displayed phrase to test it.')
+        return heard, canonical, self.last_correction_count
 
     def gain_step(self, rms: float, peak: float, clipped_fraction: float = 0) -> int:
         """Adjust only obvious level faults; never chase a recognition mismatch.
@@ -188,6 +273,13 @@ class VoiceCalibration:
         self.phrase_prompt_at = 0.0
         self.signal_rms = self.signal_peak = self.signal_at = 0.0
         self.last_heard = self.last_constrained = self.last_intent = self.last_selection = ""
+        self.last_free_wake_detected = False
+        self.last_word_match = None
+        self.last_free_text = ''
+        self.last_phrase_index = -1
+        self.last_confirmed_attempt = -1
+        self.correction_counts.clear()
+        self.last_correction_count = 0
         self.last_raw_heard = ""
         self.last_free_available = False
         self.last_heard_at = 0.0
@@ -269,6 +361,13 @@ class VoiceCalibration:
         self.last_wake_detected = accepted is not None
         self.last_expected_wake = expects_wake
         self.last_selection = selection
+        self.last_free_wake_detected = has_wake(free_text)
+        self.last_word_match = word_match_fraction(PHRASES[self.index], free_text)
+        raw_word_match = (word_match_fraction(PHRASES[self.index], raw_free_text)
+                          if raw_compared else None)
+        self.last_free_text = free_text[:160]
+        self.last_phrase_index = self.index
+        self.last_correction_count = 0
         if command:
             value = getattr(command.value, "value", command.value)
             self.last_intent = (f"{command.name.value}: {value}" if value is not None
@@ -277,6 +376,9 @@ class VoiceCalibration:
             self.last_intent = ""
         # Aggregate levels/results only, never transcripts or audio samples.
         self.results.append({"phrase_index": self.index, "matched": matched,
+                             "free_wake": self.last_free_wake_detected,
+                             "word_match": self.last_word_match,
+                             "raw_word_match": raw_word_match,
                              "raw_compared": raw_compared, "raw_match": raw_match,
                              "level_ok": level_ok,
                              "acoustic_speech": acoustic_speech,
@@ -334,3 +436,10 @@ class VoiceCalibration:
         self.last_expected_wake = True
         self.last_intent = ""
         self.last_selection = ""
+        self.last_free_wake_detected = False
+        self.last_word_match = None
+        self.last_free_text = ''
+        self.last_phrase_index = -1
+        self.last_confirmed_attempt = -1
+        self.correction_counts.clear()
+        self.last_correction_count = 0

@@ -39,6 +39,7 @@ def parse_doctor(output: bytes) -> dict[str, bool | None]:
     labels = {
         "api": "Communication with Raspberry Pi Connect API",
         "websocket": "Communication with Raspberry Pi Connect WebSocket server",
+        "authentication": "Authentication with Raspberry Pi Connect API",
         "stun": "Peer-to-peer connection candidate via STUN",
         "turn": "Peer-to-peer connection candidate via TURN",
     }
@@ -139,12 +140,70 @@ class PiConnectSetup:
         self.verification_url: str | None = None
         self.qr_image: str | None = None
         self.pending_until = 0.0
+        self.signin_task: asyncio.Task | None = None
+
+    async def _drain_signin(self, process: asyncio.subprocess.Process) -> None:
+        """Keep the official CLI alive while the owner approves its URL.
+
+        Its later output can include a spinner; consume and discard it so the
+        pipe cannot fill. Never log or persist a verification code.
+        """
+        try:
+            async with asyncio.timeout(PENDING_SECONDS):
+                while await process.stdout.read(4096):
+                    pass
+        except (TimeoutError, OSError):
+            if process.returncode is None:
+                with suppress(ProcessLookupError):
+                    process.kill()
+        except asyncio.CancelledError:
+            if process.returncode is None:
+                with suppress(ProcessLookupError):
+                    process.kill()
+            raise
+        finally:
+            await process.wait()
+            self.signin_task = None
+
+    async def _start_signin_stream(self) -> tuple[int, bytes]:
+        """Return the verification URL without awaiting interactive approval.
+
+        `rpi-connect signin` may print the link and then wait for the owner to
+        visit it. `communicate()` waits for process exit, incorrectly treating
+        that expected wait as a network timeout.
+        """
+        process = await asyncio.create_subprocess_exec(
+            CLI, "signin", stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            limit=MAX_OUTPUT, env=_environment())
+        output = bytearray()
+        try:
+            async with asyncio.timeout(SIGNIN_TIMEOUT):
+                while True:
+                    chunk = await process.stdout.read(1024)
+                    if not chunk:
+                        await process.wait()
+                        return process.returncode or 0, bytes(output)
+                    output.extend(chunk)
+                    if len(output) > MAX_OUTPUT:
+                        raise ValueError("Pi Connect response was too large")
+                    if VERIFY_URL.search(output.decode("utf-8", "replace")):
+                        self.signin_task = asyncio.create_task(self._drain_signin(process))
+                        return 0, bytes(output)
+        finally:
+            if self.signin_task is None and process.returncode is None:
+                with suppress(ProcessLookupError):
+                    process.kill()
+                await process.wait()
 
     async def _command(self, *args: str) -> bytes:
         stage = " ".join(args)
         timeout = START_TIMEOUT if args == ("on",) else SIGNIN_TIMEOUT if args == ("signin",) else 20
         try:
-            code, output = await self.run(CLI, *args, timeout=timeout)
+            if args == ("signin",) and self.run is run_command:
+                code, output = await self._start_signin_stream()
+            else:
+                code, output = await self.run(CLI, *args, timeout=timeout)
         except TimeoutError:
             if stage == "signin":
                 raise ValueError("Pi Connect timed out requesting sign-in. Check its network diagnostics or try another permitted network.") from None

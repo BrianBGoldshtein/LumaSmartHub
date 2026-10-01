@@ -47,8 +47,8 @@ def pulse_playback_environment() -> dict[str, str]:
     return env
 
 
-def _check_speaker_sink(env: dict[str, str]) -> None:
-    """Confirm that PipeWire exposes the sink before claiming playback works."""
+def _speaker_routes(env: dict[str, str]) -> list[str]:
+    """Prefer Luma's echo-cancel sink; allow only the selected local ALSA fallback."""
     try:
         result = subprocess.run(["pactl", "list", "short", "sinks"], check=True,
                                 capture_output=True, text=True, timeout=6, env=env)
@@ -56,22 +56,37 @@ def _check_speaker_sink(env: dict[str, str]) -> None:
         raise VoicePlaybackError("speaker_route_unavailable") from exc
     names = {fields[1] for line in result.stdout.splitlines()
              if len(fields := line.split()) >= 2}
-    if SPEAKER_SINK not in names:
-        raise VoicePlaybackError("speaker_route_unavailable")
-
-
-def _play_pcm(pcm: bytes, env: dict[str, str]) -> None:
-    _check_speaker_sink(env)
+    routes = [SPEAKER_SINK] if SPEAKER_SINK in names else []
     try:
-        subprocess.run(["paplay", f"--device={SPEAKER_SINK}", "--raw", "--format=s16le",
-                        "--rate=22050", "--channels=1"], input=pcm, check=True,
-                       timeout=90, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, env=env)
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise VoicePlaybackError("speaker_route_unavailable") from exc
+        default = subprocess.run(["pactl", "get-default-sink"], check=True,
+                                 capture_output=True, text=True, timeout=6, env=env).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        default = ""
+    # Never redirect speech to a paired phone, Bluetooth headset, dummy sink,
+    # or an arbitrary first sink. Device Setup owns the local ALSA selection.
+    if default in names and default.startswith("alsa_output.") and default not in routes:
+        routes.append(default)
+    if not routes:
+        raise VoicePlaybackError("speaker_route_unavailable")
+    return routes
 
 
-def play_test_tone() -> None:
+def _play_pcm(pcm: bytes, env: dict[str, str]) -> str:
+    routes = _speaker_routes(env)
+    for sink in routes:
+        try:
+            # pacat is the raw-PCM player; the device is explicit on each try.
+            subprocess.run(["pacat", "--playback", f"--device={sink}", "--raw", "--format=s16le",
+                            "--rate=22050", "--channels=1"], input=pcm, check=True,
+                           timeout=90, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, env={**env, "PULSE_SINK": sink})
+            return "luma_speaker" if sink == SPEAKER_SINK else "system_speaker"
+        except (OSError, subprocess.SubprocessError):
+            continue
+    raise VoicePlaybackError("speaker_playback_failed")
+
+
+def play_test_tone() -> str:
     """A bounded non-speech chime to distinguish the speaker path from Piper."""
     env = pulse_playback_environment()
     pcm = bytearray()
@@ -81,7 +96,7 @@ def play_test_tone() -> None:
         frequency = 523.25 if index < count // 2 else 659.25
         value = int(32767 * .16 * envelope * math.sin(2 * math.pi * frequency * index / 22050))
         pcm.extend(struct.pack("<h", value))
-    _play_pcm(bytes(pcm), env)
+    return _play_pcm(bytes(pcm), env)
 
 
 def wav_to_pcm(data: bytes) -> bytes:
@@ -113,6 +128,7 @@ class OfflineSpeaker:
         self.process: subprocess.Popen | None = None
         self.retry_after = 0.0
         self.last_error: str | None = None
+        self.last_route: str | None = None
 
     def close(self) -> None:
         process = self.process
@@ -149,6 +165,9 @@ class OfflineSpeaker:
         env = pulse_playback_environment()
         try:
             process = self.process or self._start()
+        except (OSError, EOFError, ValueError, TimeoutError, subprocess.SubprocessError) as exc:
+            raise VoicePlaybackError("piper_start_failed") from exc
+        try:
             if process.poll() is not None or process.stdin is None:
                 raise EOFError("offline voice worker stopped")
             process.stdin.write(json.dumps({"text": reply}, ensure_ascii=True).encode("ascii") + b"\n")
@@ -157,10 +176,14 @@ class OfflineSpeaker:
             size = struct.unpack(">I", _read_exact(process, 4, deadline))[0]
             if not 44 < size <= MAX_WAV:
                 raise ValueError("offline voice worker returned no audio")
-            pcm = wav_to_pcm(_read_exact(process, size, deadline))
-        except (OSError, EOFError, ValueError, wave.Error, TimeoutError, subprocess.SubprocessError) as exc:
-            raise VoicePlaybackError("synthesis_unavailable") from exc
-        _play_pcm(pcm, env)
+            output = _read_exact(process, size, deadline)
+        except (OSError, EOFError, ValueError, TimeoutError, subprocess.SubprocessError) as exc:
+            raise VoicePlaybackError("piper_synthesis_failed") from exc
+        try:
+            pcm = wav_to_pcm(output)
+        except (ValueError, wave.Error) as exc:
+            raise VoicePlaybackError("piper_audio_invalid") from exc
+        self.last_route = _play_pcm(pcm, env)
 
     def speak(self, reply: str) -> str:
         # The API already bounds answers; guard the worker regardless.
@@ -168,6 +191,7 @@ class OfflineSpeaker:
         if not reply:
             return "silent"
         self.last_error = None
+        self.last_route = None
         if sys.platform == "linux" and ready(self.root) and monotonic() >= self.retry_after:
             try:
                 self._piper(reply)
@@ -186,12 +210,13 @@ class OfflineSpeaker:
         return "fallback"
 
 
-def play_preview(root: Path = ASSET_ROOT) -> None:
+def play_preview(root: Path = ASSET_ROOT) -> str:
     """Owner-local fixed phrase; never falls back and never reads private data."""
     if not ready(root):
         raise ValueError("offline voice not installed")
     speaker = OfflineSpeaker(root)
     try:
         speaker._piper("Hello, I'm Luma. It's good to see you.")
+        return speaker.last_route or "unknown"
     finally:
         speaker.close()

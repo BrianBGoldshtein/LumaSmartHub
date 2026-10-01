@@ -19,7 +19,7 @@ from .voice import WakeGate, command_grammar, parse_local_command
 from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
-from .voice_speech import OfflineSpeaker
+from .voice_speech import OfflineSpeaker, VoicePlaybackError
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -165,6 +165,8 @@ def main() -> None:
                 phase("idle")
                 calibration = {"active": False, "session": ""}
                 next_check = 0.0
+                next_preview_check = 0.0
+                handled_preview_id = None
                 next_heartbeat = time.monotonic() + 5
                 next_meter = 0.0
                 energy = count = peak = 0
@@ -177,6 +179,36 @@ def main() -> None:
                     if now >= next_heartbeat:
                         heartbeat(recognition_drops)
                         next_heartbeat = now + 5
+                    if now >= next_preview_check:
+                        next_preview_check = now + 1
+                        try:
+                            pending = client.get('/api/v1/voice/asset/preview/pending').json()
+                            request_id = pending.get('request_id')
+                        except (httpx.HTTPError, ValueError, KeyError):
+                            request_id = None
+                        if request_id and request_id != handled_preview_id:
+                            handled_preview_id = request_id
+                            phase('speaking')
+                            try:
+                                speaker._piper("Hello, I'm Luma. It's good to see you.")
+                                result = {'request_id': request_id, 'route': speaker.last_route}
+                            except VoicePlaybackError as exc:
+                                speaker.close()
+                                result = {'request_id': request_id, 'error': exc.code}
+                            try:
+                                client.post('/api/v1/voice/asset/preview/result', json=result,
+                                            timeout=3).raise_for_status()
+                            except httpx.HTTPError:
+                                pass
+                            _discard_pending_audio(chunks)
+                            seen_drops = capture.dropped_frames
+                            recognizer.Reset()
+                            free_recognizer.Reset()
+                            utterance.clear()
+                            early_wake = False
+                            energy = count = peak = 0
+                            phase('listening' if calibration['active'] else 'idle')
+                            continue
                     if now >= next_check:
                         next_check = now + 2
                         try:
@@ -317,6 +349,7 @@ def main() -> None:
                         try:
                             client.post("/api/v1/voice/output-report", json={
                                 "engine": engine, "error": speaker.last_error,
+                                "route": speaker.last_route,
                             }).raise_for_status()
                         except httpx.HTTPError:
                             pass

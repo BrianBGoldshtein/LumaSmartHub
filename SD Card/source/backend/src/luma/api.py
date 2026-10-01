@@ -142,9 +142,21 @@ class VoiceDiagnostic(BaseModel):
 class VoiceOutputReport(BaseModel):
     model_config = {"extra": "forbid"}
     engine: Literal["piper", "fallback", "silent"]
+    route: Literal["luma_speaker", "system_speaker"] | None = None
     error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable",
-        "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
+        "speaker_playback_failed", "piper_start_failed", "piper_synthesis_failed",
+        "piper_audio_invalid", "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
+    ] | None = None
+
+
+class VoicePreviewResult(BaseModel):
+    model_config = {"extra": "forbid"}
+    request_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    route: Literal["luma_speaker", "system_speaker"] | None = None
+    error: Literal[
+        "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
+        "piper_start_failed", "piper_synthesis_failed", "piper_audio_invalid",
     ] | None = None
 
 
@@ -250,10 +262,13 @@ def create_app(
     voice_asset_root = data_root / "voice-assets"
     voice_asset_retry = asyncio.Event()
     voice_preview_lock = asyncio.Lock()
+    voice_preview_job: dict[str, Any] = {}
     voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None,
                                           "dropped_frames": 0}
     voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
-                                          "last_preview_error": None, "last_tone_error": None}
+                                          "last_reply_route": None, "last_preview_error": None,
+                                          "last_preview_route": None, "last_tone_error": None,
+                                          "last_tone_route": None}
     google_sync_lock = asyncio.Lock()
     google_status: dict[str, Any] = {"last_synced": None, "error": None}
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
@@ -710,7 +725,8 @@ def create_app(
         if not service.settings.voice_enabled:
             return {"accepted": False}
         voice_output_status.update(last_reply_engine=payload.engine,
-                                   last_reply_error=payload.error)
+                                   last_reply_error=payload.error,
+                                   last_reply_route=payload.route)
         return {"accepted": True}
 
     def calibration_payload() -> dict[str, Any]:
@@ -810,20 +826,63 @@ def create_app(
             raise HTTPException(409, 'Voice preview is already playing.')
         async with voice_preview_lock:
             try:
-                await asyncio.to_thread(play_voice_preview, voice_asset_root)
+                # Reuse the live voice agent's warm Piper model when present.
+                # A second simultaneous model on a Pi 4 can exhaust memory;
+                # direct synthesis is reserved for when the agent is inactive.
+                agent_active = (service.settings.voice_enabled and voice_agent_status['last_seen'] > 0 and
+                                monotonic() - voice_agent_status['last_seen'] <= 15 and
+                                voice_agent_status['diagnostic'] is None)
+                if agent_active:
+                    job = voice_preview_job
+                    job.update(id=uuid4().hex, event=asyncio.Event(), result=None)
+                    try:
+                        await asyncio.wait_for(job['event'].wait(), timeout=120)
+                        result = job['result']
+                        if not isinstance(result, VoicePreviewResult) or result.error:
+                            raise VoicePlaybackError(result.error if result else 'piper_synthesis_failed')
+                        route = result.route
+                        if route is None:
+                            raise VoicePlaybackError('speaker_playback_failed')
+                    except asyncio.TimeoutError as exc:
+                        raise VoicePlaybackError('piper_synthesis_failed') from exc
+                    finally:
+                        voice_preview_job.clear()
+                else:
+                    route = await asyncio.to_thread(play_voice_preview, voice_asset_root)
             except VoicePlaybackError as exc:
                 voice_output_status["last_preview_error"] = exc.code
+                voice_output_status["last_preview_route"] = None
                 messages = {
                     "audio_session_unavailable": "The Pi audio session is not ready. Try again after the desktop finishes starting.",
-                    "speaker_route_unavailable": "Luma could not send the sample to its selected speaker.",
+                    "speaker_route_unavailable": "No safe local speaker was found. Select HDMI or HAT in Device setup.",
+                    "speaker_playback_failed": "The selected speaker rejected the sample. Check its output and volume.",
+                    "piper_start_failed": "The offline voice worker could not start.",
+                    "piper_synthesis_failed": "The offline voice worker could not synthesize the sample.",
+                    "piper_audio_invalid": "The offline voice produced an invalid audio format.",
                     "synthesis_unavailable": "The local voice could not synthesize the sample.",
                 }
                 raise HTTPException(409, messages.get(exc.code, 'Offline voice preview could not play.')) from exc
             except Exception as exc:
                 voice_output_status["last_preview_error"] = "synthesis_unavailable"
+                voice_output_status["last_preview_route"] = None
                 raise HTTPException(409, 'The local voice could not synthesize the sample.') from exc
             voice_output_status["last_preview_error"] = None
-        return {'played': True}
+            voice_output_status["last_preview_route"] = route
+        return {'played': True, 'route': route}
+
+    @app.get('/api/v1/voice/asset/preview/pending', dependencies=[Depends(local_only)])
+    async def pending_voice_preview() -> dict[str, str | None]:
+        # The agent only receives a nonce; the sample text is fixed locally.
+        return {'request_id': voice_preview_job.get('id')}
+
+    @app.post('/api/v1/voice/asset/preview/result', dependencies=[Depends(local_only)])
+    async def complete_voice_preview(payload: VoicePreviewResult) -> dict[str, bool]:
+        job = voice_preview_job
+        if job.get('id') != payload.request_id or job.get('result') is not None:
+            return {'accepted': False}
+        job['result'] = payload
+        job['event'].set()
+        return {'accepted': True}
 
     @app.post('/api/v1/voice/asset/tone', dependencies=[Depends(local_only)])
     async def test_voice_speaker_route() -> dict:
@@ -832,17 +891,22 @@ def create_app(
             raise HTTPException(409, 'Another speaker test is already running.')
         async with voice_preview_lock:
             try:
-                await asyncio.to_thread(play_test_tone)
+                route = await asyncio.to_thread(play_test_tone)
             except VoicePlaybackError as exc:
                 voice_output_status["last_tone_error"] = exc.code
+                voice_output_status["last_tone_route"] = None
                 message = ('The Pi audio session is not ready.' if exc.code == 'audio_session_unavailable'
-                           else 'Luma could not find or play through its selected speaker.')
+                           else 'No safe local speaker was found; select HDMI or HAT in Device setup.'
+                           if exc.code == 'speaker_route_unavailable'
+                           else 'The selected speaker could not play the test tone.')
                 raise HTTPException(409, message) from exc
             except Exception as exc:
                 voice_output_status["last_tone_error"] = "speaker_route_unavailable"
+                voice_output_status["last_tone_route"] = None
                 raise HTTPException(409, 'The Luma speaker test could not run.') from exc
             voice_output_status["last_tone_error"] = None
-        return {'sent': True, 'route': 'luma_speaker'}
+            voice_output_status["last_tone_route"] = route
+        return {'sent': True, 'route': route}
 
     @app.post('/api/v1/voice/phrase-preview', dependencies=[Depends(local_only)])
     async def voice_phrase_preview(payload: VoicePhrasePreview) -> dict[str, Any]:

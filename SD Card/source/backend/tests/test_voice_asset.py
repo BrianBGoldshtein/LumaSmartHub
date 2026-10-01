@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import subprocess
 import struct
+import threading
+import time
 from types import SimpleNamespace
 import wave
 import zipfile
@@ -105,15 +107,17 @@ def test_tone_checks_named_sink_and_sends_bounded_pcm(monkeypatch):
     calls = []
     def run(command, **kwargs):
         calls.append((command, kwargs))
-        if command[0] == 'pactl':
+        if command[:3] == ['pactl', 'list', 'short']:
             return SimpleNamespace(stdout='0\tluma_speaker\tPipeWire\ts16le 2ch 48000Hz\n')
+        if command[:2] == ['pactl', 'get-default-sink']:
+            return SimpleNamespace(stdout='luma_speaker\n')
         return SimpleNamespace()
     monkeypatch.setattr(speech.subprocess, 'run', run)
-    play_test_tone()
-    assert [call[0][0] for call in calls] == ['pactl', 'paplay']
-    assert '--device=luma_speaker' in calls[1][0]
-    assert len(calls[1][1]['input']) == 2 * int(22050 * .65)
-    assert calls[1][1]['env']['PULSE_SINK'] == 'luma_speaker'
+    assert play_test_tone() == 'luma_speaker'
+    assert [call[0][0] for call in calls] == ['pactl', 'pactl', 'pacat']
+    assert '--device=luma_speaker' in calls[2][0]
+    assert len(calls[2][1]['input']) == 2 * int(22050 * .65)
+    assert calls[2][1]['env']['PULSE_SINK'] == 'luma_speaker'
 
 
 def test_tone_refuses_to_claim_success_without_named_sink(monkeypatch):
@@ -126,7 +130,54 @@ def test_tone_refuses_to_claim_success_without_named_sink(monkeypatch):
     monkeypatch.setattr(speech.subprocess, 'run', run)
     with pytest.raises(VoicePlaybackError, match='speaker_route_unavailable'):
         play_test_tone()
-    assert calls == ['pactl']
+    assert calls == ['pactl', 'pactl']
+
+
+def test_tone_uses_selected_local_alsa_when_virtual_sink_missing(monkeypatch):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
+    calls = []
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        if command[:3] == ['pactl', 'list', 'short']:
+            return SimpleNamespace(stdout='0\talsa_output.platform-hdmi\tPipeWire\n')
+        if command[:2] == ['pactl', 'get-default-sink']:
+            return SimpleNamespace(stdout='alsa_output.platform-hdmi\n')
+        return SimpleNamespace()
+    monkeypatch.setattr(speech.subprocess, 'run', run)
+    assert play_test_tone() == 'system_speaker'
+    assert '--device=alsa_output.platform-hdmi' in calls[-1][0]
+
+
+def test_tone_recovers_when_virtual_sink_rejects_pcm(monkeypatch):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
+    played = []
+    def run(command, **_kwargs):
+        if command[:3] == ['pactl', 'list', 'short']:
+            return SimpleNamespace(stdout='0\tluma_speaker\tPipeWire\n1\talsa_output.platform-hdmi\tPipeWire\n')
+        if command[:2] == ['pactl', 'get-default-sink']:
+            return SimpleNamespace(stdout='alsa_output.platform-hdmi\n')
+        played.append(command)
+        if '--device=luma_speaker' in command:
+            raise subprocess.CalledProcessError(1, command)
+        return SimpleNamespace()
+    monkeypatch.setattr(speech.subprocess, 'run', run)
+    assert play_test_tone() == 'system_speaker'
+    assert len(played) == 2
+    assert '--device=alsa_output.platform-hdmi' in played[-1]
+
+
+def test_tone_never_falls_back_to_bluetooth_default(monkeypatch):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
+    def run(command, **_kwargs):
+        if command[:3] == ['pactl', 'list', 'short']:
+            return SimpleNamespace(stdout='0\tbluez_output.phone\tPipeWire\n')
+        return SimpleNamespace(stdout='bluez_output.phone\n')
+    monkeypatch.setattr(speech.subprocess, 'run', run)
+    with pytest.raises(VoicePlaybackError, match='speaker_route_unavailable'):
+        play_test_tone()
 
 
 def test_piper_failure_reports_actual_fallback_engine(monkeypatch, tmp_path):
@@ -160,6 +211,68 @@ def test_preview_failure_is_explicit_and_local(monkeypatch, tmp_path):
         assert client.get('/api/v1/voice/asset').json()['last_preview_error'] == 'audio_session_unavailable'
 
 
+def test_preview_reuses_live_voice_worker_without_starting_second_model(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: True)
+    monkeypatch.setattr(api, 'voice_status', lambda _root: {'phase': 'ready', 'message': 'Installed.'})
+    monkeypatch.setattr(api, 'play_voice_preview', lambda _root: pytest.fail('second worker started'))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        assert client.post('/api/v1/voice/heartbeat', json={}).json()['accepted']
+        result = []
+        thread = threading.Thread(target=lambda: result.append(client.post('/api/v1/voice/asset/preview')))
+        thread.start()
+        pending = None
+        for _ in range(100):
+            pending = client.get('/api/v1/voice/asset/preview/pending').json()['request_id']
+            if pending:
+                break
+            time.sleep(.01)
+        assert pending
+        assert client.post('/api/v1/voice/asset/preview/result', json={
+            'request_id': pending, 'route': 'luma_speaker', 'error': None,
+        }).json() == {'accepted': True}
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert result[0].json() == {'played': True, 'route': 'luma_speaker'}
+        assert client.get('/api/v1/voice/asset/preview/pending').json()['request_id'] is None
+
+
+def test_live_preview_reports_worker_failure_separately_from_speaker(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: True)
+    monkeypatch.setattr(api, 'voice_status', lambda _root: {'phase': 'ready', 'message': 'Installed.'})
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        client.post('/api/v1/voice/heartbeat', json={})
+        result = []
+        thread = threading.Thread(target=lambda: result.append(client.post('/api/v1/voice/asset/preview')))
+        thread.start()
+        pending = None
+        for _ in range(100):
+            pending = client.get('/api/v1/voice/asset/preview/pending').json()['request_id']
+            if pending:
+                break
+            time.sleep(.01)
+        assert pending
+        assert client.post('/api/v1/voice/asset/preview/result', json={
+            'request_id': pending, 'error': 'piper_start_failed',
+        }).json() == {'accepted': True}
+        thread.join(timeout=5)
+        assert result[0].status_code == 409
+        assert 'worker could not start' in result[0].json()['detail']
+        status = client.get('/api/v1/voice/asset').json()
+        assert status['last_preview_error'] == 'piper_start_failed'
+        assert status['last_tone_error'] is None
+
+
+def test_piper_start_failure_has_distinct_code(monkeypatch, tmp_path):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
+    speaker = OfflineSpeaker(tmp_path)
+    monkeypatch.setattr(speaker, '_start', lambda: (_ for _ in ()).throw(OSError('missing runtime')))
+    with pytest.raises(VoicePlaybackError, match='piper_start_failed'):
+        speaker._piper('Hello.')
+
+
 def test_speaker_tone_result_is_local_and_separate_from_speech(monkeypatch, tmp_path):
     import luma.api as api
     def fail():
@@ -173,11 +286,12 @@ def test_speaker_tone_result_is_local_and_separate_from_speech(monkeypatch, tmp_
         assert status['last_preview_error'] is None
         remote = TestClient(client.app, client=('192.168.1.7', 5000))
         assert remote.post('/api/v1/voice/asset/tone').status_code == 403
-        monkeypatch.setattr(api, 'play_test_tone', lambda: None)
+        monkeypatch.setattr(api, 'play_test_tone', lambda: 'system_speaker')
         assert client.post('/api/v1/voice/asset/tone').json() == {
-            'sent': True, 'route': 'luma_speaker'
+            'sent': True, 'route': 'system_speaker'
         }
         assert client.get('/api/v1/voice/asset').json()['last_tone_error'] is None
+        assert client.get('/api/v1/voice/asset').json()['last_tone_route'] == 'system_speaker'
 
 
 def test_reply_engine_is_reported_without_speech_text(tmp_path):
@@ -189,6 +303,11 @@ def test_reply_engine_is_reported_without_speech_text(tmp_path):
         status = client.get('/api/v1/voice/asset').json()
         assert status['last_reply_engine'] == 'fallback'
         assert status['last_reply_error'] == 'speaker_route_unavailable'
+        assert status['last_reply_route'] is None
+        assert client.post('/api/v1/voice/output-report', json={
+            'engine': 'piper', 'route': 'system_speaker', 'error': None,
+        }).status_code == 200
+        assert client.get('/api/v1/voice/asset').json()['last_reply_route'] == 'system_speaker'
         assert client.post('/api/v1/voice/output-report', json={
             'engine': 'piper', 'error': None, 'text': 'private speech',
         }).status_code == 422

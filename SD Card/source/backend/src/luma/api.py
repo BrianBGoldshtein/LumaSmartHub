@@ -41,7 +41,8 @@ from .voice_calibration import VoiceCalibration
 from .voice_asset import (fetch_and_install as fetch_voice_asset,
                           ready as voice_asset_ready, recover_interrupted_repair,
                           voice_status)
-from .voice_speech import VoicePlaybackError, play_preview as play_voice_preview, play_test_tone
+from .voice_speech import (VoicePlaybackError, play_fallback_preview,
+                           play_preview as play_voice_preview, play_test_tone)
 from .voice_health import load_history as load_voice_health, record as record_voice_health
 from .voice_signal import AudioProfile, read_profile
 from . import mic_hardware
@@ -170,7 +171,13 @@ class VoicePreviewResult(BaseModel):
         "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
         "piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
         "piper_model_load_failed", "piper_memory_pressure", "piper_synthesis_failed", "piper_audio_invalid",
+        "fallback_playback_failed",
     ] | None = None
+
+
+class VoicePreviewRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    variant: Literal["piper", "fallback"] = "piper"
 
 
 class VoiceHeartbeat(BaseModel):
@@ -294,7 +301,8 @@ def create_app(
     voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
                                           "last_reply_primary_error": None, "last_reply_at": None,
                                           "last_reply_route": None, "last_preview_error": None,
-                                          "last_preview_route": None, "last_tone_error": None,
+                                          "last_preview_route": None, "last_fallback_error": None,
+                                          "last_fallback_route": None, "last_tone_error": None,
                                           "last_tone_route": None}
     voice_health_history = load_voice_health(storage)
     for event in voice_health_history:
@@ -304,8 +312,12 @@ def create_app(
                                        last_reply_primary_error=event['primary_error'],
                                        last_reply_at=event['at'], last_reply_route=event['route'])
         elif event['kind'] == 'sample':
-            voice_output_status.update(last_preview_error=event['error'],
-                                       last_preview_route=event['route'])
+            if event['engine'] == 'fallback':
+                voice_output_status.update(last_fallback_error=event['error'],
+                                           last_fallback_route=event['route'])
+            else:
+                voice_output_status.update(last_preview_error=event['error'],
+                                           last_preview_route=event['route'])
         elif event['kind'] == 'tone':
             voice_output_status.update(last_tone_error=event['error'],
                                        last_tone_route=event['route'])
@@ -929,8 +941,9 @@ def create_app(
         return {'started': True, 'message': 'Signed offline voice repair queued. The previous voice stays available until verification.'}
 
     @app.post('/api/v1/voice/asset/preview', dependencies=[Depends(local_only)])
-    async def preview_offline_voice_asset() -> dict:
-        if not voice_asset_ready(voice_asset_root):
+    async def preview_offline_voice_asset(payload: VoicePreviewRequest | None = None) -> dict:
+        variant = payload.variant if payload else 'piper'
+        if variant == 'piper' and not voice_asset_ready(voice_asset_root):
             raise HTTPException(409, 'Install the offline voice before previewing it.')
         if voice_preview_lock.locked():
             raise HTTPException(409, 'Voice preview is already playing.')
@@ -944,25 +957,31 @@ def create_app(
                                 voice_agent_status['diagnostic'] is None)
                 if agent_active:
                     job = voice_preview_job
-                    job.update(id=uuid4().hex, event=asyncio.Event(), result=None)
+                    job.update(id=uuid4().hex, event=asyncio.Event(), result=None,
+                               variant=variant)
                     try:
                         await asyncio.wait_for(job['event'].wait(), timeout=120)
                         result = job['result']
                         if not isinstance(result, VoicePreviewResult) or result.error:
-                            raise VoicePlaybackError(result.error if result else 'piper_synthesis_failed')
+                            raise VoicePlaybackError(result.error if result else
+                                                     ('fallback_playback_failed' if variant == 'fallback' else 'piper_synthesis_failed'))
                         route = result.route
                         if route is None:
                             raise VoicePlaybackError('speaker_playback_failed')
                     except asyncio.TimeoutError as exc:
-                        raise VoicePlaybackError('piper_synthesis_failed') from exc
+                        raise VoicePlaybackError('fallback_playback_failed' if variant == 'fallback'
+                                                 else 'piper_synthesis_failed') from exc
                     finally:
                         voice_preview_job.clear()
                 else:
-                    route = await asyncio.to_thread(play_voice_preview, voice_asset_root)
+                    preview = play_fallback_preview if variant == 'fallback' else play_voice_preview
+                    route = await asyncio.to_thread(preview, voice_asset_root)
             except VoicePlaybackError as exc:
-                voice_output_status["last_preview_error"] = exc.code
-                voice_output_status["last_preview_route"] = None
-                record_voice_health(voice_health_history, storage, kind='sample', error=exc.code)
+                status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
+                voice_output_status[f'{status_prefix}_error'] = exc.code
+                voice_output_status[f'{status_prefix}_route'] = None
+                record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
+                                    error=exc.code)
                 messages = {
                     "audio_session_unavailable": "The Pi audio session is not ready. Try again after the desktop finishes starting.",
                     "speaker_route_unavailable": "No safe local speaker was found. Select HDMI or HAT in Device setup.",
@@ -975,23 +994,29 @@ def create_app(
                     "piper_synthesis_failed": "The offline voice worker could not synthesize the sample.",
                     "piper_audio_invalid": "The offline voice produced an invalid audio format.",
                     "synthesis_unavailable": "The local voice could not synthesize the sample.",
+                    "fallback_playback_failed": "The original local voice could not reach the selected speaker.",
                 }
                 raise HTTPException(409, messages.get(exc.code, 'Offline voice preview could not play.')) from exc
             except Exception as exc:
-                voice_output_status["last_preview_error"] = "synthesis_unavailable"
-                voice_output_status["last_preview_route"] = None
-                record_voice_health(voice_health_history, storage, kind='sample',
-                                    error='synthesis_unavailable')
-                raise HTTPException(409, 'The local voice could not synthesize the sample.') from exc
-            voice_output_status["last_preview_error"] = None
-            voice_output_status["last_preview_route"] = route
-            record_voice_health(voice_health_history, storage, kind='sample', route=route)
+                code = 'fallback_playback_failed' if variant == 'fallback' else 'synthesis_unavailable'
+                status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
+                voice_output_status[f'{status_prefix}_error'] = code
+                voice_output_status[f'{status_prefix}_route'] = None
+                record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
+                                    error=code)
+                raise HTTPException(409, 'The local voice could not play the sample.') from exc
+            status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
+            voice_output_status[f'{status_prefix}_error'] = None
+            voice_output_status[f'{status_prefix}_route'] = route
+            record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
+                                route=route)
         return {'played': True, 'route': route}
 
     @app.get('/api/v1/voice/asset/preview/pending', dependencies=[Depends(local_only)])
     async def pending_voice_preview() -> dict[str, str | None]:
         # The agent only receives a nonce; the sample text is fixed locally.
-        return {'request_id': voice_preview_job.get('id')}
+        return {'request_id': voice_preview_job.get('id'),
+                'variant': voice_preview_job.get('variant')}
 
     @app.post('/api/v1/voice/asset/preview/result', dependencies=[Depends(local_only)])
     async def complete_voice_preview(payload: VoicePreviewResult) -> dict[str, bool]:

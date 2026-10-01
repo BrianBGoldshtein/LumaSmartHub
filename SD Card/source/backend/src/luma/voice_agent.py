@@ -206,13 +206,18 @@ def main() -> None:
                         try:
                             pending = client.get('/api/v1/voice/asset/preview/pending').json()
                             request_id = pending.get('request_id')
+                            preview_variant = pending.get('variant')
                         except (httpx.HTTPError, ValueError, KeyError):
                             request_id = None
+                            preview_variant = None
                         if request_id and request_id != handled_preview_id:
                             handled_preview_id = request_id
                             phase('speaking')
                             try:
-                                speaker._piper("Hello, I'm Luma. It's good to see you.")
+                                if preview_variant == 'fallback':
+                                    speaker._fallback("Hello, I'm Luma. It's good to see you.")
+                                else:
+                                    speaker._piper("Hello, I'm Luma. It's good to see you.")
                                 result = {'request_id': request_id, 'route': speaker.last_route}
                             except VoicePlaybackError as exc:
                                 speaker.close()

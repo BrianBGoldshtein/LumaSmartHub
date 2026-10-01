@@ -291,6 +291,10 @@ class OfflineSpeaker:
         else:
             self.last_error = "piper_retry_wait"
             self.last_primary_error = self.failure_cause or self.last_error
+        self._fallback(reply)
+        return "fallback"
+
+    def _fallback(self, reply: str) -> None:
         try:
             generated = subprocess.run(["espeak-ng", "--stdin", "--stdout", "-s", "155"],
                                        input=reply.encode("utf-8"), check=True, timeout=45,
@@ -301,7 +305,6 @@ class OfflineSpeaker:
                 VoicePlaybackError) as exc:
             self.last_error = "fallback_playback_failed"
             raise VoicePlaybackError("fallback_playback_failed") from exc
-        return "fallback"
 
 
 def play_preview(root: Path = ASSET_ROOT) -> str:
@@ -311,6 +314,16 @@ def play_preview(root: Path = ASSET_ROOT) -> str:
     speaker = OfflineSpeaker(root)
     try:
         speaker._piper("Hello, I'm Luma. It's good to see you.")
+        return speaker.last_route or "unknown"
+    finally:
+        speaker.close()
+
+
+def play_fallback_preview(root: Path = ASSET_ROOT) -> str:
+    """Owner-local comparison phrase through the same explicit speaker path."""
+    speaker = OfflineSpeaker(root)
+    try:
+        speaker._fallback("Hello, I'm Luma. It's good to see you.")
         return speaker.last_route or "unknown"
     finally:
         speaker.close()

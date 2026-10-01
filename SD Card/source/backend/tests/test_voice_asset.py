@@ -244,6 +244,42 @@ def test_preview_failure_is_explicit_and_local(monkeypatch, tmp_path):
         assert client.get('/api/v1/voice/asset').json()['last_preview_error'] == 'audio_session_unavailable'
 
 
+def test_original_voice_comparison_uses_own_route_and_history(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: False)
+    monkeypatch.setattr(api, 'play_voice_preview', lambda _root: pytest.fail('Piper preview started'))
+    monkeypatch.setattr(api, 'play_fallback_preview', lambda _root: 'system_speaker')
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        response = client.post('/api/v1/voice/asset/preview', json={'variant': 'fallback'})
+        assert response.status_code == 200
+        assert response.json() == {'played': True, 'route': 'system_speaker'}
+        status = client.get('/api/v1/voice/asset').json()
+        assert status['last_fallback_route'] == 'system_speaker'
+        assert status['last_preview_route'] is None
+        assert status['health_history'][-1]['engine'] == 'fallback'
+        assert client.post('/api/v1/voice/asset/preview', json={'variant': 'unknown'}).status_code == 422
+        remote = TestClient(client.app, client=('192.168.1.7', 5000))
+        assert remote.post('/api/v1/voice/asset/preview',
+                           json={'variant': 'fallback'}).status_code == 403
+
+
+def test_original_voice_failure_does_not_erase_kristin_error(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: True)
+    monkeypatch.setattr(api, 'play_voice_preview',
+                        lambda _root: (_ for _ in ()).throw(VoicePlaybackError('piper_model_load_failed')))
+    monkeypatch.setattr(api, 'play_fallback_preview',
+                        lambda _root: (_ for _ in ()).throw(VoicePlaybackError('fallback_playback_failed')))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        assert client.post('/api/v1/voice/asset/preview').status_code == 409
+        assert client.post('/api/v1/voice/asset/preview',
+                           json={'variant': 'fallback'}).status_code == 409
+        status = client.get('/api/v1/voice/asset').json()
+        assert status['last_preview_error'] == 'piper_model_load_failed'
+        assert status['last_fallback_error'] == 'fallback_playback_failed'
+        assert [event['engine'] for event in status['health_history'][-2:]] == ['piper', 'fallback']
+
+
 def test_preview_reuses_live_voice_worker_without_starting_second_model(monkeypatch, tmp_path):
     import luma.api as api
     monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: True)
@@ -268,6 +304,32 @@ def test_preview_reuses_live_voice_worker_without_starting_second_model(monkeypa
         assert not thread.is_alive()
         assert result[0].json() == {'played': True, 'route': 'luma_speaker'}
         assert client.get('/api/v1/voice/asset/preview/pending').json()['request_id'] is None
+
+
+def test_original_voice_comparison_reuses_live_agent(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'play_fallback_preview',
+                        lambda _root: pytest.fail('second audio session started'))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        assert client.post('/api/v1/voice/heartbeat', json={}).json()['accepted']
+        responses = []
+        thread = threading.Thread(target=lambda: responses.append(client.post(
+            '/api/v1/voice/asset/preview', json={'variant': 'fallback'})))
+        thread.start()
+        pending = {}
+        for _ in range(100):
+            pending = client.get('/api/v1/voice/asset/preview/pending').json()
+            if pending['request_id']:
+                break
+            time.sleep(.01)
+        assert pending['variant'] == 'fallback'
+        assert client.post('/api/v1/voice/asset/preview/result', json={
+            'request_id': pending['request_id'], 'route': 'luma_speaker', 'error': None,
+        }).json() == {'accepted': True}
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert responses[0].json() == {'played': True, 'route': 'luma_speaker'}
+        assert client.get('/api/v1/voice/asset').json()['last_fallback_route'] == 'luma_speaker'
 
 
 def test_live_preview_reports_worker_failure_separately_from_speaker(monkeypatch, tmp_path):

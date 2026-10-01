@@ -22,7 +22,7 @@ from .voice_audio import AudioCaptureError, PulseCapture
 from .voice_speech import (OfflineSpeaker, VoicePlaybackError, play_test_tone,
                            speaker_route_warning)
 from .voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter, pcm_measurements,
-                           read_profile, speech_measurements)
+                           low_frequency_fraction, read_profile, speech_measurements)
 from .voice_wake import command_after_wake, has_wake, read_wake_mode, wake_confirmed
 from .voice_adaptation import PhraseAdaptations
 
@@ -234,6 +234,7 @@ def main() -> None:
                 next_meter = 0.0
                 meter_energy = meter_count = meter_peak = 0
                 meter_floors: list[float] = []
+                meter_low_fractions: list[float] = []
                 utterance: list[bytes] = []
                 seen_drops = recognition_drops = 0
                 early_wake = False
@@ -322,6 +323,7 @@ def main() -> None:
                                 gate.until = 0
                                 meter_energy = meter_count = meter_peak = 0
                                 meter_floors.clear()
+                                meter_low_fractions.clear()
                                 next_meter = now
                                 phase("listening" if fresh["active"] else "idle")
                             next_wake_mode = read_wake_mode(fresh.get('wake_confirmation'))
@@ -382,6 +384,8 @@ def main() -> None:
                         meter_count += frame_samples
                         meter_peak = max(meter_peak, raw_level['peak'])
                         meter_floors.append(raw_level['rms'])
+                        if calibration.get('ambient_remaining', 0) > 0:
+                            meter_low_fractions.append(low_frequency_fraction(raw_chunk))
                         if now >= next_meter and meter_count:
                             level_rms = math.sqrt(meter_energy / meter_count)
                             level_peak = meter_peak
@@ -389,11 +393,14 @@ def main() -> None:
                                 client.post("/api/v1/voice/calibration/level", json={
                                     "session": calibration["session"], "rms": level_rms, "peak": level_peak,
                                     "floor_rms": median(meter_floors) if meter_floors else level_rms,
+                                    "floor_low_frequency_fraction": (median(meter_low_fractions)
+                                                                     if meter_low_fractions else None),
                                 }).raise_for_status()
                             except httpx.HTTPError:
                                 pass
                             meter_energy = meter_count = meter_peak = 0
                             meter_floors.clear()
+                            meter_low_fractions.clear()
                             next_meter = now + 1
                     if calibration['active'] and calibration.get('ambient_remaining', 0) > 0:
                         # The first four seconds measure the room, not words.

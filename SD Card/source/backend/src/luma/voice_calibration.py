@@ -5,11 +5,12 @@ import time
 import uuid
 import math
 import re
+from statistics import median
 
 from .voice import WakeGate, parse_local_command
 from .voice_signal import AudioProfile, derive_profile, room_noise_level
 from .voice_wake import command_after_wake, has_wake
-from .voice_adaptation import LEARNABLE, normalized_phrase
+from .voice_adaptation import LEARNABLE, conflicts_with_existing_command, normalized_phrase
 
 PHRASES = (
     "hey luma set brightness to fifty",
@@ -78,6 +79,7 @@ class VoiceCalibration:
         self.applied_gain: int | None = None
         self.gain_adjustments = 0
         self.room_floors: list[float] = []
+        self.room_low_fractions: list[float] = []
         self.audio_profile: dict | None = None
         self.ambient_until = 0.0
         self.ambient_duration = 0.0
@@ -99,10 +101,12 @@ class VoiceCalibration:
         return raw_wins >= tuned_wins + 2
 
     def measured_profile(self) -> AudioProfile:
-        measured = derive_profile(self.room_floors, self.results)
+        measured = derive_profile(self.room_floors, self.results,
+                                  room_low_fractions=self.room_low_fractions)
         if self.processing_regressed():
             return AudioProfile(1, False, measured.noise_rms,
-                                measured.speech_rms, measured.snr_db, 'bypass')
+                                measured.speech_rms, measured.snr_db, 'bypass',
+                                measured.low_frequency_noise_fraction)
         return measured
 
     def start(self, now: float | None = None, *, ambient_seconds: float = 0) -> dict:
@@ -110,7 +114,9 @@ class VoiceCalibration:
         if not 0 <= ambient_seconds <= 10:
             raise ValueError("Invalid room-noise interval")
         self.session = uuid.uuid4().hex
-        self.until = now + 300
+        # Ten prompts plus two confirmations of a repeatable mishearing can
+        # take longer than five minutes at a normal, unhurried pace.
+        self.until = now + 900
         # The clock starts with the first *actual* microphone level report,
         # not the UI tap. A slow service startup must not skip the baseline.
         self.ambient_duration = ambient_seconds
@@ -139,6 +145,7 @@ class VoiceCalibration:
         self.applied_gain = None
         self.gain_adjustments = 0
         self.room_floors = []
+        self.room_low_fractions = []
         self.audio_profile = None
         self.message = ("Stay quiet while Luma measures room sound."
                         if ambient_seconds else "Wait for the microphone to start, then say the phrase.")
@@ -165,6 +172,8 @@ class VoiceCalibration:
             and self.last_wake_detected and self.last_free_wake_detected and heard_command
             and normalized_phrase(heard_command)
             and PHRASES[self.index].removeprefix('hey luma ') in LEARNABLE
+            and not conflicts_with_existing_command(
+                heard_command, PHRASES[self.index].removeprefix('hey luma '))
             and self.results[-1]['acoustic_speech'] and self.results[-1]['level_ok']
             and not self.results[-1]['matched']
         )
@@ -213,6 +222,8 @@ class VoiceCalibration:
             "applied_gain": self.applied_gain,
             "gain_adjustments": self.gain_adjustments,
             "room_noise_rms": round(noise, 5) if noise is not None else None,
+            "room_low_frequency_fraction": (round(median(self.room_low_fractions), 2)
+                                            if len(self.room_low_fractions) >= 3 else None),
             "audio_profile": self.audio_profile,
             "audio_candidate": candidate,
             "processing_regressed": regressed,
@@ -267,6 +278,7 @@ class VoiceCalibration:
         self.index = self.attempts = 0
         self.results.clear()
         self.room_floors.clear()
+        self.room_low_fractions.clear()
         self.audio_profile = None
         self.ambient_until = 0.0
         self.ambient_pending = self.ambient_duration > 0
@@ -288,13 +300,16 @@ class VoiceCalibration:
                         f"Capture gain adjusted to {gain} of 63; repeat the phrase check.")
 
     def report_level(self, session: str, rms: float, peak: float, now: float | None = None,
-                     *, floor_rms: float | None = None) -> dict:
+                     *, floor_rms: float | None = None,
+                     floor_low_frequency_fraction: float | None = None) -> dict:
         """Keep only short-lived numeric level data while the owner is calibrating."""
         now = time.monotonic() if now is None else now
         if session != self.session or not self.status(now)["active"]:
             raise ValueError("Calibration session has expired")
         if not (0 <= rms <= 1 and 0 <= peak <= 1
-                and (floor_rms is None or 0 <= floor_rms <= 1)):
+                and (floor_rms is None or 0 <= floor_rms <= 1)
+                and (floor_low_frequency_fraction is None
+                     or 0 <= floor_low_frequency_fraction <= 1)):
             raise ValueError("Invalid microphone level")
         if self.ambient_pending:
             self.ambient_until = now + self.ambient_duration
@@ -306,6 +321,9 @@ class VoiceCalibration:
         if floor_rms is not None and (self.ambient_until == 0 or now <= self.ambient_until):
             self.room_floors.append(floor_rms)
             self.room_floors = self.room_floors[-300:]
+            if floor_low_frequency_fraction is not None:
+                self.room_low_fractions.append(floor_low_frequency_fraction)
+                self.room_low_fractions = self.room_low_fractions[-300:]
         return self.status(now)
 
     def submit(self, session: str, text: str, rms: float, peak: float, now: float | None = None,
@@ -426,6 +444,7 @@ class VoiceCalibration:
         self.index = self.attempts = 0
         self.results.clear()
         self.room_floors.clear()
+        self.room_low_fractions.clear()
         self.audio_profile = None
         self.phrase_prompt_at = 0.0
         self.last_heard = ""

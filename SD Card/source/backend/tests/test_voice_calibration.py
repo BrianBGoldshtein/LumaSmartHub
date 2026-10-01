@@ -45,7 +45,7 @@ def test_calibration_rejects_wrong_wake_quiet_clipped_and_expired_samples():
     assert "quiet" in calibration.submit(session, PHRASES[0], .0001, .01, 101)["message"]
     assert "clipping" in calibration.submit(session, PHRASES[0], .1, .999, 101)["message"]
     with pytest.raises(ValueError):
-        calibration.submit(session, PHRASES[0], .1, .5, 401)
+        calibration.submit(session, PHRASES[0], .1, .5, 1001)
     with pytest.raises(ValueError):
         calibration.submit("old-session", PHRASES[0], .1, .5, 101)
 
@@ -108,6 +108,21 @@ def test_ambient_clock_begins_with_real_capture_and_profile_precedes_intents():
     assert result['audio_profile']['quality'] == 'quiet'
     assert result['audio_profile']['gain'] > 1
     assert 'text' not in json.dumps(result['audio_profile'])
+
+
+def test_room_rumble_is_measured_before_words_and_reset_after_gain_change():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .002, .01, now, floor_rms=.002,
+                                 floor_low_frequency_fraction=.65)
+    for phrase in PHRASES:
+        result = calibration.submit(session, phrase, .07, .4, 106)
+    assert result['passed']
+    assert result['room_low_frequency_fraction'] == .65
+    assert result['audio_profile']['high_pass']
+    calibration.record_gain(45)
+    assert calibration.status(107)['room_low_frequency_fraction'] is None
 
 
 def test_unstable_room_baseline_never_saves_audio_amplification():

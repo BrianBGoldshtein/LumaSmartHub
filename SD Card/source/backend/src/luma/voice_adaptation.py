@@ -11,6 +11,8 @@ import hmac
 import re
 import secrets
 
+from .voice import parse_local_command
+
 
 LEARNABLE = frozenset({
     'change theme to arcade',
@@ -41,6 +43,14 @@ def normalized_phrase(text: str) -> str:
     return ' '.join(words)
 
 
+def conflicts_with_existing_command(heard: str, canonical: str) -> bool:
+    """Never train a mishearing that would hijack an existing valid command."""
+    existing = parse_local_command(heard)
+    target = parse_local_command(canonical)
+    return bool(existing and target and
+                (existing.name, existing.value) != (target.name, target.value))
+
+
 class PhraseAdaptations:
     def __init__(self, value: object = None):
         self.salt = secrets.token_hex(16)
@@ -62,11 +72,14 @@ class PhraseAdaptations:
 
     def resolve(self, heard: str) -> str | None:
         phrase = normalized_phrase(heard)
-        return self.entries.get(self._digest(phrase)) if phrase else None
+        learned = self.entries.get(self._digest(phrase)) if phrase else None
+        # Also protects old saved entries if command parsing grows in a later
+        # release. Raw phrases are not retained, so validate at use time.
+        return None if learned and conflicts_with_existing_command(phrase, learned) else learned
 
     def add(self, heard: str, canonical: str) -> bool:
         phrase = normalized_phrase(heard)
-        if not phrase or canonical not in LEARNABLE:
+        if not phrase or canonical not in LEARNABLE or conflicts_with_existing_command(phrase, canonical):
             return False
         digest = self._digest(phrase)
         if digest in self.entries and self.entries[digest] != canonical:

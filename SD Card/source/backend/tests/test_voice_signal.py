@@ -4,7 +4,8 @@ import struct
 import pytest
 
 from luma.voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter,
-                               derive_profile, pcm_measurements, read_profile, room_noise_level,
+                               derive_profile, low_frequency_fraction, pcm_measurements,
+                               read_profile, room_noise_level,
                                speech_measurements)
 
 
@@ -84,6 +85,37 @@ def test_dc_bias_triggers_high_pass_without_removing_speech():
     first = processor.process(biased)
     second = processor.process(biased)
     assert pcm_measurements(second)['dc'] < pcm_measurements(first)['dc']
+
+
+def test_room_rumble_selects_high_pass_but_higher_frequency_noise_does_not():
+    def tone(hz: int) -> bytes:
+        return pcm(*(round(1000 * math.sin(2 * math.pi * hz * index / 16000))
+                     for index in range(4000)))
+
+    rumble = low_frequency_fraction(tone(60))
+    higher = low_frequency_fraction(tone(500))
+    assert rumble > .30
+    assert higher < .10
+    speech = sample_rows(rms=.07, peak=.4)
+    selected = derive_profile([.002] * 4, speech,
+                              room_low_fractions=[rumble] * 4)
+    ignored = derive_profile([.002] * 4, speech,
+                             room_low_fractions=[higher] * 4)
+    assert selected.high_pass and selected.gain == 1
+    assert not ignored.high_pass
+    assert read_profile(selected.public()).high_pass
+    assert read_profile({**selected.public(), 'low_frequency_noise_fraction': 2}).quality == 'unmeasured'
+
+
+def test_room_rumble_does_not_override_noisy_or_clipped_source():
+    noisy = derive_profile([.02] * 4, sample_rows(rms=.05),
+                           room_low_fractions=[.8] * 4)
+    clipped = derive_profile([.002] * 4, sample_rows(peak=.99, clipped=.01),
+                             room_low_fractions=[.8] * 4)
+    assert noisy.quality == 'noisy' and not noisy.high_pass
+    assert clipped.quality == 'clipped' and not clipped.high_pass
+    with pytest.raises(ValueError):
+        low_frequency_fraction(b'\x01')
 
 
 def test_processing_is_bounded_and_default_is_bit_identical():

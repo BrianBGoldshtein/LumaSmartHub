@@ -221,6 +221,7 @@ class CalibrationLevel(BaseModel):
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
     floor_rms: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    floor_low_frequency_fraction: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
 
 
 class CalibrationSaveAudio(BaseModel):
@@ -858,7 +859,7 @@ def create_app(
         saved = False
         if confirmations >= 2:
             if not phrase_adaptations.add(heard, canonical):
-                calibration.message = 'Personal phrase limit reached; no correction was saved.'
+                calibration.message = 'That correction conflicts with a supported command or the personal phrase limit; nothing was saved.'
                 raise HTTPException(409, calibration.message)
             storage.set_cache('voice', 'phrase_adaptations', phrase_adaptations.public())
             saved = True
@@ -926,7 +927,8 @@ def create_app(
     async def calibration_level(payload: CalibrationLevel) -> dict:
         try:
             calibration.report_level(payload.session, payload.rms, payload.peak,
-                                     floor_rms=payload.floor_rms)
+                                     floor_rms=payload.floor_rms,
+                                     floor_low_frequency_fraction=payload.floor_low_frequency_fraction)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         return calibration_payload()

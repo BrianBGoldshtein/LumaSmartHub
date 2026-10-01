@@ -168,7 +168,7 @@ class VoiceCalibration:
         if .005 <= peak < .5 and rms < .002:
             if self.room_floors:
                 floor = sorted(self.room_floors)[len(self.room_floors) // 2]
-                if floor >= max(.004, rms / 3):
+                if floor >= rms / 3:
                     return 0  # Amplifying this input would mostly raise noise.
             return 4
         return 0

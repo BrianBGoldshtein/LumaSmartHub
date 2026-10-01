@@ -245,6 +245,12 @@ def test_hardware_gain_does_not_amplify_a_low_signal_to_noise_room():
     for now in (101, 102, 103):
         calibration.report_level(session, .009, .08, now, floor_rms=.008)
     assert calibration.gain_step(.001, .05) == 0
+    # A low *absolute* noise floor can still have poor SNR. The previous
+    # fixed .004 cutoff mistakenly treated it as safe to amplify.
+    calibration.room_floors[:] = [.0008, .0009, .001]
+    assert calibration.gain_step(.001, .05) == 0
+    calibration.room_floors[:] = [.0001, .0002, .0002]
+    assert calibration.gain_step(.001, .05) == 4
 
 
 def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):

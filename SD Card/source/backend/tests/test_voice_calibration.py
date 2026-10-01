@@ -86,6 +86,31 @@ def test_audio_candidate_is_derived_even_when_no_words_are_understood():
     assert all(item['acoustic_speech'] and not item['matched'] for item in status['results'])
 
 
+def test_raw_recognition_wins_twice_and_disables_harmful_trial():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for now in (105, 106, 107):
+        initial = calibration.submit(session, '', .025, .25, now)
+    assert initial['audio_candidate']['gain'] > 1
+    for now in (108, 109):
+        outcome = calibration.submit(session, '', .025, .25, now,
+                                     free_text='unrelated words',
+                                     raw_free_text=PHRASES[0], raw_compared=True)
+    assert outcome['processing_regressed']
+    assert outcome['audio_candidate']['quality'] == 'bypass'
+    assert outcome['audio_candidate']['gain'] == 1
+    assert outcome['audio_candidate']['snr_db'] is not None
+    assert 'Untouched audio' in outcome['message']
+    assert outcome['last_raw_heard'] == PHRASES[0]
+    assert all('raw_free_text' not in row for row in outcome['results'])
+    for phrase in PHRASES:
+        finished = calibration.submit(session, phrase, .025, .25, 110)
+    assert finished['passed']
+    assert finished['audio_profile']['quality'] == 'bypass'
+
+
 def test_calibration_shows_raw_decoder_evidence_and_never_passes_a_conflict():
     calibration = VoiceCalibration()
     session = calibration.start(100)["session"]
@@ -165,6 +190,24 @@ def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():
     assert calibration.gain_step(.0001, .001) == 0  # absent route, not low gain
     calibration.cancel()
     assert calibration.status(102)["last_heard"] == ""
+
+
+def test_hardware_gain_change_restarts_room_baseline_and_discards_old_acoustics():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    for now in (101, 102, 103, 104, 105):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    assert calibration.submit(session, PHRASES[0], .025, .25, 106)['completed'] == 1
+    assert calibration.room_floors and calibration.results
+    calibration.record_gain(43)
+    restarted = calibration.status(107)
+    assert restarted['completed'] == restarted['attempts'] == 0
+    assert restarted['ambient_remaining'] == 4
+    assert restarted['audio_candidate'] is None
+    assert restarted['room_noise_rms'] is None
+    assert restarted['gain_adjustments'] == 1
+    assert restarted['last_heard'] == ''
+    assert calibration.submit(session, PHRASES[0], .025, .25, 107)['attempts'] == 0
 
 
 def test_hardware_gain_does_not_amplify_a_low_signal_to_noise_room():
@@ -340,6 +383,35 @@ def test_owner_can_save_clean_audio_tuning_before_any_phrase_matches(tmp_path, m
         profile = app.state.luma.storage.get_cache('voice', 'audio_profile')
         assert profile['gain'] > 1 and profile['quality'] == 'quiet'
         assert 'hey luma' not in json.dumps(profile)
+
+
+def test_regressed_audio_trial_cannot_be_saved(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(4):
+            client.post('/api/v1/voice/calibration/level', json={
+                'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
+            })
+        for _ in range(3):
+            client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'rms': .025, 'peak': .25,
+            })
+        for _ in range(2):
+            result = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'free_text': 'unrelated',
+                'raw_free_text': PHRASES[0], 'raw_compared': True,
+                'rms': .025, 'peak': .25,
+            })
+        assert result.json()['processing_regressed']
+        assert client.post('/api/v1/voice/calibration/save-audio', json={
+            'session': session,
+        }).status_code == 409
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') is None
 
 
 def test_command_grammar_covers_supported_controls_and_unknown_audio():

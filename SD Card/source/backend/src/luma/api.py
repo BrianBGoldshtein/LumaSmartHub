@@ -177,6 +177,8 @@ class CalibrationSample(BaseModel):
     session: str = Field(max_length=64)
     text: str = Field(max_length=1000)
     free_text: str = Field(default="", max_length=1000)
+    raw_free_text: str = Field(default="", max_length=1000)
+    raw_compared: bool = Field(default=False, strict=True)
     selected_text: str | None = Field(default=None, max_length=1000)
     selection: Literal["", "constrained", "free", "agree", "free_query", "conflict", "negated", "unmatched"] = ""
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
@@ -825,6 +827,8 @@ def create_app(
         try:
             result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak,
                                         free_text=payload.free_text,
+                                        raw_free_text=payload.raw_free_text,
+                                        raw_compared=payload.raw_compared,
                                         selected_text=payload.selected_text,
                                         selection=payload.selection, dc=payload.dc,
                                         clipped_fraction=payload.clipped_fraction)

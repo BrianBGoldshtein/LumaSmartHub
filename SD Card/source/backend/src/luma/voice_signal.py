@@ -79,6 +79,14 @@ def pcm_measurements(pcm: bytes) -> dict[str, float]:
             "clipped_fraction": clipped / count}
 
 
+def room_noise_level(floors: list[float]) -> float | None:
+    """Use the upper quartile of quiet-room intervals, not their best moment."""
+    valid = sorted(value for value in floors if math.isfinite(value) and 0 < value <= 1)
+    if not valid:
+        return None
+    return valid[math.ceil(.75 * len(valid)) - 1]
+
+
 def derive_profile(room_floors: list[float], speech_samples: list[dict]) -> AudioProfile:
     """Choose gentle conditioning only from a clean, complete calibration.
 
@@ -89,17 +97,21 @@ def derive_profile(room_floors: list[float], speech_samples: list[dict]) -> Audi
     # Acoustic evidence must not depend on Vosk hearing words or the command
     # parser accepting an intent: the point is to help those earlier stages.
     valid = [item for item in speech_samples if item.get("acoustic_speech", True) and
-             .0005 <= item.get("rms", 0) <= 1 and .005 < item.get("peak", 0) < .995]
-    floors = [value for value in room_floors if 0 < value <= 1]
+             .0005 <= item.get("rms", 0) <= 1 and .005 < item.get("peak", 0) <= 1]
+    floors = [value for value in room_floors if math.isfinite(value) and 0 < value <= 1]
     if len(valid) < 3 or len(floors) < 3:
         return AudioProfile(quality="bypass")
-    noise = median(sorted(floors)[:max(3, len(floors) // 2)])
+    noise = room_noise_level(floors)
+    assert noise is not None  # At least three valid floors above.
     speech = median(item["rms"] for item in valid)
     peak = median(item["peak"] for item in valid)
     clipped = max(item.get("clipped_fraction", 0) for item in valid)
     dc = median(item.get("dc", 0) for item in valid)
     snr = 20 * math.log10(max(speech, .00001) / max(noise, .00001))
-    if clipped > .002 or peak >= .95:
+    # One damaged spoken sample is enough to reject amplification. A median
+    # peak would hide intermittent clipping, and filtering clipped rows out
+    # altogether would accidentally call the remaining phrases "clean".
+    if clipped > .002 or any(item["peak"] >= .95 for item in valid):
         return AudioProfile(1, False, noise, speech, snr, "clipped")
     if snr < 10 or noise >= .012:
         return AudioProfile(1, False, noise, speech, snr, "noisy")

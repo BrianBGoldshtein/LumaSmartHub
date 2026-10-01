@@ -4,7 +4,7 @@ import struct
 import pytest
 
 from luma.voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter,
-                               derive_profile, pcm_measurements, read_profile)
+                               derive_profile, pcm_measurements, read_profile, room_noise_level)
 
 
 def pcm(*samples: int) -> bytes:
@@ -35,10 +35,17 @@ def test_profile_amplifies_only_clean_quiet_speech():
     assert noisy.quality == 'noisy' and noisy.gain == 1
     clipped = derive_profile([.001] * 5, sample_rows(peak=.97, clipped=.01))
     assert clipped.quality == 'clipped' and clipped.gain == 1
+    intermittently_clipped = sample_rows()
+    intermittently_clipped[4] = {**intermittently_clipped[4], 'peak': 1,
+                                 'clipped_fraction': .01}
+    assert derive_profile([.001] * 5, intermittently_clipped).quality == 'clipped'
     insufficient = derive_profile([.001], sample_rows())
     assert insufficient.quality == 'bypass' and insufficient.gain == 1
     missed_words = [{**item, 'matched': False} for item in sample_rows()]
     assert derive_profile([.001] * 5, missed_words).gain > 1
+    mixed_room = [.001, .001, .025, .025]
+    assert room_noise_level(mixed_room) == .025
+    assert derive_profile(mixed_room, sample_rows()).quality == 'noisy'
 
 
 def test_dc_bias_triggers_high_pass_without_removing_speech():

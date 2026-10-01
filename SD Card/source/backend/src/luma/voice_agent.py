@@ -11,6 +11,7 @@ import atexit
 import signal
 import math
 import re
+from statistics import median
 
 import httpx
 
@@ -109,8 +110,9 @@ def main() -> None:
     def stop(signum, frame):
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, stop)
-    chunks: queue.Queue[bytes | AudioCaptureError | None] = queue.Queue(maxsize=16)
-    # Non-command status calls must not stall a four-second audio queue.
+    chunks: queue.Queue[bytes | AudioCaptureError | None] = queue.Queue(maxsize=24)
+    # Setup-only raw/tuned comparison can briefly use more CPU. Six seconds
+    # of capture buffering is under 200 KiB; a gap still invalidates speech.
     with httpx.Client(base_url="http://127.0.0.1:8742", timeout=1) as client:
         # Optional dependencies and models live outside the API process. Report
         # startup failures through a fixed local code instead of silently
@@ -327,7 +329,7 @@ def main() -> None:
                             try:
                                 client.post("/api/v1/voice/calibration/level", json={
                                     "session": calibration["session"], "rms": level_rms, "peak": level_peak,
-                                    "floor_rms": min(meter_floors) if meter_floors else level_rms,
+                                    "floor_rms": median(meter_floors) if meter_floors else level_rms,
                                 }).raise_for_status()
                             except httpx.HTTPError:
                                 pass
@@ -352,6 +354,12 @@ def main() -> None:
                         # Vosk would never emit an endpoint or any words.
                         text = _unrestricted_transcript(recognizer, spoken)
                         free_text = _unrestricted_transcript(free_recognizer, spoken)
+                        raw_compared = preprocessor.profile.gain > 1 or preprocessor.profile.high_pass
+                        raw_free_text = ""
+                        if raw_compared:
+                            # Reuse the same decoder after its explicit reset;
+                            # setup-only A/B need not load another Vosk model.
+                            raw_free_text = _unrestricted_transcript(free_recognizer, raw_spoken)
                         test_gate = WakeGate(gate.phrase)
                         candidate = test_gate.accept(text, now)
                         if candidate is not None:
@@ -362,11 +370,13 @@ def main() -> None:
                             client.post("/api/v1/voice/calibration/sample", json={
                                 "session": calibration["session"], "text": text,
                                 "free_text": free_text, "selected_text": chosen,
+                                "raw_free_text": raw_free_text, "raw_compared": raw_compared,
                                 "selection": selection,
                                 "rms": signal['rms'], "peak": signal['peak'],
                                 "dc": signal['dc'],
                                 "clipped_fraction": signal['clipped_fraction'],
                             }).raise_for_status()
+                            next_check = 0.0  # A gain change may restart the quiet-room baseline.
                         except httpx.HTTPError:
                             pass
                         continue  # Calibration never executes commands.

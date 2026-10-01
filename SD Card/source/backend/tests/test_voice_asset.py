@@ -306,6 +306,29 @@ def test_piper_start_failure_has_distinct_code(monkeypatch, tmp_path):
         speaker._piper('Hello.')
 
 
+@pytest.mark.parametrize(('marker', 'code'), [
+    (b'NOMOD\n', 'piper_runtime_missing'),
+    (b'MODEL\n', 'piper_model_load_failed'),
+    (b'MEMRY\n', 'piper_memory_pressure'),
+])
+def test_piper_startup_marker_reports_fixed_repair_reason(monkeypatch, tmp_path, marker, code):
+    import luma.voice_speech as speech
+    class Process:
+        stdin = None
+        stdout = None
+        def poll(self):
+            return 5
+        def kill(self):
+            pass
+        def wait(self, **_kwargs):
+            return 5
+    monkeypatch.setattr(speech.subprocess, 'Popen', lambda *_args, **_kwargs: Process())
+    monkeypatch.setattr(speech, '_read_exact', lambda *_args, **_kwargs: marker)
+    with pytest.raises(VoicePlaybackError) as error:
+        OfflineSpeaker(tmp_path)._start()
+    assert error.value.code == code
+
+
 def test_speaker_tone_result_is_local_and_separate_from_speech(monkeypatch, tmp_path):
     import luma.api as api
     def fail():

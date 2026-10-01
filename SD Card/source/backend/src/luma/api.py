@@ -148,13 +148,15 @@ class VoiceOutputReport(BaseModel):
     route: Literal["luma_speaker", "system_speaker"] | None = None
     error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable",
-        "speaker_playback_failed", "piper_start_failed", "piper_synthesis_failed",
+        "speaker_playback_failed", "piper_start_failed", "piper_start_timeout",
+        "piper_runtime_missing", "piper_model_load_failed", "piper_memory_pressure", "piper_synthesis_failed",
         "piper_audio_invalid", "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
         "fallback_playback_failed",
     ] | None = None
     primary_error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
-        "piper_start_failed", "piper_synthesis_failed", "piper_audio_invalid",
+        "piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
+        "piper_model_load_failed", "piper_memory_pressure", "piper_synthesis_failed", "piper_audio_invalid",
         "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
     ] | None = None
 
@@ -165,7 +167,8 @@ class VoicePreviewResult(BaseModel):
     route: Literal["luma_speaker", "system_speaker"] | None = None
     error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
-        "piper_start_failed", "piper_synthesis_failed", "piper_audio_invalid",
+        "piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
+        "piper_model_load_failed", "piper_memory_pressure", "piper_synthesis_failed", "piper_audio_invalid",
     ] | None = None
 
 
@@ -934,6 +937,10 @@ def create_app(
                     "speaker_route_unavailable": "No safe local speaker was found. Select HDMI or HAT in Device setup.",
                     "speaker_playback_failed": "The selected speaker rejected the sample. Check its output and volume.",
                     "piper_start_failed": "The offline voice worker could not start.",
+                    "piper_start_timeout": "The offline voice took too long to start. Try again after the Pi settles.",
+                    "piper_runtime_missing": "The installed neural voice runtime is incomplete. Try Repair installed voice.",
+                    "piper_model_load_failed": "The installed neural voice model could not load. Try Repair installed voice.",
+                    "piper_memory_pressure": "The neural voice stopped under possible memory pressure. Close other apps and retry.",
                     "piper_synthesis_failed": "The offline voice worker could not synthesize the sample.",
                     "piper_audio_invalid": "The offline voice produced an invalid audio format.",
                     "synthesis_unavailable": "The local voice could not synthesize the sample.",

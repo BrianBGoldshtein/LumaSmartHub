@@ -194,11 +194,26 @@ class OfflineSpeaker:
              str(folder / MODEL)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, bufsize=0, close_fds=True)
         try:
-            if _read_exact(process, 6, monotonic() + 45) != b"READY\n":
-                raise ValueError("offline voice worker did not start")
-        except Exception:
-            process.kill()
-            process.wait(timeout=2)
+            marker = _read_exact(process, 6, monotonic() + 45)
+            failures = {b"NOMOD\n": "piper_runtime_missing",
+                        b"MODEL\n": "piper_model_load_failed",
+                        b"MEMRY\n": "piper_memory_pressure"}
+            if marker in failures:
+                raise VoicePlaybackError(failures[marker])
+            if marker != b"READY\n":
+                raise VoicePlaybackError("piper_start_failed")
+        except Exception as exc:
+            exit_code = process.poll()
+            with suppress(OSError):
+                process.kill()
+            with suppress(OSError, subprocess.SubprocessError):
+                process.wait(timeout=2)
+            if isinstance(exc, VoicePlaybackError):
+                raise
+            if isinstance(exc, TimeoutError):
+                raise VoicePlaybackError("piper_start_timeout") from exc
+            if isinstance(exc, EOFError) and exit_code == -9:
+                raise VoicePlaybackError("piper_memory_pressure") from exc
             raise
         self.process = process
         return process
@@ -223,6 +238,8 @@ class OfflineSpeaker:
         env = pulse_playback_environment()
         try:
             process = self.process or self._start()
+        except VoicePlaybackError:
+            raise
         except (OSError, EOFError, ValueError, TimeoutError, subprocess.SubprocessError) as exc:
             raise VoicePlaybackError("piper_start_failed") from exc
         try:
@@ -261,7 +278,9 @@ class OfflineSpeaker:
                 self.last_error = exc.code
                 self.last_primary_error = exc.code
                 self.failure_cause = exc.code
-                if exc.code in {"piper_start_failed", "piper_synthesis_failed", "piper_audio_invalid"}:
+                if exc.code in {"piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
+                                "piper_model_load_failed", "piper_memory_pressure",
+                                "piper_synthesis_failed", "piper_audio_invalid"}:
                     self.close()
                     self.retry_after = monotonic() + 30
                 # A changing/missing speaker is not a broken voice model.

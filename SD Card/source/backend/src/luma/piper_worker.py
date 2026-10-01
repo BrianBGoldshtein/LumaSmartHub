@@ -12,9 +12,6 @@ import struct
 import sys
 import wave
 
-from piper import PiperVoice
-
-
 MAX_TEXT = 500
 MAX_WAV = 10 * 1024 * 1024
 
@@ -22,8 +19,22 @@ MAX_WAV = 10 * 1024 * 1024
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(2)
-    voice = PiperVoice.load(sys.argv[1])
     output = sys.stdout.buffer
+    # Fixed six-byte startup results keep private paths and library tracebacks
+    # out of the local API while distinguishing repairable failure stages.
+    try:
+        from piper import PiperVoice
+    except (ImportError, OSError):
+        output.write(b"NOMOD\n"); output.flush()
+        raise SystemExit(3) from None
+    try:
+        voice = PiperVoice.load(sys.argv[1])
+    except MemoryError:
+        output.write(b"MEMRY\n"); output.flush()
+        raise SystemExit(4) from None
+    except Exception:
+        output.write(b"MODEL\n"); output.flush()
+        raise SystemExit(5) from None
     output.write(b"READY\n")
     output.flush()
     for raw in sys.stdin.buffer:

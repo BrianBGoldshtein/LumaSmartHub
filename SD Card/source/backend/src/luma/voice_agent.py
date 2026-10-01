@@ -79,11 +79,13 @@ def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[byt
 
 
 def call_trial_decoding_payload(constrained_text: str, unrestricted,
-                                spoken: list[bytes], wake_phrase: str) -> dict:
+                                spoken: list[bytes], wake_phrase: str,
+                                *, partial_wake: bool = False) -> dict:
     """Only four booleans leave the audio process during a call trial."""
     proposed = has_wake(constrained_text, wake_phrase)
     free_text = (_unrestricted_transcript(unrestricted, spoken) if proposed else '')
     return {
+        'partial_wake': partial_wake,
         'constrained_wake': proposed,
         'constrained_near_start': wake_near_start(constrained_text, wake_phrase),
         'free_wake': has_wake(free_text, wake_phrase),
@@ -253,6 +255,7 @@ def main() -> None:
                 utterance: list[bytes] = []
                 seen_drops = recognition_drops = 0
                 early_wake = False
+                trial_partial_wake = False
                 while True:
                     now = time.monotonic()
                     if now >= next_heartbeat:
@@ -292,6 +295,7 @@ def main() -> None:
                             utterance.clear()
                             calibration_segmenter.reset()
                             early_wake = False
+                            trial_partial_wake = False
                             preprocessor.reset()
                             phase('listening' if calibration['active'] else 'idle')
                             continue
@@ -321,6 +325,7 @@ def main() -> None:
                             utterance.clear()
                             calibration_segmenter.reset()
                             early_wake = False
+                            trial_partial_wake = False
                             preprocessor.reset()
                             phase('listening' if calibration['active'] else 'idle')
                             continue
@@ -335,6 +340,7 @@ def main() -> None:
                                 utterance.clear()
                                 calibration_segmenter.reset()
                                 early_wake = False
+                                trial_partial_wake = False
                                 gate.until = 0
                                 meter_energy = meter_count = meter_peak = 0
                                 meter_floors.clear()
@@ -352,6 +358,7 @@ def main() -> None:
                                 free_recognizer.Reset()
                                 utterance.clear()
                                 early_wake = False
+                                trial_partial_wake = False
                                 gate.until = 0
                                 phase('idle')
                             next_wake_mode = read_wake_mode(fresh.get('wake_confirmation'))
@@ -361,6 +368,7 @@ def main() -> None:
                                 free_recognizer.Reset()
                                 utterance.clear()
                                 early_wake = False
+                                trial_partial_wake = False
                                 gate.until = 0
                                 phase("listening" if fresh["active"] else "idle")
                             adaptations = PhraseAdaptations(fresh.get('phrase_adaptations'))
@@ -372,6 +380,7 @@ def main() -> None:
                                 utterance.clear()
                                 calibration_segmenter.reset()
                                 early_wake = False
+                                trial_partial_wake = False
                                 gate.until = 0
                                 _discard_pending_audio(chunks)
                             calibration = fresh
@@ -400,6 +409,7 @@ def main() -> None:
                         utterance.clear()
                         calibration_segmenter.reset()
                         early_wake = False
+                        trial_partial_wake = False
                         preprocessor.reset()
                         _discard_pending_audio(chunks)
                         phase("listening" if calibration["active"] else "idle")
@@ -465,6 +475,9 @@ def main() -> None:
                     if len(utterance)>36:
                         utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
                     if not recognizer.AcceptWaveform(chunk):
+                        if calibration.get('call_trial', {}).get('active') and not trial_partial_wake:
+                            trial_partial_wake = partial_has_wake(
+                                recognizer.PartialResult(), gate.phrase)
                         if (not calibration["active"] and not calibration.get('call_trial', {}).get('active')
                                 and wake_mode == 'standard' and not early_wake
                                 and partial_has_wake(recognizer.PartialResult(), gate.phrase)):
@@ -482,7 +495,9 @@ def main() -> None:
                     trial = calibration.get('call_trial') or {}
                     if trial.get('active'):
                         observation = call_trial_decoding_payload(
-                            text, free_recognizer, spoken, gate.phrase)
+                            text, free_recognizer, spoken, gate.phrase,
+                            partial_wake=trial_partial_wake)
+                        trial_partial_wake = False
                         try:
                             client.post('/api/v1/voice/call-trial/observation', json={
                                 'session': trial['session'], **observation,

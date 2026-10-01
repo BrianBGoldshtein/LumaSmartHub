@@ -234,6 +234,7 @@ class CalibrationSaveAudio(BaseModel):
 class CallTrialObservation(BaseModel):
     model_config = {"extra": "forbid"}
     session: str = Field(pattern=r"^[0-9a-f]{32}$")
+    partial_wake: bool = Field(strict=True)
     constrained_wake: bool = Field(strict=True)
     constrained_near_start: bool = Field(strict=True)
     free_wake: bool = Field(strict=True)
@@ -880,7 +881,8 @@ def create_app(
     async def voice_call_trial_observation(payload: CallTrialObservation) -> dict:
         try:
             return call_trial.record(
-                payload.session, constrained_wake=payload.constrained_wake,
+                payload.session, partial_wake=payload.partial_wake,
+                constrained_wake=payload.constrained_wake,
                 constrained_near_start=payload.constrained_near_start,
                 free_wake=payload.free_wake,
                 free_near_start=payload.free_near_start)

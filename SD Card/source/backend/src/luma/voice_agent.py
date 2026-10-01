@@ -197,7 +197,13 @@ def main() -> None:
                         response.raise_for_status()
                         reply = response.json()["message"]
                         phase("speaking")
-                        speaker.speak(reply)
+                        engine = speaker.speak(reply)
+                        try:
+                            client.post("/api/v1/voice/output-report", json={
+                                "engine": engine, "error": speaker.last_error,
+                            }).raise_for_status()
+                        except httpx.HTTPError:
+                            pass
                     except (httpx.HTTPError, subprocess.SubprocessError, OSError):
                         phase("error")
                     finally:

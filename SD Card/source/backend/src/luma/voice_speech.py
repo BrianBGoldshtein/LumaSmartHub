@@ -1,4 +1,4 @@
-"""Warm offline Piper replies with bounded espeak-ng fallback."""
+"""Warm offline Piper replies with explicit user-session playback diagnostics."""
 from __future__ import annotations
 
 import io
@@ -17,6 +17,32 @@ from .voice_asset import ASSET_ROOT, MODEL, VOICE_ID, ready
 
 
 MAX_WAV = 10 * 1024 * 1024
+
+
+class VoicePlaybackError(RuntimeError):
+    """A fixed, non-private reason suitable for the local Voice settings page."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def pulse_playback_environment() -> dict[str, str]:
+    """System API and user voice service must reach the same PipeWire socket.
+
+    A system service running as `luma` does not inherit the graphical user's
+    XDG_RUNTIME_DIR. Never fall through to an arbitrary default audio server.
+    """
+    env = dict(os.environ)
+    if sys.platform == "linux":
+        runtime = Path(f"/run/user/{os.getuid()}")
+        socket = runtime / "pulse/native"
+        if not socket.is_socket():
+            raise VoicePlaybackError("audio_session_unavailable")
+        env["XDG_RUNTIME_DIR"] = str(runtime)
+        env["PULSE_SERVER"] = f"unix:{socket}"
+    env["PULSE_SINK"] = "luma_speaker"
+    return env
 
 
 def wav_to_pcm(data: bytes) -> bytes:
@@ -47,6 +73,7 @@ class OfflineSpeaker:
         self.root = root
         self.process: subprocess.Popen | None = None
         self.retry_after = 0.0
+        self.last_error: str | None = None
 
     def close(self) -> None:
         process = self.process
@@ -80,33 +107,45 @@ class OfflineSpeaker:
         return process
 
     def _piper(self, reply: str) -> None:
-        process = self.process or self._start()
-        if process.poll() is not None or process.stdin is None:
-            raise EOFError("offline voice worker stopped")
-        process.stdin.write(json.dumps({"text": reply}, ensure_ascii=True).encode("ascii") + b"\n")
-        process.stdin.flush()
-        deadline = monotonic() + 60
-        size = struct.unpack(">I", _read_exact(process, 4, deadline))[0]
-        if not 44 < size <= MAX_WAV:
-            raise ValueError("offline voice worker returned no audio")
-        pcm = wav_to_pcm(_read_exact(process, size, deadline))
-        subprocess.run(["paplay", "--raw", "--format=s16le", "--rate=22050", "--channels=1"],
-                       input=pcm, check=True, timeout=90, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL,
-                       env={**os.environ, "PULSE_SINK": "luma_speaker"})
+        env = pulse_playback_environment()
+        try:
+            process = self.process or self._start()
+            if process.poll() is not None or process.stdin is None:
+                raise EOFError("offline voice worker stopped")
+            process.stdin.write(json.dumps({"text": reply}, ensure_ascii=True).encode("ascii") + b"\n")
+            process.stdin.flush()
+            deadline = monotonic() + 60
+            size = struct.unpack(">I", _read_exact(process, 4, deadline))[0]
+            if not 44 < size <= MAX_WAV:
+                raise ValueError("offline voice worker returned no audio")
+            pcm = wav_to_pcm(_read_exact(process, size, deadline))
+        except (OSError, EOFError, ValueError, wave.Error, TimeoutError, subprocess.SubprocessError) as exc:
+            raise VoicePlaybackError("synthesis_unavailable") from exc
+        try:
+            subprocess.run(["paplay", "--raw", "--format=s16le", "--rate=22050", "--channels=1"],
+                           input=pcm, check=True, timeout=90, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, env=env)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise VoicePlaybackError("speaker_route_unavailable") from exc
 
     def speak(self, reply: str) -> str:
         # The API already bounds answers; guard the worker regardless.
         reply = reply[:500]
         if not reply:
             return "silent"
+        self.last_error = None
         if sys.platform == "linux" and ready(self.root) and monotonic() >= self.retry_after:
             try:
                 self._piper(reply)
                 return "piper"
-            except (OSError, EOFError, ValueError, wave.Error, TimeoutError, subprocess.SubprocessError):
+            except VoicePlaybackError as exc:
+                self.last_error = exc.code
                 self.close()
                 self.retry_after = monotonic() + 120
+        elif not ready(self.root):
+            self.last_error = "voice_asset_unavailable"
+        else:
+            self.last_error = "piper_retry_wait"
         subprocess.run(["espeak-ng", "--stdin", "-s", "155"], input=reply, text=True,
                        check=True, timeout=45, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL)

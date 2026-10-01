@@ -5,7 +5,8 @@ type Calibration={active:boolean;passed:boolean;phrase:string|null;completed:num
 type MicHardware={available:boolean;gain:number;max_gain:number;capture_on:boolean;route_ready:boolean};
 type VoiceGroup={title:string;examples:string[]};
 type PhrasePreview={understood:boolean;command:string|null;intent:string|null;model_suggestion:string|null;model_confidence:number|null;executed:false};
-type VoiceAsset={phase:"checking"|"downloading"|"verifying"|"installing"|"ready"|"failed";message:string;downloaded_bytes?:number;total_bytes?:number};
+type VoiceAsset={phase:"checking"|"downloading"|"verifying"|"installing"|"ready"|"failed";message:string;downloaded_bytes?:number;total_bytes?:number;last_reply_engine?:"piper"|"fallback"|"silent"|null;last_reply_error?:string|null;last_preview_error?:string|null};
+const outputErrorCopy:Record<string,string>={audio_session_unavailable:"The desktop audio session was unavailable.",speaker_route_unavailable:"The selected speaker route failed.",synthesis_unavailable:"The local voice could not generate audio.",voice_asset_unavailable:"Kristin is not installed yet.",piper_retry_wait:"Kristin is cooling down after an error; Luma will retry."};
 const diagnosticCopy:Record<string,string>={
   recognizer_unavailable:"The offline speech engine could not start. Reinstall or update Luma, then retry.",
   model_unavailable:"Luma’s local speech model is missing or could not be loaded. Reinstall or update Luma, then retry.",
@@ -25,6 +26,7 @@ export function VoiceSetup({demo}:{demo:boolean}){
   const [library,setLibrary]=useState<VoiceGroup[]>(demo?previewLibrary:[]);
   const [phrase,setPhrase]=useState("What's the time?"),[phrasePreview,setPhrasePreview]=useState<PhrasePreview>(),[phraseError,setPhraseError]=useState("");
   const [voiceAsset,setVoiceAsset]=useState<VoiceAsset|undefined>(demo?{phase:"ready",message:"Preview only — offline voice is not installed here."}:undefined);
+  const [sampleMessage,setSampleMessage]=useState("");
   useEffect(()=>{if(!demo)request('voice/library').then(data=>setLibrary(data.groups)).catch(()=>setLibrary([]));},[demo]);
   useSetupActivity(busy || !!status?.active);
   useEffect(()=>{if(!demo)request("settings").then(data=>setEnabled(data.voice_enabled)).catch(()=>setMessage("Device connection unavailable."));},[demo]);
@@ -47,9 +49,12 @@ export function VoiceSetup({demo}:{demo:boolean}){
   return <section><h2>Hey Luma</h2><p>Your local voice controls are on by default. Say “Hey Luma” followed by a command. Audio stays in memory on this Pi; it is not saved or uploaded. You can turn the microphone off below; that choice survives restarts.</p>
     <button disabled={busy || enabled===null} onClick={()=>act(async()=>{if(!demo)await request("settings",{voice_enabled:!enabled});setEnabled(!enabled);setStatus(undefined);})}>{enabled===null?"Loading microphone setting…":enabled?"Turn microphone off":"Enable local voice"}</button>
     <div className="voice-asset-status"><strong>Spoken replies</strong>
-      <p>{voiceAsset?.phase==="ready"?(demo?voiceAsset.message:"Kristin · local neural voice ready"):(voiceAsset?.message||"Checking the local speech voice…")}</p>
+      <p>{voiceAsset?.phase==="ready"?(demo?voiceAsset.message:"Kristin installed · speaker playback not yet confirmed"):(voiceAsset?.message||"Checking the local speech voice…")}</p>
+      {!demo&&voiceAsset?.last_reply_engine&&<p role="status">Last spoken reply: {voiceAsset.last_reply_engine==="piper"?"Kristin":voiceAsset.last_reply_engine==="fallback"?"original fallback voice":"silent"}{voiceAsset.last_reply_error?` · ${outputErrorCopy[voiceAsset.last_reply_error]??"Playback needs checking."}`:""}</p>}
+      {!demo&&voiceAsset?.last_preview_error&&<p role="status">Sample check: {outputErrorCopy[voiceAsset.last_preview_error]??"Playback needs checking."}</p>}
       {voiceAsset?.phase==="downloading"&&!!voiceAsset.total_bytes&&<div className="voice-meter" role="progressbar" aria-label="Offline voice download" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(100*(voiceAsset.downloaded_bytes||0)/voiceAsset.total_bytes)}><span style={{width:`${Math.round(100*(voiceAsset.downloaded_bytes||0)/voiceAsset.total_bytes)}%`}}/></div>}
-      {voiceAsset?.phase==="ready"&&!demo&&<button disabled={busy} onClick={()=>act(async()=>{await request("voice/asset/preview",{});setMessage("Voice preview played through Luma’s speaker.");})}>Hear a sample</button>}
+      {voiceAsset?.phase==="ready"&&!demo&&<button disabled={busy} onClick={()=>{setBusy(true);setSampleMessage("");void request("voice/asset/preview",{}).then(()=>setSampleMessage("Sample sent to Luma’s speaker. Did you hear it?")).catch(error=>setSampleMessage(error instanceof Error?error.message:"Sample playback failed.")).finally(()=>setBusy(false));}}>Hear a sample</button>}
+      {sampleMessage&&<p role="status">{sampleMessage}</p>}
       {voiceAsset?.phase==="failed"&&!demo&&<button disabled={busy} onClick={()=>act(async()=>{setVoiceAsset(await request("voice/asset/retry",{}));setMessage("Luma will retry the signed offline voice download.");})}>Retry voice download</button>}
       {voiceAsset?.phase!=="ready"&&<small>Voice commands remain available with the original local voice while this optional model is prepared. No speech is uploaded.</small>}
     </div>

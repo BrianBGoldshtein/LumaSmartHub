@@ -39,7 +39,7 @@ from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
 from .voice_asset import fetch_and_install as fetch_voice_asset, ready as voice_asset_ready, voice_status
-from .voice_speech import play_preview as play_voice_preview
+from .voice_speech import VoicePlaybackError, play_preview as play_voice_preview
 from . import mic_hardware
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
@@ -139,6 +139,15 @@ class VoiceDiagnostic(BaseModel):
     ]
 
 
+class VoiceOutputReport(BaseModel):
+    model_config = {"extra": "forbid"}
+    engine: Literal["piper", "fallback", "silent"]
+    error: Literal[
+        "audio_session_unavailable", "speaker_route_unavailable",
+        "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
+    ] | None = None
+
+
 class CalibrationSample(BaseModel):
     session: str = Field(max_length=64)
     text: str = Field(max_length=1000)
@@ -233,6 +242,8 @@ def create_app(
     voice_asset_retry = asyncio.Event()
     voice_preview_lock = asyncio.Lock()
     voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None}
+    voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
+                                          "last_preview_error": None}
     google_sync_lock = asyncio.Lock()
     google_status: dict[str, Any] = {"last_synced": None, "error": None}
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
@@ -682,6 +693,14 @@ def create_app(
         voice_agent_status["last_seen"] = monotonic()
         return {"accepted": True}
 
+    @app.post("/api/v1/voice/output-report", dependencies=[Depends(local_only)])
+    async def voice_output_report(payload: VoiceOutputReport) -> dict[str, bool]:
+        if not service.settings.voice_enabled:
+            return {"accepted": False}
+        voice_output_status.update(last_reply_engine=payload.engine,
+                                   last_reply_error=payload.error)
+        return {"accepted": True}
+
     def calibration_payload() -> dict[str, Any]:
         result = calibration.status()
         seen = voice_agent_status["last_seen"]
@@ -744,7 +763,7 @@ def create_app(
 
     @app.get('/api/v1/voice/asset', dependencies=[Depends(local_only)])
     async def offline_voice_asset() -> dict:
-        return voice_status(voice_asset_root)
+        return {**voice_status(voice_asset_root), **voice_output_status}
 
     @app.post('/api/v1/voice/asset/retry', dependencies=[Depends(local_only)])
     async def retry_offline_voice_asset() -> dict:
@@ -762,8 +781,18 @@ def create_app(
         async with voice_preview_lock:
             try:
                 await asyncio.to_thread(play_voice_preview, voice_asset_root)
+            except VoicePlaybackError as exc:
+                voice_output_status["last_preview_error"] = exc.code
+                messages = {
+                    "audio_session_unavailable": "The Pi audio session is not ready. Try again after the desktop finishes starting.",
+                    "speaker_route_unavailable": "Luma could not send the sample to its selected speaker.",
+                    "synthesis_unavailable": "The local voice could not synthesize the sample.",
+                }
+                raise HTTPException(409, messages.get(exc.code, 'Offline voice preview could not play.')) from exc
             except Exception as exc:
-                raise HTTPException(409, 'Offline voice preview could not play on the selected speaker.') from exc
+                voice_output_status["last_preview_error"] = "synthesis_unavailable"
+                raise HTTPException(409, 'The local voice could not synthesize the sample.') from exc
+            voice_output_status["last_preview_error"] = None
         return {'played': True}
 
     @app.post('/api/v1/voice/phrase-preview', dependencies=[Depends(local_only)])

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import struct
+from types import SimpleNamespace
 import wave
 import zipfile
 
@@ -14,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from luma.api import create_app
 from luma.voice_asset import CONFIG, MODEL, VOICE_ID, VOICE_ASSET_NAME, VOICE_RELEASE_URL, VoiceAssetError, fetch_and_install, install_asset, ready, verify_and_extract, voice_status
-from luma.voice_speech import wav_to_pcm
+from luma.voice_speech import OfflineSpeaker, VoicePlaybackError, pulse_playback_environment, wav_to_pcm
 
 
 def make_asset(tmp_path: Path, *, corrupt=False, extra=None):
@@ -82,6 +83,67 @@ def test_voice_status_and_preview_are_local_and_do_not_install_automatically(tmp
         assert client.post('/api/v1/voice/asset/preview').status_code == 409
         assert client.post('/api/v1/voice/asset/retry').status_code == 409
     assert not (tmp_path / 'voice-assets').exists()
+
+
+def test_system_service_resolves_the_users_pulse_socket(monkeypatch):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'sys', SimpleNamespace(platform='linux'))
+    monkeypatch.setattr(speech, 'os', SimpleNamespace(environ={'PATH': '/usr/bin'}, getuid=lambda: 1007))
+    monkeypatch.setattr(Path, 'is_socket', lambda self: True)
+    env = pulse_playback_environment()
+    assert env['XDG_RUNTIME_DIR'] == '/run/user/1007'
+    assert env['PULSE_SERVER'] == 'unix:/run/user/1007/pulse/native'
+    assert env['PULSE_SINK'] == 'luma_speaker'
+    monkeypatch.setattr(Path, 'is_socket', lambda self: False)
+    with pytest.raises(VoicePlaybackError, match='audio_session_unavailable'):
+        pulse_playback_environment()
+
+
+def test_piper_failure_reports_actual_fallback_engine(monkeypatch, tmp_path):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'sys', SimpleNamespace(platform='linux'))
+    monkeypatch.setattr(speech, 'ready', lambda _root: True)
+    calls = []
+    monkeypatch.setattr(speech.subprocess, 'run', lambda *args, **kwargs: calls.append((args, kwargs)))
+    speaker = OfflineSpeaker(tmp_path)
+    def fail(_reply):
+        raise VoicePlaybackError('speaker_route_unavailable')
+    monkeypatch.setattr(speaker, '_piper', fail)
+    assert speaker.speak('Hello.') == 'fallback'
+    assert speaker.last_error == 'speaker_route_unavailable'
+    assert calls[0][0][0][0] == 'espeak-ng'
+    assert speaker.speak('Again.') == 'fallback'
+    assert speaker.last_error == 'piper_retry_wait'
+
+
+def test_preview_failure_is_explicit_and_local(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: True)
+    monkeypatch.setattr(api, 'voice_status', lambda _root: {'phase': 'ready', 'message': 'Installed.'})
+    def fail(_root):
+        raise VoicePlaybackError('audio_session_unavailable')
+    monkeypatch.setattr(api, 'play_voice_preview', fail)
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        response = client.post('/api/v1/voice/asset/preview')
+        assert response.status_code == 409
+        assert 'audio session' in response.json()['detail']
+        assert client.get('/api/v1/voice/asset').json()['last_preview_error'] == 'audio_session_unavailable'
+
+
+def test_reply_engine_is_reported_without_speech_text(tmp_path):
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        response = client.post('/api/v1/voice/output-report', json={
+            'engine': 'fallback', 'error': 'speaker_route_unavailable',
+        })
+        assert response.json() == {'accepted': True}
+        status = client.get('/api/v1/voice/asset').json()
+        assert status['last_reply_engine'] == 'fallback'
+        assert status['last_reply_error'] == 'speaker_route_unavailable'
+        assert client.post('/api/v1/voice/output-report', json={
+            'engine': 'piper', 'error': None, 'text': 'private speech',
+        }).status_code == 422
+        remote = TestClient(client.app, client=('192.168.1.7', 5000))
+        assert remote.get('/api/v1/voice/asset').status_code == 403
 
 
 def test_piper_wav_decoder_accepts_only_expected_mono_format():

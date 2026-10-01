@@ -43,6 +43,7 @@ VOICE_ASSET_NAME = f"luma-voice-kristin-{VOICE_RELEASE_VERSION}.lva"
 VOICE_RELEASE_URL = ("https://api.github.com/repos/BrianBGoldshtein/LumaSmartHub/"
                      f"releases/tags/v{VOICE_RELEASE_VERSION}")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+PREVIOUS_VOICE = f".voice-previous-{VOICE_ID}"
 
 
 class VoiceAssetError(ValueError):
@@ -70,8 +71,6 @@ def _safe_name(name: str) -> bool:
 
 
 def voice_status(root: Path = ASSET_ROOT) -> dict:
-    if ready(root):
-        return {"phase": "ready", "message": "Offline voice ready."}
     status_path = root / "status.json"
     try:
         if status_path.is_symlink() or status_path.stat().st_size > 4096:
@@ -80,6 +79,15 @@ def voice_status(root: Path = ASSET_ROOT) -> dict:
         if (not isinstance(status, dict) or status.get("phase") not in
                 {"checking", "downloading", "verifying", "installing", "ready", "failed"}):
             raise ValueError
+        if ready(root):
+            if status["phase"] == "failed":
+                return {"phase": "ready", "message": "Previous offline voice retained.",
+                        "repair_error": str(status.get("message", "Voice repair failed."))[:160]}
+            if status["phase"] in {"checking", "downloading", "verifying"}:
+                return {"phase": status["phase"], "message": str(status.get("message", ""))[:160],
+                        "downloaded_bytes": int(status.get("downloaded_bytes", 0)),
+                        "total_bytes": int(status.get("total_bytes", 0)), "asset_available": True}
+            return {"phase": "ready", "message": "Offline voice ready."}
         if status["phase"] == "ready":
             return {"phase": "failed", "message": "Offline voice files need repair; using fallback voice."}
         return {"phase": status["phase"], "message": str(status.get("message", ""))[:160],
@@ -127,6 +135,28 @@ def ready(root: Path = ASSET_ROOT) -> bool:
         pass
     return (folder.is_dir() and not folder.is_symlink() and model.is_file() and not model.is_symlink()
             and config.is_file() and not config.is_symlink() and python.is_file())
+
+
+def recover_interrupted_repair(root: Path = ASSET_ROOT) -> bool:
+    """Restore only an installer-owned previous voice after power loss mid-swap."""
+    if not root.is_dir() or root.is_symlink():
+        return False
+    previous, final = root / PREVIOUS_VOICE, root / VOICE_ID
+    if not previous.is_dir() or previous.is_symlink():
+        return False
+    try:
+        status = json.loads((root / "status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return False
+    if not isinstance(status, dict) or status.get("phase") != "installing":
+        return False
+    if final.is_symlink() or (final.exists() and not final.is_dir()):
+        return False
+    if final.exists():
+        shutil.rmtree(final)
+    os.replace(previous, final)
+    write_status(root, "ready", "Previous offline voice restored after interrupted repair.")
+    return True
 
 
 def _runtime_supported() -> bool:
@@ -224,20 +254,27 @@ def verify_and_extract(bundle: Path, staging: Path, public_key: Path = PUBLIC_KE
 
 
 def install_asset(bundle: Path, *, root: Path = ASSET_ROOT,
-                  public_key: Path = PUBLIC_KEY, run=subprocess.run) -> dict:
+                  public_key: Path = PUBLIC_KEY, run=subprocess.run,
+                  replace_existing: bool = False) -> dict:
     """Install pinned wheels without network and test after the final rename."""
-    if ready(root):
+    if ready(root) and not replace_existing:
         return {"phase": "ready", "message": "Offline voice ready."}
     if not _runtime_supported():
         raise VoiceAssetError("The offline voice package requires the Pi's ARM64 Python 3.13.")
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     if root.is_symlink():
         raise VoiceAssetError("Offline voice storage is unavailable.")
+    final, previous = root / VOICE_ID, root / PREVIOUS_VOICE
+    if replace_existing and (not final.is_dir() or final.is_symlink()):
+        raise VoiceAssetError("There is no installed offline voice to repair.")
+    if previous.exists() or previous.is_symlink():
+        raise VoiceAssetError("An interrupted voice repair needs recovery before retrying.")
     if shutil.disk_usage(root).free < 550 * 1024 * 1024:
         raise VoiceAssetError("Not enough free space to install the offline voice.")
     staging = Path(tempfile.mkdtemp(prefix=".voice-stage-", dir=root))
     installed_here = False
     completed = False
+    moved_previous = False
     try:
         manifest = verify_and_extract(bundle, staging, public_key)
         write_status(root, "installing", "Installing the verified offline voice.")
@@ -257,9 +294,13 @@ def install_asset(bundle: Path, *, root: Path = ASSET_ROOT,
                  "assert len(b.getvalue())>1024")
         run([str(python), "-c", smoke, str(staging / MODEL)], check=True, timeout=90,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        final = root / VOICE_ID
-        if final.exists() or final.is_symlink():
+        if not replace_existing and (final.exists() or final.is_symlink()):
             raise VoiceAssetError("An incomplete offline voice installation needs review.")
+        if replace_existing:
+            if not final.is_dir() or final.is_symlink():
+                raise VoiceAssetError("The installed offline voice changed during repair.")
+            os.replace(final, previous)
+            moved_previous = True
         os.replace(staging, final)
         installed_here = True
         # The staged venv may pass while an absolute path in a dependency
@@ -269,6 +310,11 @@ def install_asset(bundle: Path, *, root: Path = ASSET_ROOT,
             check=True, timeout=90, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         write_status(root, "ready", "Offline voice ready.")
         completed = True
+        if moved_previous:
+            try:
+                shutil.rmtree(previous)
+            except OSError:
+                pass  # The verified new voice is already active; never roll it back here.
         return {"phase": "ready", "message": "Offline voice ready."}
     except VoiceAssetError:
         raise
@@ -280,14 +326,17 @@ def install_asset(bundle: Path, *, root: Path = ASSET_ROOT,
             # A successful return keeps it; failures never leave a deceptive
             # file-presence-only `ready` state that prevents signed retry.
             shutil.rmtree(root / VOICE_ID)
+        if moved_previous and not completed and previous.is_dir() and not previous.is_symlink():
+            os.replace(previous, final)
+            write_status(root, "ready", "Previous offline voice retained after failed repair.")
         if staging.exists() and staging.resolve(strict=False).is_relative_to(root.resolve(strict=True)):
             shutil.rmtree(staging)
 
 
 def fetch_and_install(*, root: Path = ASSET_ROOT, public_key: Path = PUBLIC_KEY,
-                      opener=None, installer=install_asset) -> dict:
+                      opener=None, installer=install_asset, replace_existing: bool = False) -> dict:
     """Fetch only the release's exact sidecar URL, then verify its owner signature."""
-    if ready(root):
+    if ready(root) and not replace_existing:
         return {"phase": "ready", "message": "Offline voice ready."}
     opener = opener or _opener()
     _reap_interrupted_work(root)
@@ -352,6 +401,9 @@ def fetch_and_install(*, root: Path = ASSET_ROOT, public_key: Path = PUBLIC_KEY,
             if copied != size or (published_digest and hashed.hexdigest() != published_digest[7:]):
                 raise VoiceAssetError("The offline voice download failed its release checksum.")
             write_status(root, "verifying", "Verifying the signed offline voice.")
+            if replace_existing:
+                return installer(Path(temporary), root=root, public_key=public_key,
+                                 replace_existing=True)
             return installer(Path(temporary), root=root, public_key=public_key)
         finally:
             if os.path.exists(temporary):

@@ -38,7 +38,9 @@ from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
-from .voice_asset import fetch_and_install as fetch_voice_asset, ready as voice_asset_ready, voice_status
+from .voice_asset import (fetch_and_install as fetch_voice_asset,
+                          ready as voice_asset_ready, recover_interrupted_repair,
+                          voice_status)
 from .voice_speech import VoicePlaybackError, play_preview as play_voice_preview, play_test_tone
 from .voice_signal import AudioProfile, read_profile
 from . import mic_hardware
@@ -278,6 +280,7 @@ def create_app(
     calibration = VoiceCalibration()
     voice_asset_root = data_root / "voice-assets"
     voice_asset_retry = asyncio.Event()
+    voice_asset_repair_requested = False
     voice_preview_lock = asyncio.Lock()
     voice_preview_job: dict[str, Any] = {}
     voice_tone_job: dict[str, Any] = {}
@@ -337,16 +340,23 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async def voice_asset_worker():
+            nonlocal voice_asset_repair_requested
             # The system image sets LUMA_DATA_DIR. Tests and desktop previews
             # never fetch a 130+ MB runtime or touch the host's data partition.
             await asyncio.sleep(20)
-            while not voice_asset_ready(voice_asset_root):
-                try:
-                    await asyncio.to_thread(fetch_voice_asset, root=voice_asset_root)
-                except Exception:
-                    pass  # Fixed, non-secret status is persisted for the UI.
-                if voice_asset_ready(voice_asset_root):
-                    break
+            while True:
+                # A power cut during a repair must restore the previous voice
+                # before another download or any new voice can be advertised.
+                with suppress(Exception):
+                    await asyncio.to_thread(recover_interrupted_repair, voice_asset_root)
+                repair_now = voice_asset_repair_requested
+                voice_asset_repair_requested = False
+                if repair_now or not voice_asset_ready(voice_asset_root):
+                    try:
+                        await asyncio.to_thread(fetch_voice_asset, root=voice_asset_root,
+                                                replace_existing=repair_now)
+                    except Exception:
+                        pass  # Fixed, non-secret status is persisted for the UI.
                 try:
                     await asyncio.wait_for(voice_asset_retry.wait(), 900)
                 except asyncio.TimeoutError:
@@ -870,6 +880,20 @@ def create_app(
             raise HTTPException(409, 'Offline voice installation runs on the Raspberry Pi only.')
         voice_asset_retry.set()
         return voice_status(voice_asset_root)
+
+    @app.post('/api/v1/voice/asset/repair', dependencies=[Depends(local_only)])
+    async def repair_offline_voice_asset() -> dict:
+        nonlocal voice_asset_repair_requested
+        if sys.platform != 'linux' or os.environ.get('LUMA_DATA_DIR') != '/var/lib/luma':
+            raise HTTPException(409, 'Offline voice repair runs on the Raspberry Pi only.')
+        if not voice_asset_ready(voice_asset_root):
+            raise HTTPException(409, 'The offline voice is not installed; use the signed download instead.')
+        if voice_asset_repair_requested or voice_status(voice_asset_root)['phase'] in {
+                'checking', 'downloading', 'verifying', 'installing'}:
+            raise HTTPException(409, 'An offline voice installation is already in progress.')
+        voice_asset_repair_requested = True
+        voice_asset_retry.set()
+        return {'started': True, 'message': 'Signed offline voice repair queued. The previous voice stays available until verification.'}
 
     @app.post('/api/v1/voice/asset/preview', dependencies=[Depends(local_only)])
     async def preview_offline_voice_asset() -> dict:

@@ -170,6 +170,7 @@ class OfflineSpeaker:
         self.last_route: str | None = None
         self.last_primary_error: str | None = None
         self.failure_cause: str | None = None
+        self.asset_identity: tuple[int, int, int] | None = None
 
     def close(self) -> None:
         process = self.process
@@ -202,7 +203,23 @@ class OfflineSpeaker:
         self.process = process
         return process
 
+    def _refresh_asset_identity(self) -> None:
+        # A signed repair swaps the model directory atomically. The warm
+        # process must not keep using the previous model, and an old startup
+        # failure must not leave the repaired model in a cooldown window.
+        try:
+            model_stat = (self.root / VOICE_ID / MODEL).stat()
+            identity = (model_stat.st_ino, model_stat.st_mtime_ns, model_stat.st_size)
+        except OSError:
+            identity = None
+        if identity != self.asset_identity:
+            self.close()
+            self.asset_identity = identity
+            self.retry_after = 0
+            self.failure_cause = None
+
     def _piper(self, reply: str) -> None:
+        self._refresh_asset_identity()
         env = pulse_playback_environment()
         try:
             process = self.process or self._start()
@@ -234,6 +251,7 @@ class OfflineSpeaker:
         self.last_error = None
         self.last_route = None
         self.last_primary_error = None
+        self._refresh_asset_identity()
         if sys.platform == "linux" and ready(self.root) and monotonic() >= self.retry_after:
             try:
                 self._piper(reply)
@@ -243,8 +261,11 @@ class OfflineSpeaker:
                 self.last_error = exc.code
                 self.last_primary_error = exc.code
                 self.failure_cause = exc.code
-                self.close()
-                self.retry_after = monotonic() + 120
+                if exc.code in {"piper_start_failed", "piper_synthesis_failed", "piper_audio_invalid"}:
+                    self.close()
+                    self.retry_after = monotonic() + 30
+                # A changing/missing speaker is not a broken voice model.
+                # Keep the warm worker and try the route again next time.
         elif not ready(self.root):
             self.last_error = "voice_asset_unavailable"
             self.last_primary_error = self.last_error

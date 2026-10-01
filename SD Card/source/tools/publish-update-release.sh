@@ -49,7 +49,7 @@ NOTES_FILE="$(realpath -- "${NOTES_FILE}")"
 case "${NOTES_FILE}" in "${REPO_ROOT}"/*) die "keep release notes outside the repository" ;; esac
 
 BRANCH="$(git -C "${REPO_ROOT}" branch --show-current)"
-[[ "${BRANCH}" == "main" ]] || die "signing releases is allowed only from main after the hardware gate"
+[[ "${BRANCH}" == "main" ]] || die "signing releases is allowed only from main"
 [[ -z "$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=all)" ]] || die "the main checkout must be clean"
 git -C "${REPO_ROOT}" fetch --quiet origin main --tags
 HEAD_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
@@ -66,6 +66,9 @@ if [[ "${VERSION}" == "0.2.4" ]]; then
   # The owner's live card received 0.2.3 through boot-partition recovery,
   # even though the last full-image base version remains 0.2.0.
   QUALIFY_FROM="0.2.3"
+elif [[ "${VERSION}" == "0.2.5" ]]; then
+  # The owner's installed beta is 0.2.4; qualify the next switch from it.
+  QUALIFY_FROM="0.2.4"
 fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"
@@ -184,7 +187,7 @@ if ((PUBLISH)); then
   fi
   if ! gh release create "${TAG}" "${RELEASE_ASSETS[@]}" --repo "${REPOSITORY}" --target main \
     --verify-tag \
-    --title "Luma ${VERSION}" --notes-file "${NOTES_FILE}"
+    --title "Luma ${VERSION} Beta" --notes-file "${NOTES_FILE}"
   then
     printf 'The tested tag %s is on GitHub at %s; the release upload did not finish.\n' "${TAG}" "${HEAD_SHA}" >&2
     printf 'Recover by creating the release for this same tag and attaching all signed assets; do not reuse its version.\n' >&2

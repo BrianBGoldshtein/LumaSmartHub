@@ -63,6 +63,30 @@ def test_everyday_time_paraphrases_resolve_identically(phrase):
 
 
 @pytest.mark.parametrize('phrase,intent', [
+    ('could you tell me the time now', 'time'),
+    ("what's it like outside tomorrow", 'weather_tomorrow'),
+    ("what's the weather tonight", 'weather_evening'),
+    ('do i have anything else today', 'remaining_today'),
+    ("what's overdue", 'tasks_overdue'),
+])
+def test_more_natural_spoken_questions(phrase, intent):
+    command = parse_local_command('Hey Luma, ' + phrase + '?')
+    assert command.name == CommandName.LOCAL_QUERY
+    assert command.value == intent
+
+
+@pytest.mark.parametrize('phrase,name', [
+    ('turn off the screen', CommandName.SCREEN_OFF),
+    ('turn the screen off', CommandName.SCREEN_OFF),
+    ('make it brighter', CommandName.SHOW_BRIGHTNESS),
+    ('dim the screen', CommandName.SHOW_BRIGHTNESS),
+])
+def test_natural_display_controls(phrase, name):
+    assert phrase in command_grammar()
+    assert parse_local_command('Hey Luma, ' + phrase).name == name
+
+
+@pytest.mark.parametrize('phrase,intent', [
     ('what time is it right now', 'time'),
     ('can you tell me what time it is', 'time'),
     ('what is the forecast for tomorrow', 'weather_tomorrow'),
@@ -198,6 +222,22 @@ def test_today_includes_earlier_ongoing_all_day_but_not_other_calendars_or_decli
     assert 'Tomorrow' in reply(service,'calendar_tomorrow')
     assert 'Tomorrow' in reply(service,'next_event')
     assert 'Current' in reply(service,'ongoing') and 'All day' not in reply(service,'ongoing')
+
+
+def test_remaining_today_ignores_past_tomorrow_and_hidden_events(tmp_path):
+    service=prepared(tmp_path)
+    service.replace_events([
+        event('Finished morning',NOW-timedelta(hours=5),NOW-timedelta(hours=4)),
+        event('Current meeting',NOW-timedelta(minutes=30),NOW+timedelta(minutes=30)),
+        event('Later today',NOW+timedelta(hours=2),NOW+timedelta(hours=3)),
+        event('Tomorrow morning',NOW+timedelta(days=1),NOW+timedelta(days=1,hours=1)),
+        event('Hidden meeting',NOW+timedelta(hours=2),NOW+timedelta(hours=3),calendar='other'),
+    ],NOW)
+    remaining=reply(service,'remaining_today')
+    assert 'Current meeting' in remaining and 'Later today' in remaining
+    assert 'Finished morning' not in remaining and 'Tomorrow morning' not in remaining
+    assert 'Hidden meeting' not in remaining
+    assert 'Current meeting' not in reply(service,'remaining_today',authorized=False)
 
 
 def test_calendar_privacy_mute_and_no_cloud_route(tmp_path):

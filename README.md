@@ -6,12 +6,12 @@ interface—not a general-purpose desktop. The app combines themed time, weather
 Google Calendar and tasks with optional local voice, phone presence, timers,
 sleep-aware display behavior and room automations.
 
-> **Project status: development / pre-release — not v1.** `main` remains the
-> untouched starter release until the owner has completed hardware testing,
-> reviewed the results, and approved publishing v1. The Pi, display, touch,
-> audio, campus network, phone and appliance paths still require physical
-> acceptance. Software tests and images marked `UNVERIFIED` do not satisfy
-> that gate.
+> **Project status: beta — not v1.** The owner approved `main` as the beta
+> software-update channel. Each beta is signed offline and published as a
+> versioned GitHub Release for the on-device updater; its release headline
+> explicitly says **Beta**. The Pi, display, touch, audio, campus network,
+> phone and appliance paths still require physical acceptance. A beta release
+> does not imply that hardware tests passed or that v1 is ready.
 
 ## What it does
 
@@ -145,18 +145,16 @@ artifact and acceptance state. `boot_verified=false` and
 
 The device checks signed releases targeted to `main`, not raw branch files;
 the private signing key stays on the Linux build machine and outside GitHub.
-Development changes are pushed to `codex/luma-r7-levoit`; `main` must remain
-untouched until hardware acceptance and explicit owner approval. No signed
-application release has been published or installed on the Pi yet.
+The owner has approved `main` for explicitly labeled beta releases. The
+installed Pi has already received a signed 0.2.4 application update; 0.2.5
+follows the same GitHub updater path after software qualification. Hardware
+acceptance and v1 publication remain separate decisions.
 In-place update scope, release publishing, verification, rollback and recovery are documented in
 [`SD Card/docs/UPDATE_DEPLOYMENT.md`](SD%20Card/docs/UPDATE_DEPLOYMENT.md).
 Build-host setup is in
 [`SD Card/docs/BUILDING_THE_IMAGE.md`](SD%20Card/docs/BUILDING_THE_IMAGE.md).
 
-The intended image sequence is: owner reviews the current image handoff and
-chooses when to flash it, then completes hardware acceptance. Later
-ordinary application changes should use signed in-place updates, preserving
-settings and Pi Connect enrollment; OS/security or platform changes may still
-require an image. After the owner approves v1, merge the feature branch to
-`main` and tag that release. Until then, all builds remain development/
-commissioning candidates, not production.
+Ordinary application changes now use signed in-place updates from GitHub,
+preserving settings and Pi Connect enrollment; OS/security or platform
+changes may still require an image. Until the owner approves v1 after physical
+acceptance, these releases remain beta/commissioning candidates, not production.

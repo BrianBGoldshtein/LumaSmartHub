@@ -370,8 +370,16 @@ class SystemdController:
 
     def _run(self, user: bool, verb: str, units: tuple[str, ...] | list[str]) -> None:
         prefix = (["systemctl", "--machine=luma@.host", "--user"] if user else ["systemctl"])
+        failed = []
         for unit in units:
-            self.runner([*prefix, verb, unit], check=True, capture_output=True, text=True, timeout=20)
+            try:
+                self.runner([*prefix, verb, unit], check=True, capture_output=True, text=True, timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                failed.append(unit)
+        if failed:
+            # Unit names are a fixed in-process allowlist. Never put captured
+            # systemctl stderr, which can contain host details, in the UI.
+            raise UpdateError(f"Could not {verb} Luma unit(s): {', '.join(failed)}.")
 
     def stop(self) -> None:
         self._run(True, "stop", self.user)
@@ -379,9 +387,20 @@ class SystemdController:
         self._run(False, "stop", self.system_services)
 
     def start(self) -> None:
-        self._run(False, "start", self.system_sockets)
-        self._run(False, "start", self.system_services)
-        self._run(True, "start", self.user)
+        # Start the API even if an optional backup socket or voice helper
+        # fails. A stopped API must not strand the visible updater indefinitely.
+        order = ([(False, "luma-api.service")] if "luma-api.service" in self.system_services else [])
+        order += [(False, unit) for unit in self.system_sockets]
+        order += [(False, unit) for unit in self.system_services if unit != "luma-api.service"]
+        order += [(True, unit) for unit in self.user]
+        failed = []
+        for user, unit in order:
+            try:
+                self._run(user, "start", [unit])
+            except UpdateError:
+                failed.append(unit)
+        if failed:
+            raise UpdateError(f"Could not restart Luma unit(s): {', '.join(failed)}.")
 
 
 def wait_for_health(version: str, timeout: float = 45.0) -> bool:
@@ -513,21 +532,32 @@ def _apply_bundle_locked(bundle_path: Path, *, app_root: Path,
         phase('complete')
         return candidate
     except Exception as exc:
-        if switch_attempted:
+        if stopped:
+            phase('restoring')
+            pointer_restored = not switch_attempted
+            if switch_attempted:
+                try:
+                    # _atomic_link can fail before changing the pointer (as
+                    # on a read-only /opt). Avoid repeating that failure and
+                    # leaving the API stopped during attempted rollback.
+                    if _current_release(app_root, releases_root) != current:
+                        try:
+                            controller.stop()
+                        except Exception:
+                            pass  # Still attempt pointer recovery and restart.
+                        _atomic_link(app_root, current)
+                    pointer_restored = True
+                except Exception:
+                    pointer_restored = False
+            services_restarted = False
             try:
-                phase('restoring')
-                controller.stop()
-                _atomic_link(app_root, current)
                 controller.start()
-                rollback_completed = True
+                services_restarted = True
             except Exception:
-                raise UpdateError("Update failed and automatic rollback needs local recovery.") from None
-        elif stopped:
-            try:
-                phase('restoring')
-                controller.start()
-            except Exception:
-                raise UpdateError("Update failed before switching; service recovery needs local review.") from None
+                pass  # All units were attempted; still report local recovery.
+            rollback_completed = switch_attempted and pointer_restored
+            if not pointer_restored or not services_restarted:
+                raise UpdateError("Update failed; check the active version and local service status before recovery.") from None
         if isinstance(exc, UpdateError):
             raise
         raise UpdateError("The update could not be installed; the previous release was restored.") from None

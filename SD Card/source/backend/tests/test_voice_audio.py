@@ -101,3 +101,16 @@ def test_missing_source_has_a_fixed_diagnostic_without_exposing_child_stderr():
 
     assert isinstance(diagnostic, AudioCaptureError)
     assert diagnostic.code == "capture_source_unavailable"
+
+
+def test_capture_counts_but_never_buffers_overflowing_audio():
+    class Process:
+        stdout = BytesIO()
+        def poll(self):
+            return 0
+    chunks = queue.Queue(maxsize=1)
+    capture = PulseCapture(chunks, source="luma_mic", popen=lambda *_a, **_k: Process())
+    capture._enqueue(b"first")
+    capture._enqueue(b"second")
+    assert capture.dropped_frames == 1
+    assert chunks.get_nowait() == b"first"

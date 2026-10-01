@@ -22,11 +22,15 @@ shows the signed release version and notes for review before the separate
 again, installs the app-only package into a fresh version directory, switches
 atomically, verifies the restarted health endpoint and rolls back if it fails.
 
-Development commits continue to go to the feature branch and run CI there.
-`main` remains the accepted-release channel, per the existing hardware-test
-gate: do not publish a `vX.Y.Z` update release from unaccepted code. After the
-owner accepts a version, bump the package version on the feature branch and
-pass CI before merging it to `main`; then create the matching stable release.
+Development commits can go to a feature branch for CI and review, then to
+`main` for beta delivery after software tests pass. As of October 1, 2026,
+the owner explicitly approved `main` as the ongoing beta update channel;
+physical Pi acceptance remains a separate step and must not be implied by a
+beta release. The GitHub Release title and notes say **Beta**. The GitHub
+release itself must use the normal release flag, not GitHub's prerelease flag,
+because the installed Pi updater intentionally ignores prereleases.
+After the versioned source passes CI, merge it to `main`, confirm CI again on
+that exact main commit, then create the matching signed release.
 The asset name and tag must match exactly
 (`v0.3.0` → `luma-update-0.3.0.lup`). Set the release target to `main` and add
 human-readable release notes; drafts and prereleases are not installed.
@@ -38,8 +42,8 @@ frontend/backend, requires a clean checkout of the exact `origin/main` commit,
 checks for a successful GitHub Actions run on that commit, verifies the key
 matches the public key pinned into the image, and signs locally. It cannot
 publish a release until `--publish` is given and the operator types the exact
-tag confirmation. Use it only after hardware acceptance and after the tested
-code has been merged to `main`:
+tag confirmation. For beta delivery, use it after software qualification and
+after the tested code has been merged to `main`:
 
 ```sh
 bash "SD Card/source/tools/publish-update-release.sh" \
@@ -48,7 +52,7 @@ bash "SD Card/source/tools/publish-update-release.sh" \
   --publish
 ```
 
-The helper asks you to type `publish vX.Y.Z` before it signs or publishes. It
+The helper asks you to type `publish vX.Y.Z` before it publishes. It
 requires an authenticated `gh` session with write access and creates the stable
 release on `main`, attaching exactly `luma-update-X.Y.Z.lup`. Without
 `--publish`, it builds a local signed bundle only. If you first build a preview

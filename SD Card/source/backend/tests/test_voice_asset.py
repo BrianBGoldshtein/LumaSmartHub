@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import struct
+from types import SimpleNamespace
 import wave
 import zipfile
 
@@ -14,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from luma.api import create_app
 from luma.voice_asset import CONFIG, MODEL, VOICE_ID, VOICE_ASSET_NAME, VOICE_RELEASE_URL, VoiceAssetError, fetch_and_install, install_asset, ready, verify_and_extract, voice_status
-from luma.voice_speech import wav_to_pcm
+from luma.voice_speech import OfflineSpeaker, VoicePlaybackError, play_test_tone, pulse_playback_environment, wav_to_pcm
 
 
 def make_asset(tmp_path: Path, *, corrupt=False, extra=None):
@@ -82,6 +83,117 @@ def test_voice_status_and_preview_are_local_and_do_not_install_automatically(tmp
         assert client.post('/api/v1/voice/asset/preview').status_code == 409
         assert client.post('/api/v1/voice/asset/retry').status_code == 409
     assert not (tmp_path / 'voice-assets').exists()
+
+
+def test_system_service_resolves_the_users_pulse_socket(monkeypatch):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'sys', SimpleNamespace(platform='linux'))
+    monkeypatch.setattr(speech, 'os', SimpleNamespace(environ={'PATH': '/usr/bin'}, getuid=lambda: 1007))
+    monkeypatch.setattr(Path, 'is_socket', lambda self: True)
+    env = pulse_playback_environment()
+    assert env['XDG_RUNTIME_DIR'] == '/run/user/1007'
+    assert env['PULSE_SERVER'] == 'unix:/run/user/1007/pulse/native'
+    assert env['PULSE_SINK'] == 'luma_speaker'
+    monkeypatch.setattr(Path, 'is_socket', lambda self: False)
+    with pytest.raises(VoicePlaybackError, match='audio_session_unavailable'):
+        pulse_playback_environment()
+
+
+def test_tone_checks_named_sink_and_sends_bounded_pcm(monkeypatch):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {'PULSE_SINK': 'luma_speaker'})
+    calls = []
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        if command[0] == 'pactl':
+            return SimpleNamespace(stdout='0\tluma_speaker\tPipeWire\ts16le 2ch 48000Hz\n')
+        return SimpleNamespace()
+    monkeypatch.setattr(speech.subprocess, 'run', run)
+    play_test_tone()
+    assert [call[0][0] for call in calls] == ['pactl', 'paplay']
+    assert '--device=luma_speaker' in calls[1][0]
+    assert len(calls[1][1]['input']) == 2 * int(22050 * .65)
+    assert calls[1][1]['env']['PULSE_SINK'] == 'luma_speaker'
+
+
+def test_tone_refuses_to_claim_success_without_named_sink(monkeypatch):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
+    calls = []
+    def run(command, **_kwargs):
+        calls.append(command[0])
+        return SimpleNamespace(stdout='0\tother_output\tPipeWire\n')
+    monkeypatch.setattr(speech.subprocess, 'run', run)
+    with pytest.raises(VoicePlaybackError, match='speaker_route_unavailable'):
+        play_test_tone()
+    assert calls == ['pactl']
+
+
+def test_piper_failure_reports_actual_fallback_engine(monkeypatch, tmp_path):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'sys', SimpleNamespace(platform='linux'))
+    monkeypatch.setattr(speech, 'ready', lambda _root: True)
+    calls = []
+    monkeypatch.setattr(speech.subprocess, 'run', lambda *args, **kwargs: calls.append((args, kwargs)))
+    speaker = OfflineSpeaker(tmp_path)
+    def fail(_reply):
+        raise VoicePlaybackError('speaker_route_unavailable')
+    monkeypatch.setattr(speaker, '_piper', fail)
+    assert speaker.speak('Hello.') == 'fallback'
+    assert speaker.last_error == 'speaker_route_unavailable'
+    assert calls[0][0][0][0] == 'espeak-ng'
+    assert speaker.speak('Again.') == 'fallback'
+    assert speaker.last_error == 'piper_retry_wait'
+
+
+def test_preview_failure_is_explicit_and_local(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: True)
+    monkeypatch.setattr(api, 'voice_status', lambda _root: {'phase': 'ready', 'message': 'Installed.'})
+    def fail(_root):
+        raise VoicePlaybackError('audio_session_unavailable')
+    monkeypatch.setattr(api, 'play_voice_preview', fail)
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        response = client.post('/api/v1/voice/asset/preview')
+        assert response.status_code == 409
+        assert 'audio session' in response.json()['detail']
+        assert client.get('/api/v1/voice/asset').json()['last_preview_error'] == 'audio_session_unavailable'
+
+
+def test_speaker_tone_result_is_local_and_separate_from_speech(monkeypatch, tmp_path):
+    import luma.api as api
+    def fail():
+        raise VoicePlaybackError('speaker_route_unavailable')
+    monkeypatch.setattr(api, 'play_test_tone', fail)
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        response = client.post('/api/v1/voice/asset/tone')
+        assert response.status_code == 409
+        status = client.get('/api/v1/voice/asset').json()
+        assert status['last_tone_error'] == 'speaker_route_unavailable'
+        assert status['last_preview_error'] is None
+        remote = TestClient(client.app, client=('192.168.1.7', 5000))
+        assert remote.post('/api/v1/voice/asset/tone').status_code == 403
+        monkeypatch.setattr(api, 'play_test_tone', lambda: None)
+        assert client.post('/api/v1/voice/asset/tone').json() == {
+            'sent': True, 'route': 'luma_speaker'
+        }
+        assert client.get('/api/v1/voice/asset').json()['last_tone_error'] is None
+
+
+def test_reply_engine_is_reported_without_speech_text(tmp_path):
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        response = client.post('/api/v1/voice/output-report', json={
+            'engine': 'fallback', 'error': 'speaker_route_unavailable',
+        })
+        assert response.json() == {'accepted': True}
+        status = client.get('/api/v1/voice/asset').json()
+        assert status['last_reply_engine'] == 'fallback'
+        assert status['last_reply_error'] == 'speaker_route_unavailable'
+        assert client.post('/api/v1/voice/output-report', json={
+            'engine': 'piper', 'error': None, 'text': 'private speech',
+        }).status_code == 422
+        remote = TestClient(client.app, client=('192.168.1.7', 5000))
+        assert remote.get('/api/v1/voice/asset').status_code == 403
 
 
 def test_piper_wav_decoder_accepts_only_expected_mono_format():

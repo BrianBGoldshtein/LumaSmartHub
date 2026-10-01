@@ -45,6 +45,7 @@ class PulseCapture:
     def __init__(self, chunks: queue.Queue[bytes | AudioCaptureError | None], *, source: str | None = None,
                  popen=subprocess.Popen):
         self.chunks = chunks
+        self.dropped_frames = 0
         self.source = selected_source() if source is None else source
         command = capture_command(self.source)
         try:
@@ -89,7 +90,9 @@ class PulseCapture:
                     self.chunks.put_nowait(data)
                 except (queue.Empty, queue.Full):
                     pass
-            # Ordinary audio is dropped under backpressure; memory stays bounded.
+            else:
+                # The consumer must discard the resulting incomplete utterance.
+                self.dropped_frames += 1
 
     def _read(self) -> None:
         pending = bytearray()

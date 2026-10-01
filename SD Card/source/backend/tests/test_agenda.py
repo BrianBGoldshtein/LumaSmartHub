@@ -29,6 +29,19 @@ def test_complete_day_includes_past_and_every_selected_calendar_without_limit():
     assert not result['stale']
 
 
+def test_late_evening_snapshot_includes_tomorrows_near_term_events_for_rotation():
+    evening = NOW.replace(hour=23)
+    items = [event('past', 8, 9), event('overnight', 25, 26),
+             event('tomorrow-morning', 31, 32), event('beyond-window', 39, 40)]
+    result = day_agenda(items, settings(), evening, fresh=True)
+    assert {item['id'] for item in result['events']} == {
+        'past', 'overnight', 'tomorrow-morning'
+    }
+    # The manual full-day timeline stays anchored to today's local day.
+    assert result['start'].startswith('2026-09-28T00:00')
+    assert result['end'].startswith('2026-09-29T00:00')
+
+
 def test_sleep_bounds_and_outside_appointments_are_not_dropped():
     sleeps=[event('night',-1,7,'rest',summary='Sleep'),event('next',23,31,'rest',summary='Sleep')]
     result=day_agenda(sleeps+[event('meeting',10)],settings(),NOW,fresh=True)

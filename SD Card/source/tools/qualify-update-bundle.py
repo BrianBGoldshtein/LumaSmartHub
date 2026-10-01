@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -60,6 +62,36 @@ def tree(destination: Path, current_version: str) -> tuple[Path, Path, Path, Pat
     return app, releases, current, saved
 
 
+def update_umask() -> int:
+    unit = (ROOT / "source/system/luma-update.service").read_text(encoding="utf-8")
+    match = re.search(r"(?m)^UMask=(0[0-7]{3})$", unit)
+    if not match:
+        raise AssertionError("the updater service has no auditable umask")
+    return int(match.group(1), 8)
+
+
+def assert_readable_by_luma(candidate: Path) -> None:
+    """Check the files reached by non-root API and kiosk processes."""
+    probe = subprocess.run(
+        [str(candidate / "venv/bin/python"), "-c",
+         "import importlib.util; spec=importlib.util.find_spec('luma.api'); "
+         "print(spec.origin if spec else '')"],
+        check=True, capture_output=True, text=True, timeout=15)
+    module = Path(probe.stdout.strip())
+    if not module.is_file() or not module.is_relative_to(candidate):
+        raise AssertionError("the installed Luma API module is not in the candidate")
+    paths = [module, candidate / "frontend/index.html"]
+    paths.extend((candidate / "frontend/assets").iterdir())
+    for file in paths:
+        if not file.is_file() or not stat.S_IMODE(file.stat().st_mode) & stat.S_IROTH:
+            raise AssertionError(f"the Luma service user cannot read {file.relative_to(candidate)}")
+        parent = file.parent
+        while parent.is_relative_to(candidate):
+            if not stat.S_IMODE(parent.stat().st_mode) & stat.S_IXOTH:
+                raise AssertionError(f"the Luma service user cannot traverse {parent.relative_to(candidate)}")
+            parent = parent.parent
+
+
 def check(bundle: Path, key: Path, current_version: str, *, healthy: bool) -> None:
     with tempfile.TemporaryDirectory(prefix="luma-real-bundle-") as scratch:
         app, releases, current, saved = tree(Path(scratch), current_version)
@@ -67,10 +99,14 @@ def check(bundle: Path, key: Path, current_version: str, *, healthy: bool) -> No
         phases: list[str] = []
         version = verify_bundle(bundle, key)["version"]
         if healthy:
-            candidate = apply_bundle(bundle, app_root=app, releases_root=releases,
-                                     public_key_path=key, controller=controller,
-                                     health_check=lambda selected: selected == version,
-                                     progress=phases.append)
+            previous_umask = os.umask(update_umask())
+            try:
+                candidate = apply_bundle(bundle, app_root=app, releases_root=releases,
+                                         public_key_path=key, controller=controller,
+                                         health_check=lambda selected: selected == version,
+                                         progress=phases.append)
+            finally:
+                os.umask(previous_umask)
             if (app.resolve() != candidate or not current.is_dir()
                     or controller.actions != ["stop", "start"]
                     or phases[-1] != "complete"):
@@ -84,6 +120,7 @@ def check(bundle: Path, key: Path, current_version: str, *, healthy: bool) -> No
                                     check=True, capture_output=True, text=True, timeout=15)
             if result.stdout.strip() != version:
                 raise AssertionError("the installed wheel has the wrong version")
+            assert_readable_by_luma(candidate)
         else:
             try:
                 apply_bundle(bundle, app_root=app, releases_root=releases,

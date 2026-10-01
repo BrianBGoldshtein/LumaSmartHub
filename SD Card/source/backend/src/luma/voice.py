@@ -42,10 +42,10 @@ def _spoken_number(value: str) -> int | None:
 def command_grammar(wake_phrase: str = "hey luma") -> list[str]:
     """Constrain the small offline model to supported device commands, not dictation."""
     commands = [
-        "good morning", "good night", "screen off", "wake screen", "privacy", "hide my calendar",
+        "good morning", "good night", "screen off", "turn off the screen", "turn the screen off", "wake screen", "privacy", "hide my calendar",
         "show weather", "show forecast", "show calendar", "show agenda",
         "show tasks", "show home screen", "show ambient", "show countdowns", "show dates", "show transit", "next page", "previous page",
-        "change brightness", "change volume", "change theme to glass",
+        "change brightness", "make it brighter", "dim the screen", "change volume", "change theme to glass",
         "change theme to hearth", "change theme to arcade",
         "start focus timer", "start break timer", "pause timer", "resume timer", "cancel timer", "show timer", "dismiss timer",
         "run morning scene", "run night scene", "run arrival scene", "run away scene", "cancel scene",
@@ -109,7 +109,7 @@ def parse_local_command(transcript: str) -> Command | None:
     # navigation/mutation command, or ever reach the optional cloud adapter.
     if re.match(r"^(?:what|what's|when|where|why|how|will|is|are|do|does|can|could|would|ask|question|tell me|explain|describe)\b", text):
         return None
-    if text in {'screen off','turn screen off'}:
+    if text in {'screen off','turn screen off','turn off the screen','turn the screen off'}:
         return Command(CommandName.SCREEN_OFF, source='voice')
     if text in {'wake screen','wake up screen'}:
         return Command(CommandName.WAKE, source='voice')
@@ -133,7 +133,7 @@ def parse_local_command(transcript: str) -> Command | None:
         return Command(CommandName.GOOD_NIGHT, source="voice")
     if any(phrase in text for phrase in ("privacy", "hide my", "hide private")):
         return Command(CommandName.PRIVACY_NOW, source="voice")
-    if "brightness" in text or "screen brighter" in text or "screen dimmer" in text:
+    if "brightness" in text or "screen brighter" in text or "screen dimmer" in text or text in {'make it brighter','dim the screen'}:
         value = _percentage(text)
         return Command(CommandName.SET_BRIGHTNESS if value is not None else CommandName.SHOW_BRIGHTNESS, value, "voice")
     if "volume" in text or "louder" in text or "quieter" in text:

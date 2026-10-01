@@ -42,6 +42,7 @@ from .voice_asset import (fetch_and_install as fetch_voice_asset,
                           ready as voice_asset_ready, recover_interrupted_repair,
                           voice_status)
 from .voice_speech import VoicePlaybackError, play_preview as play_voice_preview, play_test_tone
+from .voice_health import load_history as load_voice_health, record as record_voice_health
 from .voice_signal import AudioProfile, read_profile
 from . import mic_hardware
 from .network import network_request, validate_request
@@ -295,6 +296,19 @@ def create_app(
                                           "last_reply_route": None, "last_preview_error": None,
                                           "last_preview_route": None, "last_tone_error": None,
                                           "last_tone_route": None}
+    voice_health_history = load_voice_health(storage)
+    for event in voice_health_history:
+        if event['kind'] == 'reply':
+            voice_output_status.update(last_reply_engine=event['engine'],
+                                       last_reply_error=event['error'],
+                                       last_reply_primary_error=event['primary_error'],
+                                       last_reply_at=event['at'], last_reply_route=event['route'])
+        elif event['kind'] == 'sample':
+            voice_output_status.update(last_preview_error=event['error'],
+                                       last_preview_route=event['route'])
+        elif event['kind'] == 'tone':
+            voice_output_status.update(last_tone_error=event['error'],
+                                       last_tone_route=event['route'])
     google_sync_lock = asyncio.Lock()
     google_status: dict[str, Any] = {"last_synced": None, "error": None}
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
@@ -757,10 +771,13 @@ def create_app(
     async def voice_output_report(payload: VoiceOutputReport) -> dict[str, bool]:
         if not service.settings.voice_enabled:
             return {"accepted": False}
+        event = record_voice_health(voice_health_history, storage, kind='reply',
+                                    engine=payload.engine, route=payload.route,
+                                    error=payload.error, primary_error=payload.primary_error)
         voice_output_status.update(last_reply_engine=payload.engine,
                                    last_reply_error=payload.error,
                                    last_reply_primary_error=payload.primary_error,
-                                   last_reply_at=datetime.now(UTC).isoformat(),
+                                   last_reply_at=event['at'],
                                    last_reply_route=payload.route)
         return {"accepted": True}
 
@@ -887,7 +904,8 @@ def create_app(
 
     @app.get('/api/v1/voice/asset', dependencies=[Depends(local_only)])
     async def offline_voice_asset() -> dict:
-        return {**voice_status(voice_asset_root), **voice_output_status}
+        return {**voice_status(voice_asset_root), **voice_output_status,
+                'health_history': list(voice_health_history)}
 
     @app.post('/api/v1/voice/asset/retry', dependencies=[Depends(local_only)])
     async def retry_offline_voice_asset() -> dict:
@@ -944,6 +962,7 @@ def create_app(
             except VoicePlaybackError as exc:
                 voice_output_status["last_preview_error"] = exc.code
                 voice_output_status["last_preview_route"] = None
+                record_voice_health(voice_health_history, storage, kind='sample', error=exc.code)
                 messages = {
                     "audio_session_unavailable": "The Pi audio session is not ready. Try again after the desktop finishes starting.",
                     "speaker_route_unavailable": "No safe local speaker was found. Select HDMI or HAT in Device setup.",
@@ -961,9 +980,12 @@ def create_app(
             except Exception as exc:
                 voice_output_status["last_preview_error"] = "synthesis_unavailable"
                 voice_output_status["last_preview_route"] = None
+                record_voice_health(voice_health_history, storage, kind='sample',
+                                    error='synthesis_unavailable')
                 raise HTTPException(409, 'The local voice could not synthesize the sample.') from exc
             voice_output_status["last_preview_error"] = None
             voice_output_status["last_preview_route"] = route
+            record_voice_health(voice_health_history, storage, kind='sample', route=route)
         return {'played': True, 'route': route}
 
     @app.get('/api/v1/voice/asset/preview/pending', dependencies=[Depends(local_only)])
@@ -1010,6 +1032,7 @@ def create_app(
             except VoicePlaybackError as exc:
                 voice_output_status["last_tone_error"] = exc.code
                 voice_output_status["last_tone_route"] = None
+                record_voice_health(voice_health_history, storage, kind='tone', error=exc.code)
                 message = ('The Pi audio session is not ready.' if exc.code == 'audio_session_unavailable'
                            else 'No safe local speaker was found; select HDMI or HAT in Device setup.'
                            if exc.code == 'speaker_route_unavailable'
@@ -1018,9 +1041,12 @@ def create_app(
             except Exception as exc:
                 voice_output_status["last_tone_error"] = "speaker_route_unavailable"
                 voice_output_status["last_tone_route"] = None
+                record_voice_health(voice_health_history, storage, kind='tone',
+                                    error='speaker_route_unavailable')
                 raise HTTPException(409, 'The Luma speaker test could not run.') from exc
             voice_output_status["last_tone_error"] = None
             voice_output_status["last_tone_route"] = route
+            record_voice_health(voice_health_history, storage, kind='tone', route=route)
         return {'sent': True, 'route': route}
 
     @app.get('/api/v1/voice/asset/tone/pending', dependencies=[Depends(local_only)])

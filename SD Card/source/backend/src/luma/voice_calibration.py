@@ -32,6 +32,7 @@ class VoiceCalibration:
         self.signal_peak = 0.0
         self.signal_at = 0.0
         self.last_heard = ""
+        self.last_free_available = False
         self.last_constrained = ""
         self.last_heard_at = 0.0
         self.last_wake_detected = False
@@ -49,6 +50,7 @@ class VoiceCalibration:
         self.results = []
         self.signal_rms = self.signal_peak = self.signal_at = 0.0
         self.last_heard = ""
+        self.last_free_available = False
         self.last_constrained = ""
         self.last_heard_at = 0.0
         self.last_wake_detected = False
@@ -64,7 +66,7 @@ class VoiceCalibration:
         now = time.monotonic() if now is None else now
         active = self.until > now and self.index < len(PHRASES) and self.attempts < 32
         recent = active and now - self.last_heard_at <= 15
-        return {"session": self.session, "active": active, "passed": self.index == len(PHRASES), "phrase": PHRASES[self.index] if active else None, "expects_wake": PHRASES[self.index].startswith("hey luma ") if active else None, "completed": self.index, "total": len(PHRASES), "attempts": self.attempts, "message": self.message if active or self.index == len(PHRASES) else "Start a new check when you are ready.", "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3, "signal_rms": self.signal_rms, "signal_peak": self.signal_peak, "last_heard": self.last_heard if recent else "", "last_constrained": self.last_constrained if recent else "", "last_wake_detected": self.last_wake_detected if recent else None, "last_expected_wake": self.last_expected_wake if recent else None, "last_intent": self.last_intent if recent else "", "last_selection": self.last_selection if recent else "", "applied_gain": self.applied_gain, "gain_adjustments": self.gain_adjustments, "results": list(self.results)}
+        return {"session": self.session, "active": active, "passed": self.index == len(PHRASES), "phrase": PHRASES[self.index] if active else None, "expects_wake": PHRASES[self.index].startswith("hey luma ") if active else None, "completed": self.index, "total": len(PHRASES), "attempts": self.attempts, "message": self.message if active or self.index == len(PHRASES) else "Start a new check when you are ready.", "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3, "signal_rms": self.signal_rms, "signal_peak": self.signal_peak, "last_heard": self.last_heard if recent else "", "last_free_available": self.last_free_available if recent else False, "last_constrained": self.last_constrained if recent else "", "last_wake_detected": self.last_wake_detected if recent else None, "last_expected_wake": self.last_expected_wake if recent else None, "last_intent": self.last_intent if recent else "", "last_selection": self.last_selection if recent else "", "applied_gain": self.applied_gain, "gain_adjustments": self.gain_adjustments, "results": list(self.results)}
 
     def gain_step(self, rms: float, peak: float) -> int:
         """Adjust only obvious level faults; never chase a recognition mismatch.
@@ -115,7 +117,7 @@ class VoiceCalibration:
         else:
             # A negative-control phrase must be recognized as speech but never
             # activate the wake gate or select a command for execution.
-            heard = parse_local_command(text) if accepted is None else None
+            heard = parse_local_command(free_text or text) if accepted is None else None
             matched = bool(heard and expected and selected_text is None
                            and (heard.name, heard.value) == (expected.name, expected.value))
         level_ok = .002 <= rms and peak < .995
@@ -123,6 +125,7 @@ class VoiceCalibration:
         # Only the live local setup page can see this short-lived transcript.
         # Persistent results retain numeric levels and matches, never speech.
         self.last_heard = (free_text or text)[:160]
+        self.last_free_available = bool(free_text)
         self.last_constrained = text[:160] if free_text else ""
         self.last_heard_at = now
         self.last_wake_detected = accepted is not None
@@ -164,6 +167,7 @@ class VoiceCalibration:
     def cancel(self) -> None:
         self.until = 0
         self.last_heard = ""
+        self.last_free_available = False
         self.last_constrained = ""
         self.last_wake_detected = False
         self.last_expected_wake = True

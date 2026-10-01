@@ -1,0 +1,17 @@
+# 0.2.5 supervised first load (no OS reflash)
+
+Status: **preparation only**. Do not arm the card until the owner receives an explicit ready-to-load message with the final signed bundle path and SHA-256. The current Pi should remain on 0.2.4 until then. This test path is deliberately separate from Settings → Software: that updater accepts only a stable signed GitHub release targeting `main`, and `main` is reserved until physical acceptance.
+
+The package is an application-only `.lup` signed by the original offline Ed25519 key. It retains `/var/lib/luma` settings, Google authorization, Bluetooth bonding, voice assets and game saves. The Linux updater verifies its image-pinned public key, version, dependencies, schema and file hashes, stages 0.2.5 beside 0.2.4, switches atomically and checks API/database health. The original release remains for rollback. The one-shot BOOT launcher restores `cmdline.txt` **before** it invokes the updater, so a later boot cannot rerun a failed attempt.
+
+## When the final candidate is announced
+
+1. In Luma Settings, shut down the Pi. Wait until it is fully off, then remove the microSD and connect it to the Windows laptop. Do not format any drive Windows offers to format. Find the small FAT BOOT partition by its `cmdline.txt`, `config.txt` and `kernel8.img` files; verify its drive letter. Do not choose the large Linux partition or another USB drive.
+2. Run the exact PowerShell command supplied with the final candidate. It invokes [`arm-supervised-update.ps1`](../source/tools/v025/arm-supervised-update.ps1) with that BOOT drive letter and the final `.lup` path. The armer refuses an already-armed card, an unexpected boot command line, a missing bundle, or a non-FAT volume. It copies and hashes the signed package, preserves the original boot line and arms one boot only. It does not mount or edit the Linux data partition.
+3. Safely eject the SD card, place it in the powered-off Pi, then power on. Keep power connected while it installs. The hub may briefly restart its application services; do not click Update again or power-cycle it during the first five minutes.
+4. Confirm Settings → Software reports **0.2.5**. Check that Google Calendar, phone pairing, Wi-Fi, PIN, theme and other saved preferences survived. The BOOT partition contains `luma-v025-result.log`; if the screen does not return or stays on 0.2.4, shut down normally if possible, move the SD to the laptop and share that log. Do not re-arm or reflash before reviewing it.
+5. Run Settings → Voice → **Test speaker tone**, then **Hear a sample**. Report which was audible, the actual **Last spoken reply** engine, and any displayed route/synthesis error. Run the ten-phrase guided check at normal room distance, noting misses, false wakes and latency. Confirm normal commands after restarting the Pi. This is the hardware acceptance gate, not an assumption made by the signed-bundle tests.
+
+The signed-bundle desktop qualifier tests successful switch, failed-health rollback, readable installed files and a saved-settings marker. It does **not** reproduce the Pi's physical audio, display, microphone, thermals, live systemd mount namespace or SD controller. A successful process exit also cannot establish that a tone was audible. The first load therefore requires owner observation.
+
+BOOT logging covers this one-shot update. General always-on BOOT logging is an OS-image change tracked separately and cannot be smuggled into an app-only `.lup`.

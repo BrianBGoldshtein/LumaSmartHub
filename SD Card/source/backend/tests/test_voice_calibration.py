@@ -66,6 +66,7 @@ def test_calibration_shows_raw_decoder_evidence_and_never_passes_a_conflict():
     )
     assert conflicted["completed"] == 0
     assert conflicted["last_heard"] == "hey luma set brightness to sixty"
+    assert conflicted["last_free_available"] is True
     assert conflicted["last_constrained"] == PHRASES[0]
     assert conflicted["last_wake_detected"] is True
     assert conflicted["last_intent"] == ""
@@ -83,6 +84,21 @@ def test_calibration_shows_raw_decoder_evidence_and_never_passes_a_conflict():
     assert calibration.status(118)["last_selection"] == ""
 
 
+def test_unrestricted_decoder_reveals_a_wake_missed_by_the_gate():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)["session"]
+    result = calibration.submit(
+        session, "", .05, .4, 101,
+        free_text="hey luma set brightness to fifty",
+        selected_text=None, selection="",
+    )
+    assert result["completed"] == 0
+    assert result["last_heard"] == "hey luma set brightness to fifty"
+    assert result["last_free_available"] is True
+    assert result["last_wake_detected"] is False
+    assert "not Hey Luma" in result["message"]
+
+
 def test_negative_control_requires_ordinary_speech_without_a_wake():
     calibration = VoiceCalibration()
     session = calibration.start(100)["session"]
@@ -98,6 +114,9 @@ def test_negative_control_requires_ordinary_speech_without_a_wake():
     assert ordinary["completed"] == len(PHRASES) - 1
     assert ordinary["last_wake_detected"] is False
     assert ordinary["last_expected_wake"] is False
+    completed = calibration.submit(session, "", .05, .4, 104,
+                                   free_text="good morning", selected_text=None)
+    assert completed["passed"] is True
 
 
 def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():

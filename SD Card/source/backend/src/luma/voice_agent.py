@@ -261,17 +261,16 @@ def main() -> None:
                     rms, maximum = math.sqrt(energy / max(count, 1)) / 32768, peak / 32768
                     energy = count = peak = 0
                     if calibration["active"]:
-                        if text:
-                            # The setup check must exercise the *same* second
-                            # decoding pass as a real command. Otherwise it
-                            # could pass while live replies misunderstand it.
+                        # In setup, decode the full phrase even if the wake
+                        # grammar heard nothing. This reveals a missed wake
+                        # without changing live command authorization.
+                        free_text = _unrestricted_transcript(free_recognizer, spoken)
+                        if text or free_text:
                             test_gate = WakeGate(gate.phrase)
                             candidate = test_gate.accept(text, now)
                             if candidate is not None:
-                                free_text = _unrestricted_transcript(free_recognizer, spoken)
                                 chosen, selection = choose_command(candidate, free_text, gate.phrase)
                             else:
-                                free_text = ""
                                 chosen, selection = None, ""
                             try:
                                 client.post("/api/v1/voice/calibration/sample", json={

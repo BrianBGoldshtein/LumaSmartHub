@@ -114,7 +114,7 @@ def installed_tree(tmp_path: Path, *, real_venv: bool = False):
             (current / "venv/lib64").symlink_to("lib", target_is_directory=True)
     # The fixture models the already-flashed base image, not the version of
     # the source tree currently preparing a later app-only update.
-    project = re.sub(rb'(?m)^version = "[^"]+"$', b'version = "0.2.0"',
+    project = re.sub(rb'(?m)^version = "[^"]+"(?=\r?$)', b'version = "0.2.0"',
                      (Path(__file__).parents[1] / "pyproject.toml").read_bytes(), count=1)
     (current / "backend/pyproject.toml").write_bytes(project)
     (current / "backend/src/luma/storage.py").write_text("SCHEMA_VERSION = 1\n")

@@ -356,6 +356,8 @@ def main() -> None:
                     try:
                         chunk = chunks.get(timeout=0.5)
                     except queue.Empty:
+                        if capture.stalled():
+                            raise AudioCaptureError('capture_stream_stalled')
                         continue
                     if isinstance(chunk, AudioCaptureError):
                         raise chunk

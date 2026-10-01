@@ -154,6 +154,7 @@ class VoiceDiagnostic(BaseModel):
         "recognizer_unavailable", "model_unavailable",
         "audio_capture_tool_missing", "capture_source_invalid",
         "capture_source_unavailable", "capture_stream_stopped",
+        "capture_stream_stalled",
     ]
 
 

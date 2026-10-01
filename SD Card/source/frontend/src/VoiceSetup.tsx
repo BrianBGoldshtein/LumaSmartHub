@@ -18,6 +18,7 @@ const diagnosticCopy:Record<string,string>={
   capture_source_invalid:"The configured microphone source is invalid. Reset the local voice audio configuration.",
   capture_source_unavailable:"Luma could not open the ReSpeaker microphone source. Check that the HAT is connected and the audio session is running.",
   capture_stream_stopped:"The microphone stream stopped unexpectedly. Check the ReSpeaker connection, then run the check again.",
+  capture_stream_stalled:"The microphone stream stopped sending frames. Luma is restarting its voice service; if this repeats, check the ReSpeaker and PipeWire session.",
 };
 const previewLibrary:VoiceGroup[]=[{title:'Weather',examples:['What’s the weather today?','Will it rain today?','What is the temperature?']},{title:'Calendar',examples:['When is my next event?','What’s on my calendar today?','What’s on my calendar tomorrow?','What is happening now?']},{title:'Tasks & time',examples:['What are my tasks today?','What tasks are due today?','What time is it?',"What's the time?",'What day is it?','How much time is left on my timer?']},{title:'Everyday controls',examples:['Start focus timer','Pause timer','Good morning','Good night','Screen off','Wake screen','Change brightness','Change theme to arcade','Hide my calendar','What can I say?']}];
 async function request(path:string,body?:unknown){

@@ -2,6 +2,8 @@
 
 Status: design and diagnosis in progress. **Do not publish 0.2.5 or call voice fixed until the physical Pi passes the tests below.** Keep the 0.2.4 voice asset and all user settings during application updates. Main/release promotion still requires owner approval.
 
+Release integration gate: this branch starts at the current `main` snapshot. Before constructing a signed update, reconcile the still-separate updater recovery work (including the installed-release permission fix) and BOOT-card logging work, then run update/rollback qualification. Do not assume a feature-branch commit is deployable by the hub's stable updater.
+
 First source slice on `codex/luma-voice-025`: the API and voice service explicitly select the same per-user Pulse socket and Luma sink; the latest reply engine/fixed playback failure code is visible locally; the sample reports a concrete route or synthesis error instead of a generic silent failure. This is not yet hardware-qualified.
 
 Second source slice: the guided check now covers six phrases, including the two commands the owner reported failing ("what time is it" and "good morning"). It reuses the **same unrestricted second transcription pass** as live commands, briefly shows the effective words heard on the local setup screen, and can persist up to three bounded four-step ReSpeaker gain changes for clearly quiet or clipped attempts. It does not tune Vosk's acoustic weights, wake detector or intent network, and does not claim that automatic gain fixes recognition errors with an adequate signal.

@@ -49,6 +49,7 @@ class VoiceCalibration:
         self.ambient_until = 0.0
         self.ambient_duration = 0.0
         self.ambient_pending = False
+        self.phrase_prompt_at = 0.0
 
     def processing_regressed(self) -> bool:
         """Two raw-only phrase wins reject the trial for this whole check."""
@@ -76,6 +77,7 @@ class VoiceCalibration:
         self.ambient_duration = ambient_seconds
         self.ambient_until = 0.0
         self.ambient_pending = ambient_seconds > 0
+        self.phrase_prompt_at = 0.0 if self.ambient_pending else now
         self.index = self.attempts = 0
         self.results = []
         self.signal_rms = self.signal_peak = self.signal_at = 0.0
@@ -108,6 +110,20 @@ class VoiceCalibration:
                      if active and not ambient_remaining and len(self.room_floors) >= 3
                      and sum(bool(item.get('acoustic_speech')) for item in self.results) >= 3
                      else None)
+        message = self.message
+        if (active and not ambient_remaining and self.signal_at > 0
+                and now - self.signal_at <= 3 and self.phrase_prompt_at > 0
+                and now - self.phrase_prompt_at >= 12):
+            if self.ambient_duration and not self.room_floors:
+                message = "Room sound was not measured. Restart the voice check before changing gain."
+            elif self.signal_peak >= .995:
+                message = "The microphone is clipping before a phrase completes. Lower capture gain and try again."
+            elif self.signal_rms < .002:
+                message = ("No speech has risen above the room sound yet. Check the ReSpeaker connection, "
+                           "move closer, or adjust capture gain; then say the phrase and pause.")
+            else:
+                message = ("I see microphone activity but no complete phrase. Say the displayed words "
+                           "at normal distance, then pause for a second.")
         return {
             "session": self.session, "active": active,
             "passed": self.index == len(PHRASES),
@@ -117,7 +133,7 @@ class VoiceCalibration:
             if active and not ambient_remaining else None,
             "completed": self.index, "total": len(PHRASES), "attempts": self.attempts,
             "message": (("Stay quiet while Luma measures room sound."
-                         if ambient_remaining else self.message)
+                         if ambient_remaining else message)
                         if active or self.index == len(PHRASES)
                         else "Start a new check when you are ready."),
             "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3,
@@ -169,6 +185,7 @@ class VoiceCalibration:
         self.audio_profile = None
         self.ambient_until = 0.0
         self.ambient_pending = self.ambient_duration > 0
+        self.phrase_prompt_at = 0.0
         self.signal_rms = self.signal_peak = self.signal_at = 0.0
         self.last_heard = self.last_constrained = self.last_intent = self.last_selection = ""
         self.last_raw_heard = ""
@@ -190,6 +207,7 @@ class VoiceCalibration:
         if self.ambient_pending:
             self.ambient_until = now + self.ambient_duration
             self.ambient_pending = False
+            self.phrase_prompt_at = self.ambient_until
         self.signal_rms = round(rms, 4)
         self.signal_peak = round(peak, 4)
         self.signal_at = now
@@ -240,6 +258,7 @@ class VoiceCalibration:
                            and peak >= max(.005, noise * 4))
         level_ok = .002 <= rms and peak < .995 and clipped_fraction <= .002
         self.attempts += 1
+        self.phrase_prompt_at = now
         # Only the live local setup page can see this short-lived transcript.
         # Persistent results retain numeric levels and matches, never speech.
         self.last_heard = (free_text or text)[:160]
@@ -304,6 +323,7 @@ class VoiceCalibration:
         self.results.clear()
         self.room_floors.clear()
         self.audio_profile = None
+        self.phrase_prompt_at = 0.0
         self.last_heard = ""
         self.last_raw_heard = ""
         self.last_free_available = False

@@ -56,6 +56,35 @@ def test_calibration_level_is_live_ephemeral_and_expires():
         calibration.report_level("old-session", .1, .4, 102)
 
 
+def test_calibration_explains_when_live_audio_never_forms_a_phrase():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    calibration.report_level(session, .001, .01, 105, floor_rms=.001)
+    assert 'Stay quiet' in calibration.status(106)['message']
+    calibration.report_level(session, .001, .01, 121)
+    quiet = calibration.status(121)
+    assert quiet['attempts'] == 0 and quiet['completed'] == 0
+    assert 'No speech has risen above' in quiet['message']
+    calibration.report_level(session, .025, .25, 122)
+    assert 'activity but no complete phrase' in calibration.status(122)['message']
+    calibration.report_level(session, .08, .999, 123)
+    assert 'clipping before a phrase completes' in calibration.status(123)['message']
+    calibration.submit(session, '', .025, .25, 124)
+    assert 'no complete phrase' not in calibration.status(124)['message']
+    calibration.record_gain(43)
+    assert 'Stay quiet' in calibration.status(125)['message']
+
+
+def test_calibration_does_not_treat_missing_room_baseline_as_quiet_speech():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    calibration.report_level(session, .001, .01, 105)
+    calibration.report_level(session, .001, .01, 121)
+    status = calibration.status(121)
+    assert 'Room sound was not measured' in status['message']
+    assert status['room_noise_rms'] is None
+
+
 def test_ambient_clock_begins_with_real_capture_and_profile_precedes_intents():
     calibration = VoiceCalibration()
     started = calibration.start(100, ambient_seconds=4)

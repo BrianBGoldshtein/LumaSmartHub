@@ -752,6 +752,20 @@ def create_app(
             result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
+        step = calibration.gain_step(payload.rms, payload.peak) if result["active"] else 0
+        if step:
+            hardware = await asyncio.to_thread(mic_hardware.status)
+            if (hardware["available"] and payload.session == calibration.session
+                    and calibration.status()["active"]):
+                current = int(hardware["gain"])
+                adjusted = min(63, max(0, current + step))
+                if adjusted != current:
+                    try:
+                        await asyncio.to_thread(mic_hardware.save_and_apply, adjusted)
+                    except mic_hardware.MicHardwareError:
+                        pass  # A failed mixer change never fakes a passed phrase.
+                    else:
+                        calibration.record_gain(adjusted)
         if result["passed"]:
             storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})
         return calibration_payload()

@@ -19,7 +19,7 @@ def test_calibration_passes_without_retaining_transcripts():
         result = calibration.submit(session, phrase, .08, .6, 101)
     assert result["passed"] and not result["active"]
     assert all("text" not in row for row in result["results"])
-    assert result["completed"] == 3
+    assert result["completed"] == len(PHRASES)
 
 
 def test_calibration_rejects_wrong_wake_quiet_clipped_and_expired_samples():
@@ -29,7 +29,7 @@ def test_calibration_rejects_wrong_wake_quiet_clipped_and_expired_samples():
     assert "quiet" in calibration.submit(session, PHRASES[0], .0001, .01, 101)["message"]
     assert "clipping" in calibration.submit(session, PHRASES[0], .1, .999, 101)["message"]
     with pytest.raises(ValueError):
-        calibration.submit(session, PHRASES[0], .1, .5, 221)
+        calibration.submit(session, PHRASES[0], .1, .5, 281)
     with pytest.raises(ValueError):
         calibration.submit("old-session", PHRASES[0], .1, .5, 101)
 
@@ -43,6 +43,49 @@ def test_calibration_level_is_live_ephemeral_and_expires():
     assert not calibration.status(105)["signal_available"]
     with pytest.raises(ValueError):
         calibration.report_level("old-session", .1, .4, 102)
+
+
+def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)["session"]
+    result = calibration.submit(session, "hey luma something unclear", .001, .05, 101)
+    assert result["last_heard"] == "hey luma something unclear"
+    assert calibration.gain_step(.001, .05) == 4
+    calibration.record_gain(43)
+    assert calibration.status(102)["applied_gain"] == 43
+    assert calibration.gain_step(.05, .999) == -4
+    calibration.record_gain(39)
+    calibration.record_gain(35)
+    assert calibration.gain_step(.001, .05) == 0
+    assert calibration.status(117)["last_heard"] == ""
+    assert calibration.gain_step(.0001, .001) == 0  # absent route, not low gain
+    calibration.cancel()
+    assert calibration.status(102)["last_heard"] == ""
+
+
+def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
+    import luma.api as api
+    applied = []
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': 39 + 4 * len(applied), 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', lambda gain: applied.append(gain))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        response = client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': 'hey luma something unclear', 'rms': .001,
+            'peak': .05,
+        })
+        assert response.status_code == 200
+        assert response.json()['applied_gain'] == 43
+        assert 'adjusted' in response.json()['message']
+        assert applied == [43]
+        client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': 'hey luma something unclear', 'rms': .05,
+            'peak': .5,
+        })
+        assert applied == [43]  # Wrong transcript alone cannot change gain.
 
 
 def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp_path):

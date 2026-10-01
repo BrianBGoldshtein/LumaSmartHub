@@ -35,6 +35,17 @@ def _free_command(text: str, wake_phrase: str) -> str:
     return words[match.end():].strip(' ,.') if match else words
 
 
+def _unrestricted_transcript(recognizer, frames: list[bytes]) -> str:
+    """Replay one bounded utterance through the same decoder used for commands."""
+    recognizer.Reset()
+    parts = []
+    for frame in frames:
+        if recognizer.AcceptWaveform(frame):
+            parts.append(json.loads(recognizer.Result()).get('text', ''))
+    parts.append(json.loads(recognizer.FinalResult()).get('text', ''))
+    return ' '.join(part for part in parts if part)
+
+
 def main() -> None:
     def stop(signum, frame):
         raise SystemExit(0)
@@ -165,6 +176,17 @@ def main() -> None:
                     energy = count = peak = 0
                     if calibration["active"]:
                         if text:
+                            # The setup check must exercise the *same* second
+                            # decoding pass as a real command. Otherwise it
+                            # could pass while live replies misunderstand it.
+                            test_gate = WakeGate(gate.phrase)
+                            candidate = test_gate.accept(text, now)
+                            if candidate is not None:
+                                free_text = _unrestricted_transcript(free_recognizer, spoken)
+                                varied = _free_command(free_text, gate.phrase)
+                                if varied and varied != gate.phrase and (candidate or len(varied.split()) > 1):
+                                    candidate = varied
+                                text = f"{gate.phrase} {candidate}".strip()
                             try:
                                 client.post("/api/v1/voice/calibration/sample", json={"session": calibration["session"], "text": text, "rms": rms, "peak": maximum}).raise_for_status()
                             except httpx.HTTPError:
@@ -179,13 +201,7 @@ def main() -> None:
                     # The constrained recognizer verifies wake. Re-transcribe
                     # just this bounded utterance without a fixed phrase list,
                     # so the local intent model can hear genuine variations.
-                    free_recognizer.Reset()
-                    parts=[]
-                    for frame in spoken:
-                        if free_recognizer.AcceptWaveform(frame):
-                            parts.append(json.loads(free_recognizer.Result()).get('text',''))
-                    parts.append(json.loads(free_recognizer.FinalResult()).get('text',''))
-                    free_text=' '.join(part for part in parts if part)
+                    free_text = _unrestricted_transcript(free_recognizer, spoken)
                     varied=_free_command(free_text,gate.phrase)
                     if varied and varied != gate.phrase and (accepted or len(varied.split())>1):
                         accepted=varied

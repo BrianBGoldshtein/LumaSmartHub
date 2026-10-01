@@ -33,6 +33,7 @@ EXTRA = {
     'jacket':['should i wear a coat','is it jacket weather'],
     'next_event':['tell me my next appointment','what meeting comes next','whats coming up next','what time does my next class start','when does my next meeting start'],
     'calendar_today':['read out todays events','tell me my plans today','what does my day look like'],
+    'remaining_today':['tell me what events i have left today','anything else coming up today','what remains on my schedule today'],
     'calendar_tomorrow':['read out tomorrows events','tell me my plans tomorrow','what does tomorrow look like'],
     'calendar_week':['read out this weeks events','tell me my plans this week'],
     'ongoing':['what meeting am i in','whats on right now'],

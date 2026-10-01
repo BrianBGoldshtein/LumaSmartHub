@@ -1,12 +1,17 @@
 import type {CalendarEvent} from './types';
 
 export function taskPages(tasks:CalendarEvent[],page:number){
-  // Completion remains in the provider snapshot for sync/voice, but never
-  // consumes a slot or a rotation page on the wall-facing to-do slide.
-  const outstanding=tasks.filter(task=>!task.completed);
-  const count=Math.max(1,Math.ceil(outstanding.length/3));
+  const byDue=(a:CalendarEvent,b:CalendarEvent)=>(a.due_date || '').localeCompare(b.due_date || '')
+    || (a.summary || '').localeCompare(b.summary || '') || a.id.localeCompare(b.id);
+  const outstanding=tasks.filter(task=>!task.completed).sort(byDue);
+  const completed=tasks.filter(task=>task.completed).sort(byDue);
+  // Keep complete-only pages separate so they can rotate more quickly.
+  const groups=[...Array.from({length:Math.ceil(outstanding.length/3)},(_,i)=>outstanding.slice(i*3,i*3+3)),
+    ...Array.from({length:Math.ceil(completed.length/3)},(_,i)=>completed.slice(i*3,i*3+3))];
+  const count=Math.max(1,groups.length);
   const index=((page%count)+count)%count;
-  return {index,count,total:outstanding.length,items:outstanding.slice(index*3,index*3+3)};
+  const items=groups[index] || [];
+  return {index,count,total:tasks.length,items,completedOnly:items.length>0 && items.every(task=>task.completed)};
 }
 export function taskDueLabel(date:string|undefined,today:string){
   if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))return '';

@@ -1,5 +1,5 @@
 import {useEffect,useState,type CSSProperties} from 'react';
-import {ListChecks,ChevronLeft,ChevronRight,RefreshCw} from 'lucide-react';
+import {ListChecks,ChevronLeft,ChevronRight,RefreshCw,Check} from 'lucide-react';
 import type {Snapshot,CalendarEvent} from './types';
 import {taskPages,taskDueLabel} from './todoState';
 import {setupLink} from './setupTheme';
@@ -12,7 +12,7 @@ export function TodosPage({snapshot,onUpdate,demo}:{snapshot:Snapshot;onUpdate:(
   const pages=taskPages(snapshot.todos,page);
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:snapshot.settings.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   useEffect(()=>{nextTaskPage=pages.index+1;},[pages.index]);
-  useEffect(()=>{if(busy || pages.count<=1)return;const handle=setTimeout(()=>setPage(value=>value+1),8000);return()=>clearTimeout(handle);},[busy,pages.count,page]);
+  useEffect(()=>{if(busy || pages.count<=1)return;const handle=setTimeout(()=>setPage(value=>value+1),pages.completedOnly?4000:8000);return()=>clearTimeout(handle);},[busy,pages.count,pages.completedOnly,page]);
   async function change(task:CalendarEvent){
     if(busy)return;
     setBusy(true);setMessage('');
@@ -31,8 +31,9 @@ export function TodosPage({snapshot,onUpdate,demo}:{snapshot:Snapshot;onUpdate:(
     }catch(error){setMessage((error as Error).message);}finally{setBusy(false);}
   }
   return <main className="page focus-page todos-page"><div className="section-heading"><h1>To-dos</h1><span><ListChecks/>{pages.total}</span></div>
-    <section className="card todos-card">{pages.items.map(task=><article className="todo-row" style={{'--event-color':/^#[0-9a-f]{6}$/i.test(task.event_color || task.calendar_color || '')?task.event_color || task.calendar_color:'var(--accent)'} as CSSProperties} key={`${task.calendar_id}:${task.id}`}>
-      <button className="todo-check" aria-label={`Complete: ${task.summary}`} aria-pressed={false} disabled={busy || (!demo && (!snapshot.todo_controls?.can_update || !task.etag))} onClick={()=>void change(task)}/>
+    <section className="card todos-card">{pages.items.map(task=><article className={`todo-row${task.completed?' is-complete':''}`} style={{'--event-color':/^#[0-9a-f]{6}$/i.test(task.event_color || task.calendar_color || '')?task.event_color || task.calendar_color:'var(--accent)'} as CSSProperties} key={`${task.calendar_id}:${task.id}`}>
+      {task.completed?<span className="todo-check" role="img" aria-label="Completed"><Check aria-hidden="true"/></span>
+        :<button className="todo-check" aria-label={`Complete: ${task.summary}`} aria-pressed={false} disabled={busy || (!demo && (!snapshot.todo_controls?.can_update || !task.etag))} onClick={()=>void change(task)}/>}
       <div><h3>{task.summary}</h3><p>{taskDueLabel(task.due_date,today)}</p></div>
     </article>)}{!pages.total && <div className="empty-message"><ListChecks/><span>All caught up.</span></div>}</section>
     <footer className="todo-footer"><div className="todo-pagination">{pages.count>1 && <><button disabled={busy} aria-label="Previous tasks" onClick={()=>setPage(value=>value-1)}><ChevronLeft/></button><span>{pages.index+1} / {pages.count}</span><button disabled={busy} aria-label="Next tasks" onClick={()=>setPage(value=>value+1)}><ChevronRight/></button></>}<button disabled={busy} aria-label="Refresh tasks from Google" onClick={()=>void refresh()}><RefreshCw/></button></div>

@@ -11,9 +11,9 @@ QUERY_PHRASES = {
     'next_departure': ('when is my next departure', 'when is the next departure', 'what is my next departure', 'next departure'),
     'weather_today': ('what is the weather today', "what's the weather today", 'what is the forecast today', 'how is the weather today'),
     'weather_now': ('what is the weather', "what's the weather", 'what is the temperature', 'how hot is it', 'how cold is it', 'what is the weather right now'),
-    'weather_tomorrow': ('what is the weather tomorrow', "what's the weather tomorrow", 'what is the forecast tomorrow', 'how is the weather tomorrow', "how's the weather tomorrow", 'how warm will it be tomorrow', "tell me tomorrow's forecast"),
+    'weather_tomorrow': ('what is the weather tomorrow', "what's the weather tomorrow", 'what is the forecast tomorrow', 'how is the weather tomorrow', "how's the weather tomorrow", "what's it like outside tomorrow", 'how warm will it be tomorrow', "tell me tomorrow's forecast"),
     'weather_afternoon': ('what is the weather this afternoon', 'what is the forecast this afternoon', 'how warm this afternoon'),
-    'weather_evening': ('what is the weather this evening', 'what is the forecast tonight', 'how cold tonight'),
+    'weather_evening': ('what is the weather this evening', "what's the weather tonight", 'what is the forecast tonight', 'how cold tonight'),
     'rain_today': ('will it rain today', 'is it going to rain today', 'do i need an umbrella', 'what is the chance of rain today'),
     'rain_tomorrow': ('will it rain tomorrow', 'what is the chance of rain tomorrow', 'do i need an umbrella tomorrow'),
     'rain_timing': ('when will it rain', 'when is the next rain', 'when should i expect rain'),
@@ -24,6 +24,7 @@ QUERY_PHRASES = {
     'jacket': ('do i need a jacket', 'should i bring a jacket', 'do i need a coat today'),
     'next_event': ('when is my next event', "when's my next event", 'what is my next event', "what's my next event", 'what is next on my calendar', 'when is my next appointment'),
     'calendar_today': ('what is on my calendar today', "what's on my calendar today", "what's on my agenda today", 'what is my schedule today', 'what do i have today', 'what do i have going on today', 'read my calendar today'),
+    'remaining_today': ('do i have anything else today', 'what else is on my calendar today', 'what is left on my calendar today'),
     'calendar_tomorrow': ('what is on my calendar tomorrow', "what's on my calendar tomorrow", 'what is my schedule tomorrow', 'what do i have tomorrow'),
     'ongoing': ('what is happening now', 'what event is happening now', 'am i in an event right now'),
     'calendar_week': ('what is on my calendar this week', 'what is coming up this week', 'what is my week like'),
@@ -32,10 +33,10 @@ QUERY_PHRASES = {
     'tasks_today': ('what are my tasks today', 'what is on my to do list', "what's on my to do list", 'read my tasks'),
     'tasks_due': ('what tasks are due today', 'what is due today'),
     'tasks_soon': ('what tasks are due soon', 'what do i need to finish soon', 'what is due in the next few days'),
-    'tasks_overdue': ('what tasks are overdue', 'what did i miss', 'what to dos are overdue'),
+    'tasks_overdue': ('what tasks are overdue', "what's overdue", 'what did i miss', 'what to dos are overdue'),
     'tasks_completed': ('what tasks have i completed', 'what is done on my to do list', 'what have i finished today'),
     'time': ('what time is it', 'what time is it now', "what's the time", "what's the time now", 'what is the time',
-             'tell me the time', 'could you tell me the time', 'do you know what time it is'),
+             'tell me the time', 'could you tell me the time', 'could you tell me the time now', 'do you know what time it is'),
     'date': ('what day is it', 'what is the date today', "what's the date today"),
     'timer_status': ('how much time is left', 'how much time is left on my timer', 'what is my timer status'),
     'phone_status': ('is my phone connected', 'can you see my iphone', 'is my iphone nearby'),
@@ -48,7 +49,7 @@ QUERY_PHRASES = {
 LIBRARY = [
     {'title':'Transit', 'examples':['Show transit', 'When is my next departure?']},
     {'title':'Weather', 'examples':['What’s the weather today?', 'What’s the weather tomorrow?', 'Will it rain tomorrow?', 'What is the high tomorrow?', 'Do I need a jacket?']},
-    {'title':'Calendar', 'examples':['When is my next event?', 'What’s on my calendar today?', 'What’s on my calendar tomorrow?', 'What is happening now?', 'When am I free?']},
+    {'title':'Calendar', 'examples':['When is my next event?', 'What’s on my calendar today?', 'Do I have anything else today?', 'What’s on my calendar tomorrow?', 'What is happening now?', 'When am I free?']},
     {'title':'Tasks & time', 'examples':['What are my tasks today?', 'What tasks are overdue?', 'What time is it?', "What's the time?", 'What day is it?', 'How much time is left on my timer?']},
     {'title':'Luma status', 'examples':['Is my phone connected?', 'Is the internet working?', 'Why is my calendar hidden?', 'Is my calendar up to date?']},
     {'title':'Everyday controls', 'examples':['Start focus timer', 'Pause timer', 'Good morning', 'Good night', 'Screen off', 'Wake screen', 'Change brightness', 'Change theme to arcade', 'Hide my calendar', 'What can I say?']},
@@ -294,6 +295,12 @@ def answer_query(intent, snapshot):
     if intent=='next_event':
         items=[e for e in events if datetime.fromisoformat(e['start'])>now]
         return prefix+('Your next event is '+_event(items[0],zone,now.date()) if items else 'No upcoming event in the saved week ahead.')
+    if intent=='remaining_today':
+        items=[e for e in events if datetime.fromisoformat(e['end'])>now
+               and datetime.fromisoformat(e['start']).astimezone(zone).date()<=now.date()
+               and datetime.fromisoformat(e['end']).astimezone(zone).date()>=now.date()]
+        return prefix+(f'You have {len(items)} ongoing or upcoming events today. '+_list(items,lambda e:_event(e,zone,now.date()))
+                       if items else 'No ongoing or upcoming events remain today on your selected calendars.')
     if intent=='ongoing':
         items=[e for e in events if not e['all_day'] and datetime.fromisoformat(e['start'])<=now<datetime.fromisoformat(e['end'])]
         return prefix+('Happening now: '+_list(items,lambda e:_event(e,zone,now.date())) if items else 'No timed event is happening now.')

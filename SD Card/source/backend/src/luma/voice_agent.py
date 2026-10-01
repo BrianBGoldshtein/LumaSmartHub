@@ -20,6 +20,7 @@ from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
 from .voice_speech import OfflineSpeaker, VoicePlaybackError
+from .voice_signal import AudioPreprocessor, AudioProfile, pcm_measurements, read_profile
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -142,6 +143,23 @@ def main() -> None:
         atexit.register(leds.close)
         speaker = OfflineSpeaker()
         atexit.register(speaker.close)
+        preprocessor = AudioPreprocessor()
+        def say(reply: str) -> str:
+            try:
+                engine = speaker.speak(reply)
+            except VoicePlaybackError as exc:
+                engine = 'silent'
+                speaker.last_error = exc.code
+                speaker.last_route = None
+            try:
+                client.post('/api/v1/voice/output-report', json={
+                    'engine': engine, 'error': speaker.last_error,
+                    'primary_error': speaker.last_primary_error,
+                    'route': speaker.last_route,
+                }).raise_for_status()
+            except httpx.HTTPError:
+                pass
+            return engine
         def phase(value):
             leds.phase(value)
             try:
@@ -171,6 +189,7 @@ def main() -> None:
                 next_meter = 0.0
                 energy = count = peak = 0
                 meter_energy = meter_count = meter_peak = 0
+                meter_floors: list[float] = []
                 utterance: list[bytes] = []
                 seen_drops = recognition_drops = 0
                 early_wake = False
@@ -207,6 +226,7 @@ def main() -> None:
                             utterance.clear()
                             early_wake = False
                             energy = count = peak = 0
+                            preprocessor.reset()
                             phase('listening' if calibration['active'] else 'idle')
                             continue
                     if now >= next_check:
@@ -222,8 +242,20 @@ def main() -> None:
                                 gate.until = 0
                                 energy = count = peak = 0
                                 meter_energy = meter_count = meter_peak = 0
+                                meter_floors.clear()
                                 next_meter = now
                                 phase("listening" if fresh["active"] else "idle")
+                            target_profile = (AudioProfile() if fresh['active'] else
+                                              read_profile(fresh.get('audio_profile')))
+                            if preprocessor.profile != target_profile:
+                                preprocessor.reset(target_profile)
+                                recognizer.Reset()
+                                free_recognizer.Reset()
+                                utterance.clear()
+                                early_wake = False
+                                gate.until = 0
+                                energy = count = peak = 0
+                                _discard_pending_audio(chunks)
                             calibration = fresh
                         except httpx.HTTPError:
                             # Preserve calibration suppression if the API becomes unreachable.
@@ -248,10 +280,13 @@ def main() -> None:
                         utterance.clear()
                         early_wake = False
                         energy = count = peak = 0
+                        preprocessor.reset()
                         _discard_pending_audio(chunks)
                         phase("listening" if calibration["active"] else "idle")
                         continue  # Never execute a command from a gapped recording.
                     now = time.monotonic()
+                    raw_level = pcm_measurements(chunk)
+                    chunk = preprocessor.process(chunk)
                     samples = array("h", chunk)
                     squared = sum(value * value for value in samples)
                     chunk_peak = max((abs(value) for value in samples), default=0)
@@ -262,17 +297,24 @@ def main() -> None:
                         meter_energy += squared
                         meter_count += len(samples)
                         meter_peak = max(meter_peak, chunk_peak)
+                        meter_floors.append(raw_level['rms'])
                         if now >= next_meter and meter_count:
                             level_rms = math.sqrt(meter_energy / meter_count) / 32768
                             level_peak = meter_peak / 32768
                             try:
                                 client.post("/api/v1/voice/calibration/level", json={
-                                    "session": calibration["session"], "rms": level_rms, "peak": level_peak
+                                    "session": calibration["session"], "rms": level_rms, "peak": level_peak,
+                                    "floor_rms": min(meter_floors) if meter_floors else level_rms,
                                 }).raise_for_status()
                             except httpx.HTTPError:
                                 pass
                             meter_energy = meter_count = meter_peak = 0
+                            meter_floors.clear()
                             next_meter = now + 1
+                    if calibration['active'] and calibration.get('ambient_remaining', 0) > 0:
+                        # The first four seconds measure the room, not words.
+                        # Do not allow a speech fragment to leak into phrase 1.
+                        continue
                     utterance.append(chunk)
                     if len(utterance)>36:
                         utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
@@ -293,6 +335,7 @@ def main() -> None:
                     rms, maximum = math.sqrt(energy / max(count, 1)) / 32768, peak / 32768
                     energy = count = peak = 0
                     if calibration["active"]:
+                        signal = pcm_measurements(b''.join(spoken))
                         # In setup, decode the full phrase even if the wake
                         # grammar heard nothing. This reveals a missed wake
                         # without changing live command authorization.
@@ -309,6 +352,8 @@ def main() -> None:
                                     "session": calibration["session"], "text": text,
                                     "free_text": free_text, "selected_text": chosen,
                                     "selection": selection, "rms": rms, "peak": maximum,
+                                    "dc": signal['dc'],
+                                    "clipped_fraction": signal['clipped_fraction'],
                                 }).raise_for_status()
                             except httpx.HTTPError:
                                 pass
@@ -329,10 +374,11 @@ def main() -> None:
                     if selection in {"conflict", "negated"}:
                         if selection == "conflict":
                             phase("speaking")
-                            speaker.speak("I heard two different commands. Please repeat that.")
+                            say("I heard two different commands. Please repeat that.")
                         _discard_pending_audio(chunks)
                         seen_drops = capture.dropped_frames
                         recognizer.Reset()
+                        preprocessor.reset()
                         phase("idle")
                         continue
                     if not accepted:
@@ -345,20 +391,15 @@ def main() -> None:
                         response.raise_for_status()
                         reply = response.json()["message"]
                         phase("speaking")
-                        engine = speaker.speak(reply)
-                        try:
-                            client.post("/api/v1/voice/output-report", json={
-                                "engine": engine, "error": speaker.last_error,
-                                "route": speaker.last_route,
-                            }).raise_for_status()
-                        except httpx.HTTPError:
-                            pass
+                        if say(reply) == 'silent':
+                            phase('error')
                     except (httpx.HTTPError, subprocess.SubprocessError, OSError):
                         phase("error")
                     finally:
                         _discard_pending_audio(chunks)
                         seen_drops = capture.dropped_frames
                         recognizer.Reset()
+                        preprocessor.reset()
                         phase("idle")
         except AudioCaptureError as error:
             _report_diagnostic(client, error.code)

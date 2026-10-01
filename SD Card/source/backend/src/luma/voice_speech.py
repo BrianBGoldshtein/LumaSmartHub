@@ -71,13 +71,15 @@ def _speaker_routes(env: dict[str, str]) -> list[str]:
     return routes
 
 
-def _play_pcm(pcm: bytes, env: dict[str, str]) -> str:
+def _play_pcm(pcm: bytes, env: dict[str, str], *, rate: int = 22050) -> str:
+    if not 8000 <= rate <= 48000 or not pcm or len(pcm) % 2:
+        raise VoicePlaybackError("speaker_playback_failed")
     routes = _speaker_routes(env)
     for sink in routes:
         try:
             # pacat is the raw-PCM player; the device is explicit on each try.
             subprocess.run(["pacat", "--playback", f"--device={sink}", "--raw", "--format=s16le",
-                            "--rate=22050", "--channels=1"], input=pcm, check=True,
+                            f"--rate={rate}", "--channels=1"], input=pcm, check=True,
                            timeout=90, stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, env={**env, "PULSE_SINK": sink})
             return "luma_speaker" if sink == SPEAKER_SINK else "system_speaker"
@@ -108,6 +110,36 @@ def wav_to_pcm(data: bytes) -> bytes:
         return wav.readframes(wav.getnframes())
 
 
+def fallback_wav_to_pcm(data: bytes) -> tuple[bytes, int]:
+    # eSpeak NG streams WAV to stdout with zero RIFF/data lengths because it
+    # cannot seek back to finalize the header. Python's wave reader sees zero
+    # frames in that case even though the PCM bytes are present.
+    if not 44 < len(data) <= MAX_WAV or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        raise ValueError("invalid fallback audio length")
+    offset, rate = 12, None
+    while offset + 8 <= len(data):
+        tag = data[offset:offset + 4]
+        declared = struct.unpack_from("<I", data, offset + 4)[0]
+        start = offset + 8
+        length = len(data) - start if tag == b"data" and declared == 0 else declared
+        if start + length > len(data):
+            raise ValueError("truncated fallback WAV")
+        if tag == b"fmt ":
+            if length < 16:
+                raise ValueError("invalid fallback WAV format")
+            encoding, channels, rate, byte_rate, align, bits = struct.unpack_from("<HHIIHH", data, start)
+            if (encoding != 1 or channels != 1 or bits != 16
+                    or not 8000 <= rate <= 48000 or byte_rate != rate * 2 or align != 2):
+                raise ValueError("unsupported fallback WAV format")
+        elif tag == b"data":
+            pcm = data[start:start + length]
+            if rate is None or not pcm or len(pcm) % 2 or len(pcm) > rate * 90 * 2:
+                raise ValueError("invalid fallback PCM")
+            return pcm, rate
+        offset = start + length + (length % 2)
+    raise ValueError("missing fallback PCM")
+
+
 def _read_exact(process: subprocess.Popen, length: int, deadline: float) -> bytes:
     result = bytearray()
     descriptor = process.stdout.fileno()
@@ -129,6 +161,8 @@ class OfflineSpeaker:
         self.retry_after = 0.0
         self.last_error: str | None = None
         self.last_route: str | None = None
+        self.last_primary_error: str | None = None
+        self.failure_cause: str | None = None
 
     def close(self) -> None:
         process = self.process
@@ -192,21 +226,34 @@ class OfflineSpeaker:
             return "silent"
         self.last_error = None
         self.last_route = None
+        self.last_primary_error = None
         if sys.platform == "linux" and ready(self.root) and monotonic() >= self.retry_after:
             try:
                 self._piper(reply)
+                self.failure_cause = None
                 return "piper"
             except VoicePlaybackError as exc:
                 self.last_error = exc.code
+                self.last_primary_error = exc.code
+                self.failure_cause = exc.code
                 self.close()
                 self.retry_after = monotonic() + 120
         elif not ready(self.root):
             self.last_error = "voice_asset_unavailable"
+            self.last_primary_error = self.last_error
         else:
             self.last_error = "piper_retry_wait"
-        subprocess.run(["espeak-ng", "--stdin", "-s", "155"], input=reply, text=True,
-                       check=True, timeout=45, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
+            self.last_primary_error = self.failure_cause or self.last_error
+        try:
+            generated = subprocess.run(["espeak-ng", "--stdin", "--stdout", "-s", "155"],
+                                       input=reply.encode("utf-8"), check=True, timeout=45,
+                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            pcm, rate = fallback_wav_to_pcm(generated.stdout)
+            self.last_route = _play_pcm(pcm, pulse_playback_environment(), rate=rate)
+        except (OSError, subprocess.SubprocessError, ValueError, wave.Error,
+                VoicePlaybackError) as exc:
+            self.last_error = "fallback_playback_failed"
+            raise VoicePlaybackError("fallback_playback_failed") from exc
         return "fallback"
 
 

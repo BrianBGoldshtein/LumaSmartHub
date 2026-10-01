@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from luma.api import create_app
 from luma.voice_asset import CONFIG, MODEL, VOICE_ID, VOICE_ASSET_NAME, VOICE_RELEASE_URL, VoiceAssetError, fetch_and_install, install_asset, ready, verify_and_extract, voice_status
-from luma.voice_speech import OfflineSpeaker, VoicePlaybackError, play_test_tone, pulse_playback_environment, wav_to_pcm
+from luma.voice_speech import OfflineSpeaker, VoicePlaybackError, fallback_wav_to_pcm, play_test_tone, pulse_playback_environment, wav_to_pcm
 
 
 def make_asset(tmp_path: Path, *, corrupt=False, extra=None):
@@ -185,16 +185,23 @@ def test_piper_failure_reports_actual_fallback_engine(monkeypatch, tmp_path):
     monkeypatch.setattr(speech, 'sys', SimpleNamespace(platform='linux'))
     monkeypatch.setattr(speech, 'ready', lambda _root: True)
     calls = []
-    monkeypatch.setattr(speech.subprocess, 'run', lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(speech.subprocess, 'run', lambda *args, **kwargs: (calls.append((args, kwargs)) or SimpleNamespace(stdout=b'fake')))
+    monkeypatch.setattr(speech, 'fallback_wav_to_pcm', lambda _data: (b'\x00\x00' * 10, 22050))
+    monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
+    monkeypatch.setattr(speech, '_play_pcm', lambda _pcm, _env, **_kwargs: 'system_speaker')
     speaker = OfflineSpeaker(tmp_path)
     def fail(_reply):
         raise VoicePlaybackError('speaker_route_unavailable')
     monkeypatch.setattr(speaker, '_piper', fail)
     assert speaker.speak('Hello.') == 'fallback'
     assert speaker.last_error == 'speaker_route_unavailable'
+    assert speaker.last_primary_error == 'speaker_route_unavailable'
+    assert speaker.last_route == 'system_speaker'
     assert calls[0][0][0][0] == 'espeak-ng'
+    assert '--stdout' in calls[0][0][0]
     assert speaker.speak('Again.') == 'fallback'
     assert speaker.last_error == 'piper_retry_wait'
+    assert speaker.last_primary_error == 'speaker_route_unavailable'
 
 
 def test_preview_failure_is_explicit_and_local(monkeypatch, tmp_path):
@@ -304,6 +311,14 @@ def test_reply_engine_is_reported_without_speech_text(tmp_path):
         assert status['last_reply_engine'] == 'fallback'
         assert status['last_reply_error'] == 'speaker_route_unavailable'
         assert status['last_reply_route'] is None
+        assert status['last_reply_at']
+        assert client.post('/api/v1/voice/output-report', json={
+            'engine': 'silent', 'error': 'fallback_playback_failed',
+            'primary_error': 'piper_start_failed',
+        }).status_code == 200
+        failed = client.get('/api/v1/voice/asset').json()
+        assert failed['last_reply_engine'] == 'silent'
+        assert failed['last_reply_primary_error'] == 'piper_start_failed'
         assert client.post('/api/v1/voice/output-report', json={
             'engine': 'piper', 'route': 'system_speaker', 'error': None,
         }).status_code == 200
@@ -332,6 +347,31 @@ def test_piper_wav_decoder_accepts_only_expected_mono_format():
         output.writeframes(pcm)
     with pytest.raises(ValueError):
         wav_to_pcm(buffer.getvalue())
+
+
+def test_fallback_decoder_accepts_espeak_streaming_header_with_zero_lengths():
+    data = (b'RIFF' + b'\x00' * 4 + b'WAVE' + b'fmt ' + struct.pack('<IHHIIHH',
+            16, 1, 1, 22050, 44100, 2, 16) + b'data' + b'\x00' * 4
+            + struct.pack('<hhhh', 0, 1000, -1000, 0))
+    assert fallback_wav_to_pcm(data) == (struct.pack('<hhhh', 0, 1000, -1000, 0), 22050)
+    with pytest.raises(ValueError):
+        fallback_wav_to_pcm(data[:-1])
+
+
+def test_failed_fallback_marks_reply_silent_instead_of_stale(monkeypatch, tmp_path):
+    import luma.voice_speech as speech
+    monkeypatch.setattr(speech, 'sys', SimpleNamespace(platform='linux'))
+    monkeypatch.setattr(speech, 'ready', lambda _root: True)
+    speaker = OfflineSpeaker(tmp_path)
+    monkeypatch.setattr(speaker, '_piper', lambda _reply: (_ for _ in ()).throw(
+        VoicePlaybackError('piper_start_failed')))
+    monkeypatch.setattr(speech.subprocess, 'run', lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        OSError('fallback unavailable')))
+    with pytest.raises(VoicePlaybackError, match='fallback_playback_failed'):
+        speaker.speak('Hello.')
+    assert speaker.last_error == 'fallback_playback_failed'
+    assert speaker.last_primary_error == 'piper_start_failed'
+    assert speaker.last_route is None
 
 
 def test_install_keeps_settings_and_switches_only_after_smoke(tmp_path, monkeypatch):

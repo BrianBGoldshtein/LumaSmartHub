@@ -1,0 +1,151 @@
+"""Conservative, local PCM conditioning before wake/word recognition.
+
+No recordings or transcripts are persisted. A profile is created only after a
+guided hardware check and is bypassed when the room is too noisy or clipped.
+"""
+from __future__ import annotations
+
+from array import array
+from dataclasses import dataclass
+import math
+from statistics import median
+import sys
+
+
+RATE = 16_000
+HIGH_PASS_HZ = 75
+HIGH_PASS_ALPHA = math.exp(-2 * math.pi * HIGH_PASS_HZ / RATE)
+
+
+@dataclass(frozen=True)
+class AudioProfile:
+    gain: float = 1.0
+    high_pass: bool = False
+    noise_rms: float = 0.0
+    speech_rms: float = 0.0
+    snr_db: float | None = None
+    quality: str = "unmeasured"
+
+    def public(self) -> dict:
+        return {"version": 1, "gain": self.gain, "high_pass": self.high_pass,
+                "noise_rms": round(self.noise_rms, 5),
+                "speech_rms": round(self.speech_rms, 5),
+                "snr_db": None if self.snr_db is None else round(self.snr_db, 1),
+                "quality": self.quality}
+
+
+def read_profile(value: object) -> AudioProfile:
+    """Reject corrupt/stale configuration instead of amplifying unexpectedly."""
+    if not isinstance(value, dict) or value.get("version") != 1:
+        return AudioProfile()
+    gain = value.get("gain")
+    high_pass = value.get("high_pass")
+    if (type(gain) not in (int, float) or not math.isfinite(gain)
+            or not 1 <= gain <= 2 or type(high_pass) is not bool):
+        return AudioProfile()
+    noise = value.get("noise_rms", 0.0)
+    speech = value.get("speech_rms", 0.0)
+    snr = value.get("snr_db")
+    if (type(noise) not in (int, float) or not 0 <= noise <= 1
+            or type(speech) not in (int, float) or not 0 <= speech <= 1
+            or (snr is not None and (type(snr) not in (int, float) or not math.isfinite(snr)
+                                     or not -60 <= snr <= 90))):
+        return AudioProfile()
+    quality = value.get("quality")
+    if quality not in {"clear", "quiet", "noisy", "clipped", "bypass"}:
+        return AudioProfile()
+    if quality in {"noisy", "clipped", "bypass"} and (gain != 1 or high_pass):
+        return AudioProfile()
+    return AudioProfile(float(gain), high_pass, float(noise), float(speech),
+                        None if snr is None else float(snr), quality)
+
+
+def pcm_measurements(pcm: bytes) -> dict[str, float]:
+    """Measure normalized raw PCM without retaining a waveform."""
+    if len(pcm) < 2 or len(pcm) % 2:
+        raise ValueError("PCM must contain whole 16-bit samples")
+    samples = array("h")
+    samples.frombytes(pcm)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    count = len(samples)
+    total = sum(samples)
+    square = sum(value * value for value in samples)
+    peak = max(abs(value) for value in samples)
+    clipped = sum(abs(value) >= 32440 for value in samples)
+    return {"rms": math.sqrt(square / count) / 32768,
+            "peak": peak / 32768,
+            "dc": abs(total / count) / 32768,
+            "clipped_fraction": clipped / count}
+
+
+def derive_profile(room_floors: list[float], speech_samples: list[dict]) -> AudioProfile:
+    """Choose gentle conditioning only from a clean, complete calibration.
+
+    A noisy/low-SNR room needs microphone placement or source repair, not
+    digital gain that raises noise together with speech. A clipped source must
+    be fixed at the hardware mixer, not digitally attenuated after clipping.
+    """
+    valid = [item for item in speech_samples if item.get("matched") and item.get("level_ok", True) and
+             .002 <= item.get("rms", 0) <= 1 and 0 < item.get("peak", 0) < .995]
+    floors = [value for value in room_floors if 0 < value <= 1]
+    if len(valid) < 3 or len(floors) < 3:
+        return AudioProfile(quality="bypass")
+    noise = median(sorted(floors)[:max(3, len(floors) // 2)])
+    speech = median(item["rms"] for item in valid)
+    peak = median(item["peak"] for item in valid)
+    clipped = max(item.get("clipped_fraction", 0) for item in valid)
+    dc = median(item.get("dc", 0) for item in valid)
+    snr = 20 * math.log10(max(speech, .00001) / max(noise, .00001))
+    if clipped > .002 or peak >= .95:
+        return AudioProfile(1, False, noise, speech, snr, "clipped")
+    if snr < 10 or noise >= .012:
+        return AudioProfile(1, False, noise, speech, snr, "noisy")
+    gain = 1.0
+    if peak < .38 and speech < .04:
+        gain = min(2.0, .65 / max(peak, .1))
+        gain = max(1.0, math.floor(gain * 4) / 4)
+    # A persistent DC component is not speech; filter only when measured.
+    high_pass = dc >= .012 and dc >= speech * .22
+    quality = "quiet" if gain > 1 else "clear"
+    return AudioProfile(gain, high_pass, noise, speech, snr, quality)
+
+
+class AudioPreprocessor:
+    def __init__(self, profile: AudioProfile = AudioProfile()):
+        self.profile = profile
+        self.previous_input = 0.0
+        self.previous_output = 0.0
+        self.applied_gain = 1.0
+
+    def reset(self, profile: AudioProfile | None = None) -> None:
+        if profile is not None:
+            self.profile = profile
+        self.previous_input = self.previous_output = 0.0
+        self.applied_gain = 1.0
+
+    def process(self, pcm: bytes) -> bytes:
+        if self.profile.gain == 1 and not self.profile.high_pass:
+            return pcm
+        if len(pcm) < 2 or len(pcm) % 2:
+            raise ValueError("PCM must contain whole 16-bit samples")
+        samples = array("h")
+        samples.frombytes(pcm)
+        if sys.byteorder != "little":
+            samples.byteswap()
+        # Gain rises gradually, but drops immediately for sudden loud sounds.
+        raw_peak = max(abs(value) for value in samples) / 32768
+        target = min(self.profile.gain, .90 / max(raw_peak, .0001))
+        self.applied_gain = min(target, self.applied_gain + .25)
+        output = array("h")
+        for sample in samples:
+            value = float(sample)
+            if self.profile.high_pass:
+                filtered = HIGH_PASS_ALPHA * (self.previous_output + value - self.previous_input)
+                self.previous_input = value
+                self.previous_output = filtered
+                value = filtered
+            output.append(max(-32768, min(32767, round(value * self.applied_gain))))
+        if sys.byteorder != "little":
+            output.byteswap()
+        return output.tobytes()

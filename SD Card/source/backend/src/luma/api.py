@@ -40,6 +40,7 @@ from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
 from .voice_asset import fetch_and_install as fetch_voice_asset, ready as voice_asset_ready, voice_status
 from .voice_speech import VoicePlaybackError, play_preview as play_voice_preview, play_test_tone
+from .voice_signal import AudioProfile, read_profile
 from . import mic_hardware
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
@@ -147,6 +148,12 @@ class VoiceOutputReport(BaseModel):
         "audio_session_unavailable", "speaker_route_unavailable",
         "speaker_playback_failed", "piper_start_failed", "piper_synthesis_failed",
         "piper_audio_invalid", "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
+        "fallback_playback_failed",
+    ] | None = None
+    primary_error: Literal[
+        "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
+        "piper_start_failed", "piper_synthesis_failed", "piper_audio_invalid",
+        "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
     ] | None = None
 
 
@@ -174,6 +181,8 @@ class CalibrationSample(BaseModel):
     selection: Literal["", "constrained", "free", "agree", "free_query", "conflict", "negated", "unmatched"] = ""
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
+    dc: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
+    clipped_fraction: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
 
 
 class CalibrationLevel(BaseModel):
@@ -181,6 +190,7 @@ class CalibrationLevel(BaseModel):
     session: str = Field(max_length=64)
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
+    floor_rms: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
 
 
 class MicGainRequest(BaseModel):
@@ -266,6 +276,7 @@ def create_app(
     voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None,
                                           "dropped_frames": 0}
     voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
+                                          "last_reply_primary_error": None, "last_reply_at": None,
                                           "last_reply_route": None, "last_preview_error": None,
                                           "last_preview_route": None, "last_tone_error": None,
                                           "last_tone_route": None}
@@ -726,6 +737,8 @@ def create_app(
             return {"accepted": False}
         voice_output_status.update(last_reply_engine=payload.engine,
                                    last_reply_error=payload.error,
+                                   last_reply_primary_error=payload.primary_error,
+                                   last_reply_at=datetime.now(UTC).isoformat(),
                                    last_reply_route=payload.route)
         return {"accepted": True}
 
@@ -735,7 +748,9 @@ def create_app(
         diagnostic = voice_agent_status["diagnostic"]
         available = (service.settings.voice_enabled and seen > 0
                      and monotonic() - seen <= 15 and diagnostic is None)
-        return {**result, "agent_available": available,
+        saved_profile = read_profile(storage.get_cache("voice", "audio_profile"))
+        return {**result, "audio_profile": saved_profile.public(),
+                "agent_available": available,
                 "agent_phase": voice_agent_status["phase"] if available else "unavailable",
                 "agent_error": diagnostic,
                 "dropped_frames": voice_agent_status["dropped_frames"]}
@@ -759,8 +774,15 @@ def create_app(
     async def calibration_start() -> dict:
         if not service.settings.voice_enabled:
             raise HTTPException(409, "Enable local voice first")
-        calibration.start()
+        calibration.start(ambient_seconds=4)
         return calibration_payload()
+
+    @app.post('/api/v1/voice/audio-profile/reset', dependencies=[Depends(local_only)])
+    async def reset_voice_audio_profile() -> dict:
+        """Owner-local escape hatch if a room or microphone change degrades recognition."""
+        profile = AudioProfile().public()
+        storage.set_cache('voice', 'audio_profile', profile)
+        return {'audio_profile': profile}
 
     @app.post("/api/v1/voice/calibration/cancel", dependencies=[Depends(local_only)])
     async def calibration_cancel() -> dict:
@@ -770,7 +792,8 @@ def create_app(
     @app.post("/api/v1/voice/calibration/level", dependencies=[Depends(local_only)])
     async def calibration_level(payload: CalibrationLevel) -> dict:
         try:
-            calibration.report_level(payload.session, payload.rms, payload.peak)
+            calibration.report_level(payload.session, payload.rms, payload.peak,
+                                     floor_rms=payload.floor_rms)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         return calibration_payload()
@@ -781,10 +804,13 @@ def create_app(
             result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak,
                                         free_text=payload.free_text,
                                         selected_text=payload.selected_text,
-                                        selection=payload.selection)
+                                        selection=payload.selection, dc=payload.dc,
+                                        clipped_fraction=payload.clipped_fraction)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
-        step = calibration.gain_step(payload.rms, payload.peak) if result["active"] else 0
+        step = (calibration.gain_step(payload.rms, payload.peak, payload.clipped_fraction)
+                if result["active"] and not result["ambient_remaining"]
+                and result["attempts"] > 0 else 0)
         if step:
             hardware = await asyncio.to_thread(mic_hardware.status)
             if (hardware["available"] and payload.session == calibration.session
@@ -800,6 +826,7 @@ def create_app(
                         calibration.record_gain(adjusted)
         if result["passed"]:
             storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})
+            storage.set_cache("voice", "audio_profile", result["audio_profile"] or AudioProfile().public())
         return calibration_payload()
 
     @app.get('/api/v1/voice/library', dependencies=[Depends(local_only)])

@@ -47,6 +47,15 @@ export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns
   return sections;
 }
 
+/** Automatic rotation skips past appointments and empty time windows. */
+export function upcomingAgendaSections(agenda:NonNullable<Snapshot['agenda']>,now:number,maxColumns=2):AgendaSection[]{
+  if(!Number.isFinite(now))return [];
+  const horizon=now+14*HOUR;
+  const events=agenda.events.filter(event=>Date.parse(event.end)>now && Date.parse(event.start)<horizon);
+  const rolling={...agenda,start:new Date(Math.floor(now/HOUR)*HOUR).toISOString(),end:new Date(horizon).toISOString(),events};
+  return agendaSections(rolling,maxColumns).filter(section=>section.items.length>0 || section.allDay.length>0);
+}
+
 export function agendaDemo(events:CalendarEvent[],packed=false,crowded=false,short=false):NonNullable<Snapshot['agenda']>{
   const now=new Date(),at=(hour:number)=>{const day=new Date(now);day.setHours(hour,0,0,0);return day.toISOString();};
   const names=['Morning run','Research seminar','Project studio','Lunch with Maya','Office hours','Design review','Dinner with friends','Evening reading'];

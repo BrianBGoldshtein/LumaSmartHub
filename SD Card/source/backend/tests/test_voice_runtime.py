@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from luma.api import create_app
 from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
-from luma.voice_agent import choose_command
+from luma.voice_agent import choose_command, partial_has_wake
 
 
 def test_wake_gate_requires_phrase_and_expires():
@@ -17,6 +17,15 @@ def test_wake_gate_requires_phrase_and_expires():
     assert gate.accept("hey luma good morning", 110) == "good morning"
     assert gate.accept("hey luma", 120) == ""
     assert gate.accept("good night", 128) is None
+
+
+def test_partial_wake_can_animate_before_final_but_cannot_authorize_action():
+    assert partial_has_wake('{"partial":"hey luma what"}', "hey luma")
+    assert partial_has_wake('{"partial":"[unk] hey   luma"}', "hey luma")
+    assert not partial_has_wake('{"partial":"hey luna what"}', "hey luma")
+    assert not partial_has_wake('{"partial":"hey luminary"}', "hey luma")
+    assert not partial_has_wake('{"text":"hey luma"}', "hey luma")
+    assert not partial_has_wake('{bad json', "hey luma")
 
 
 def test_dual_decoder_keeps_known_command_when_free_dictation_is_bad():

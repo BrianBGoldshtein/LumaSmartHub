@@ -23,18 +23,22 @@ def day_agenda(events, settings, now, *, fresh):
     wake = max((end for _, end in merged if now_utc-timedelta(days=1) <= end <= now_utc), default=None)
     bedtime = min((start for start, _ in merged if now_utc < start <= now_utc+timedelta(days=1)), default=None)
     start, end = wake or day_start.astimezone(UTC), bedtime or day_end.astimezone(UTC)
-    # Include ALL today's events, even appointments outside the sleep window.
-    # Also include the awake span when the owner's day crosses midnight.
-    lower, upper = min(start, day_start.astimezone(UTC)), max(end, day_end.astimezone(UTC))
+    # Retain the complete local day for manual browsing, including appointments
+    # outside the sleep window. Also fetch tomorrow's near-term events so the
+    # automatic rolling view never falls back to 8 AM at 11 PM.
+    lower = min(start, day_start.astimezone(UTC))
+    day_upper = max(end, day_end.astimezone(UTC))
+    upper = max(day_upper, now_utc + timedelta(hours=14))
     selected = sorted((e for e in events if e.calendar_id in settings.visible_calendar_ids
                        and e.status != 'cancelled' and not e.self_declined
                        and not is_sleep_event(e, calendar_ids=set(settings.sleep_calendar_ids), title=settings.sleep_event_title)
                        and e.start.astimezone(UTC) < upper and e.end.astimezone(UTC) > lower),
                       key=lambda e: (e.start.astimezone(UTC), e.end.astimezone(UTC), e.calendar_id, e.id))
-    timed = [e for e in selected if not e.all_day]
+    timed = [e for e in selected if not e.all_day
+             and e.start.astimezone(UTC) < day_upper and e.end.astimezone(UTC) > lower]
     if timed:
         start = min(start, max(lower, min(e.start.astimezone(UTC) for e in timed)))
-        end = max(end, min(upper, max(e.end.astimezone(UTC) for e in timed)))
+        end = max(end, min(day_upper, max(e.end.astimezone(UTC) for e in timed)))
     return {'date': day_start.date().isoformat(), 'start': start.isoformat(), 'end': end.isoformat(),
             'wake': wake.isoformat() if wake else None, 'sleep': bedtime.isoformat() if bedtime else None,
             'stale': not fresh, 'events': to_primitive(selected)}

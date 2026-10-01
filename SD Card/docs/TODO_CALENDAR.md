@@ -7,21 +7,21 @@ September 26, 2026 owner clarification, implemented in source and included in th
 - Select one Google calendar in Calendar setup. Use **all-day events only**; the event title is the task. Luma does not derive tasks from descriptions or locations.
 - Every non-cancelled all-day event occupying today is included, including tasks that began weeks ago. Future tasks do not appear before their start date. Timed events are ignored by this slide.
 - The **last day visibly occupied in Google Calendar is the due day**. Google returns an exclusive API end date, so an event visible September 24–27 has API end September 28; Luma displays “Due Sep 27” and includes it through the 27th. This also avoids a one-day error over daylight-saving changes. [Google event date semantics](https://developers.google.com/workspace/calendar/api/v3/reference/events).
-- Outstanding tasks sort first, then due date/title; completed tasks remain visible while they still occupy today. Lists larger than three are paginated rather than truncated or shrunk. Pages advance every eight seconds, have touch arrows, pause during a write, and resume at the next page across slide cycles.
+- Only outstanding tasks appear on the rotating to-do slide, sorted by due date/title. Completed tasks remain in Google and the local sync cache, but consume no slide space or page. Lists larger than three are paginated rather than truncated or shrunk. Pages advance every eight seconds, have touch arrows, pause during a write, and resume at the next page across slide cycles.
 
 ## Completion color — owner-confirmed rule
 
 Choose one color from Google's **event** palette (not its separate calendar palette). Events inheriting the calendar's default color are outstanding. **Only the chosen event color ID means complete**. Other manually chosen colors remain outstanding. IDs, not approximate RGB comparisons, determine completion.
 
-A completed task has a check mark, dimmed card and the provider's completed color in every Luma theme. Manually applying that same color in Google is reflected on the next successful sync (normally within five minutes); Refresh tasks requests a sync immediately. Reverting the event to default—or any other color—makes it outstanding again. Changing the selected completed color reinterprets existing colors; it never mass-recolors past tasks.
+A completed task is hidden from the to-do slide in every Luma theme. Manually applying that same color in Google hides it on the next successful sync (normally within five minutes); Refresh tasks requests a sync immediately. Reverting the event to default—or any other color—in Google makes it outstanding again. Changing the selected completed color reinterprets existing colors; it never mass-recolors past tasks.
 
-Tapping an outstanding task's checkbox on Luma patches its Google event color. Tapping a completed checkbox clears the explicit color override and restores the calendar default. No title, description, dates, recurrence rule, attendees or other event fields are changed. Recurring task occurrences are targeted by their instance ID, never the entire series. [Google's patch behavior](https://developers.google.com/workspace/calendar/api/v3/reference/events/patch).
+Tapping an outstanding task's checkbox on Luma patches its Google event color and removes it from the slide after confirmation. To reopen it, restore the event's default color in Google Calendar. No title, description, dates, recurrence rule, attendees or other event fields are changed. Recurring task occurrences are targeted by their instance ID, never the entire series. [Google's patch behavior](https://developers.google.com/workspace/calendar/api/v3/reference/events/patch).
 
 ## Setup and permissions
 
 1. Connect Google as usual, initially read-only.
 2. Select the To-do calendar and a Completed color; save calendars.
-3. To allow touchscreen completion/reopening, choose **Enable task updates with Google** and approve Google's additional event-edit permission on the Pi.
+3. To allow touchscreen completion, choose **Enable task updates with Google** and approve Google's additional event-edit permission on the Pi.
 
 The permission requested is `calendar.events`, alongside existing `calendar.readonly`. Google grants event editing across calendars the account can edit; it cannot restrict this scope to one selected calendar. **Luma's task endpoint is restricted to the selected to-do calendar, currently displayed all-day tasks, and color-only writes.** Setup discloses that distinction before consent. Read-only connections can still display manually colored completion without upgrading. A calendar itself must also grant writer/owner access.
 
@@ -40,4 +40,4 @@ The explicit upgrade is local-only, uses the existing restart-safe PKCE/state fl
 
 Tests cover active-day boundaries, one-day/multi-day/DST events, title-only projection, exactly one completed color, default RGB vs explicit color ID, more than three tasks, manual recolor reversal, cache restoration, permission/role gates, strict input/local/privacy restrictions, ETag races, no retries, failure preservation, color-only patch and clearing the override. Actual OAuth SDK tests use synthetic HTTP exchanges to verify successful and denied permission upgrades.
 
-Browser preview verifies complete/reopen styling, save-before-consent, unsaved color-choice warning, all 14 sample tasks reachable, and task-slide/color-picker layout across Glass/Hearth/Neon Grid at 2048×1536, 1536×2048 and 390×844. Google/provider behavior is mocked in automated tests, not claimed as live account acceptance. Final image packaging and owner-authorized real-account/hardware checks remain outstanding.
+Previous browser preview covered the former complete/reopen styling, save-before-consent, unsaved color-choice warning, and task-slide/color-picker layout across Glass/Hearth/Neon Grid at 2048×1536, 1536×2048 and 390×844. The newer outstanding-only slide has a focused pagination test; its visual layout still needs rechecking before release. Google/provider behavior is mocked in automated tests, not claimed as live account acceptance. Final image packaging and owner-authorized real-account/hardware checks remain outstanding.

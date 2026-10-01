@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {agendaSections,calendarColor,eventKey} from '../src/agendaState.ts';
+import {agendaSections,upcomingAgendaSections,calendarColor,eventKey} from '../src/agendaState.ts';
 import type {CalendarEvent} from '../src/types.ts';
 const at=(hour:number)=>new Date(Date.UTC(2026,8,28)+hour*3600000).toISOString();
 const event=(id:string,start:number,end:number,extra={})=>({id,calendar_id:'work',summary:id,start:at(start),end:at(end),all_day:false,...extra});
@@ -48,4 +48,18 @@ test('shared IDs on different calendars stay distinct and event colors override 
 test('empty day retains every time section and invalid ranges are rejected',()=>{
   assert.equal(agendaSections(agenda([])).length,4);
   assert.deepEqual(agendaSections({...agenda([]),end:at(6)}),[]);
+});
+test('automatic calendar rotation at 11 PM shows now and tomorrow, never 8 AM',()=>{
+  const items=[event('morning-past',8,9),event('ongoing',22,23.5),
+    event('tomorrow-early',31,32),event('beyond-14h',39,40)];
+  const source=agenda(items);
+  const upcoming=upcomingAgendaSections(source,Date.parse(at(23)));
+  const ids=upcoming.flatMap(section=>section.items.map(item=>item.event.id));
+  assert.deepEqual(ids,['ongoing','tomorrow-early']);
+  assert.ok(upcoming.every(section=>section.items.length || section.allDay.length));
+  assert.ok(agendaSections(source).some(section=>section.items.some(item=>item.event.id==='morning-past')));
+});
+test('automatic calendar rotation has no empty slides when the next event is far away',()=>{
+  const source=agenda([event('past',8,9),event('later',37,38)]);
+  assert.deepEqual(upcomingAgendaSections(source,Date.parse(at(23))),[]);
 });

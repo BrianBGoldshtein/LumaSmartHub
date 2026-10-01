@@ -97,6 +97,13 @@ def installed_tree(tmp_path: Path, *, real_venv: bool = False):
         # The deployed service venv is anchored to the OS-managed interpreter,
         # not the hosted CI's separately installed setup-python runtime.
         subprocess.run(["/usr/bin/python3", "-m", "venv", str(current / "venv")], check=True)
+        # This Ubuntu 3.14 host also creates a non-ASCII executable alias
+        # (`𝜋thon`) that the Raspberry Pi image does not. Keep the fixture's
+        # symlink layout Pi-like; the updater must continue rejecting such
+        # unexpected/confusable links in a real installed release.
+        host_alias = current / "venv/bin/𝜋thon"
+        if host_alias.is_symlink() and os.readlink(host_alias) == "python3":
+            host_alias.unlink()
     else:
         (current / "venv/bin").mkdir(parents=True)
         if sys.platform == "win32":

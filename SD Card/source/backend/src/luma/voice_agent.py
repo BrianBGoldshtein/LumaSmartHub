@@ -47,6 +47,17 @@ def _unrestricted_transcript(recognizer, frames: list[bytes]) -> str:
     return ' '.join(part for part in parts if part)
 
 
+def partial_has_wake(partial_result: str, wake_phrase: str) -> bool:
+    """Only animate early; a partial Vosk hypothesis never authorizes a command."""
+    try:
+        partial = json.loads(partial_result).get("partial", "")
+    except (TypeError, ValueError):
+        return False
+    return isinstance(partial, str) and bool(re.search(
+        r"\b" + re.escape(wake_phrase) + r"\b", re.sub(r"\s+", " ", partial.casefold())
+    ))
+
+
 def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> tuple[str | None, str]:
     """Choose a valid interpretation, never override it with invalid dictation.
 
@@ -160,6 +171,7 @@ def main() -> None:
                 meter_energy = meter_count = meter_peak = 0
                 utterance: list[bytes] = []
                 seen_drops = recognition_drops = 0
+                early_wake = False
                 while True:
                     now = time.monotonic()
                     if now >= next_heartbeat:
@@ -174,6 +186,7 @@ def main() -> None:
                             if (fresh["active"], fresh["session"]) != (calibration["active"], calibration["session"]):
                                 recognizer.Reset()
                                 utterance.clear()
+                                early_wake = False
                                 gate.until = 0
                                 energy = count = peak = 0
                                 meter_energy = meter_count = meter_peak = 0
@@ -201,6 +214,7 @@ def main() -> None:
                         free_recognizer.Reset()
                         gate.until = 0
                         utterance.clear()
+                        early_wake = False
                         energy = count = peak = 0
                         _discard_pending_audio(chunks)
                         phase("listening" if calibration["active"] else "idle")
@@ -231,8 +245,17 @@ def main() -> None:
                     if len(utterance)>36:
                         utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
                     if not recognizer.AcceptWaveform(chunk):
+                        if (not calibration["active"] and not early_wake
+                                and partial_has_wake(recognizer.PartialResult(), gate.phrase)):
+                            # Show the full-screen orb while the owner is
+                            # still speaking. Only a final, exact wake match
+                            # below can dispatch a command.
+                            early_wake = True
+                            phase("listening")
                         continue
                     text = json.loads(recognizer.Result()).get("text", "")
+                    had_early_wake = early_wake
+                    early_wake = False
                     spoken=utterance
                     utterance=[]
                     rms, maximum = math.sqrt(energy / max(count, 1)) / 32768, peak / 32768
@@ -255,6 +278,8 @@ def main() -> None:
                         continue  # Test phrases never change brightness, volume or theme.
                     accepted = gate.accept(text, time.monotonic())
                     if accepted is None:
+                        if had_early_wake and gate.until <= time.monotonic():
+                            phase("idle")
                         continue
                     # Light the full-screen listening state as soon as the
                     # wake phrase is accepted, including one-shot commands.
@@ -274,6 +299,8 @@ def main() -> None:
                         phase("idle")
                         continue
                     if not accepted:
+                        if gate.until <= time.monotonic():
+                            phase("idle")
                         continue
                     phase("thinking")
                     try:

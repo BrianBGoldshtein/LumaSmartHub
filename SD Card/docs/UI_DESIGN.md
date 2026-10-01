@@ -2,7 +2,7 @@
 
 ## Current direction
 
-Calendar slide now uses the [complete day timeline](DAY_AGENDA.md), superseding the old three-row agenda slide described below. Four-hour sections, readable overlap columns, separate all-day sections, Google colors, complete-day data and full-detail tap views. Home retains its compact upcoming rows. Packed calendars get more sections, not reduced font sizes or dropped events.
+Calendar slide now uses the [day timeline](DAY_AGENDA.md), superseding the old three-row agenda slide described below. Automatic rotation shows only populated sections with events in progress or in the next 14 hours; a Full day control retains manual access to the complete day. Four-hour sections, readable overlap columns, separate all-day sections, Google colors and full-detail tap views remain. Home retains its compact upcoming rows. Packed calendars get more sections, not reduced font sizes or dropped events.
 
 Arcade master grid: the existing responsive `--pixel` is the base spacing unit. `--arcade-cell` is a whole multiple of that unit sized to fit twenty Tetris rows and the preview column. All arcade games use this same full-screen background grid and origin. Tetris uses that background as its only visible grid: its 10×20 board, previews and frame are aligned to whole cells, with no independent overlay grid. Other arcade game frames, score text sizes, control islands and phone-notification spacing use whole base units. Moving sprites retain continuous positions for smooth motion; this is a layout grid, not a forced motion quantizer. Existing dashboard pixel-based spacing/type rules remain in place; this is not a claim that every glyph outline or every legacy component has been snapped to visible cell boundaries.
 

@@ -33,6 +33,24 @@ The owner reports that replies still sound robotic. In the Voice panel, the sepa
 
 Acceptance on the Pi: (1) hear the short tone, (2) hear the fixed Kristin and original-voice samples and note whether they sound distinct, (3) ask “Hey Luma, what time is it?” twice and confirm the timestamped reply engine/route, (4) compare voice quality without relying on a status label. If Piper is audible but still unpleasant, audition properly licensed female voice alternatives and benchmark them on the Pi 4 before choosing a new signed asset. [The existing Kristin model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/kristin/medium/MODEL_CARD) identifies a medium-quality LibriVox-trained voice; a model switch is not presumed to fix a route failure.
 
+### Physical voice test decision tree
+
+On the **current 0.2.5 Pi**, ask “Hey Luma, what time is it?” once and read the complete *Last command reply* line immediately afterward. Record its date/time, engine, route and fixed error wording, but no spoken audio, calendar data or account details. The current sample and tone buttons run from the API process rather than the live voice agent, so their failure cannot by itself prove that a spoken command used eSpeak. Do not reflash or repair solely from those two buttons.
+
+When a **future, owner-approved 0.2.6 build** is installed, use this order while the room is quiet: test the short tone; play the fixed Kristin sample; play the fixed original-voice sample; then ask the time twice. All three tests report their own route/error and the command reports its actual engine. Confirm with ears that the audio was heard—`pacat` accepting bytes is not proof of sound from the display.
+
+| Observed result | Leading next check, not a claimed diagnosis |
+| --- | --- |
+| Tone and both voice samples fail | Inspect the selected HDMI/HAT speaker and the user PipeWire session before replacing the model. |
+| Tone and original voice work, Kristin sample fails | Read the fixed neural startup/synthesis error. Try the signed **Repair installed voice** once if it names a runtime/model problem; preserve the prior asset on failure. |
+| Both samples work, but fresh command reply says **original fallback** | Compare the command's primary Piper error with the sample result. Check worker cooldown, memory pressure and the actual live route before changing the voice model. |
+| Fresh command reply says **Kristin**, yet it sounds robotic | The fallback hypothesis is contradicted. Compare Kristin and original fixed samples, then audition a separately signed female model only if Kristin's timbre is the issue. |
+| Samples say sent but are inaudible while commands speak | Check the route and whether the live voice agent handled the test. The old 0.2.5 API-process test can disagree with command playback; 0.2.6 is intended to remove that mismatch. |
+| Mic meter stays near zero or no frames arrive | Check the ReSpeaker capture route and physical gain before changing word/intent matching. If level moves but no phrase completes, follow the new calibration hint and pause after speaking. |
+| Raw phrase recognition beats tuned input twice | Luma should bypass the trial processing; reset to untouched audio if a saved profile remains worse on the Pi. |
+
+The owner has not yet provided the fresh 0.2.5 command-reply line, and no 0.2.6 branch has been heard on the Pi. Those facts leave the reported robotic output unresolved even though software tests pass.
+
 On 0.2.5 specifically, a robotic reply likely means the eSpeak fallback, but that is still a hypothesis until the **timestamped last command reply** says “original fallback voice” versus “Kristin.” The owner has been asked for that one status line. If it says current Kristin and the sample is audibly robotic, pursue the model A/B below; reinstalling the same signed voice would not improve its timbre. If it says fallback with a Piper startup/generation error, try the signed repair in 0.2.6 and retest tone, sample, then command. No 0.2.6 fix is claimed physically verified yet.
 
 ## Audio-stage calibration before words and intent

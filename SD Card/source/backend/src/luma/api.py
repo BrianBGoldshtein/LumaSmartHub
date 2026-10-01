@@ -285,6 +285,7 @@ def create_app(
     voice_asset_retry = asyncio.Event()
     voice_asset_repair_requested = False
     voice_preview_lock = asyncio.Lock()
+    mic_gain_lock = asyncio.Lock()
     voice_preview_job: dict[str, Any] = {}
     voice_tone_job: dict[str, Any] = {}
     voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None,
@@ -770,7 +771,11 @@ def create_app(
         available = (service.settings.voice_enabled and seen > 0
                      and monotonic() - seen <= 15 and diagnostic is None)
         saved_profile = read_profile(storage.get_cache("voice", "audio_profile"))
-        active_profile = read_profile(result.get('audio_candidate')) if result['active'] else saved_profile
+        # A new check must measure untouched capture first. Reusing an old
+        # saved profile during its baseline would taint the A/B comparison;
+        # the saved everyday profile is restored when this check ends.
+        active_profile = (read_profile(result.get('audio_candidate'))
+                          if result['active'] else saved_profile)
         return {**result, "audio_profile": active_profile.public(),
                 "agent_available": available,
                 "agent_phase": voice_agent_status["phase"] if available else "unavailable",
@@ -787,10 +792,16 @@ def create_app(
 
     @app.post("/api/v1/voice/hardware/gain", dependencies=[Depends(local_only)])
     async def mic_hardware_gain(payload: MicGainRequest) -> dict:
-        try:
-            return await asyncio.to_thread(mic_hardware.save_and_apply, payload.gain)
-        except mic_hardware.MicHardwareError as exc:
-            raise HTTPException(409, str(exc)) from exc
+        async with mic_gain_lock:
+            try:
+                before = await asyncio.to_thread(mic_hardware.status)
+                after = await asyncio.to_thread(mic_hardware.save_and_apply, payload.gain)
+            except mic_hardware.MicHardwareError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            if (calibration.status()['active'] and before.get('available') and after.get('available')
+                    and before.get('gain') != after.get('gain')):
+                calibration.record_gain(int(after['gain']))
+            return after
 
     @app.post("/api/v1/voice/calibration/start", dependencies=[Depends(local_only)])
     async def calibration_start() -> dict:
@@ -837,36 +848,37 @@ def create_app(
 
     @app.post("/api/v1/voice/calibration/sample", dependencies=[Depends(local_only)])
     async def calibration_sample(payload: CalibrationSample) -> dict:
-        try:
-            result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak,
-                                        free_text=payload.free_text,
-                                        raw_free_text=payload.raw_free_text,
-                                        raw_compared=payload.raw_compared,
-                                        selected_text=payload.selected_text,
-                                        selection=payload.selection, dc=payload.dc,
-                                        clipped_fraction=payload.clipped_fraction)
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from exc
-        step = (calibration.gain_step(payload.rms, payload.peak, payload.clipped_fraction)
-                if result["active"] and not result["ambient_remaining"]
-                and result["attempts"] > 0 else 0)
-        if step:
-            hardware = await asyncio.to_thread(mic_hardware.status)
-            if (hardware["available"] and payload.session == calibration.session
-                    and calibration.status()["active"]):
-                current = int(hardware["gain"])
-                adjusted = min(63, max(0, current + step))
-                if adjusted != current:
-                    try:
-                        await asyncio.to_thread(mic_hardware.save_and_apply, adjusted)
-                    except mic_hardware.MicHardwareError:
-                        pass  # A failed mixer change never fakes a passed phrase.
-                    else:
-                        calibration.record_gain(adjusted)
-        if result["passed"]:
-            storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})
-            storage.set_cache("voice", "audio_profile", result["audio_profile"] or AudioProfile().public())
-        return calibration_payload()
+        async with mic_gain_lock:
+            try:
+                result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak,
+                                            free_text=payload.free_text,
+                                            raw_free_text=payload.raw_free_text,
+                                            raw_compared=payload.raw_compared,
+                                            selected_text=payload.selected_text,
+                                            selection=payload.selection, dc=payload.dc,
+                                            clipped_fraction=payload.clipped_fraction)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            step = (calibration.gain_step(payload.rms, payload.peak, payload.clipped_fraction)
+                    if result["active"] and not result["ambient_remaining"]
+                    and result["attempts"] > 0 else 0)
+            if step:
+                hardware = await asyncio.to_thread(mic_hardware.status)
+                if (hardware["available"] and payload.session == calibration.session
+                        and calibration.status()["active"]):
+                    current = int(hardware["gain"])
+                    adjusted = min(63, max(0, current + step))
+                    if adjusted != current:
+                        try:
+                            await asyncio.to_thread(mic_hardware.save_and_apply, adjusted)
+                        except mic_hardware.MicHardwareError:
+                            pass  # A failed mixer change never fakes a passed phrase.
+                        else:
+                            calibration.record_gain(adjusted)
+            if result["passed"]:
+                storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})
+                storage.set_cache("voice", "audio_profile", result["audio_profile"] or AudioProfile().public())
+            return calibration_payload()
 
     @app.get('/api/v1/voice/library', dependencies=[Depends(local_only)])
     async def voice_library():

@@ -19,7 +19,8 @@ from luma.api import create_app
 from luma.voice_asset import (CONFIG, MODEL, PREVIOUS_VOICE, VOICE_ID, VOICE_ASSET_NAME,
                               VOICE_RELEASE_URL, VoiceAssetError, fetch_and_install,
                               install_asset, ready, recover_interrupted_repair,
-                              verify_and_extract, voice_status, write_status)
+                              verify_and_extract, voice_status, write_status,
+                              _check_worker_smoke)
 from luma.voice_speech import (OfflineSpeaker, VoicePlaybackError, fallback_wav_to_pcm,
                                play_test_tone, pulse_playback_environment,
                                speaker_route_warning, wav_to_pcm)
@@ -46,6 +47,26 @@ def make_asset(tmp_path: Path, *, corrupt=False, extra=None):
         for name, data in payload.items():
             output.writestr(name, data + (b"tampered" if corrupt and name == MODEL else b""))
     return archive, public
+
+
+def worker_smoke_output() -> bytes:
+    sample = io.BytesIO()
+    with wave.open(sample, 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(22050)
+        wav.writeframes(b'\x01\x00' * 2205)
+    data = sample.getvalue()
+    return b'READY\n' + struct.pack('>I', len(data)) + data
+
+
+def test_voice_worker_smoke_checks_protocol_and_audio_format():
+    valid = worker_smoke_output()
+    _check_worker_smoke(valid)
+    for invalid in (b'MODEL\n', valid[:6], valid[:-2], valid + b'extra',
+                    valid[:6] + struct.pack('>I', 0) + valid[10:]):
+        with pytest.raises(VoiceAssetError):
+            _check_worker_smoke(invalid)
 
 
 def test_signed_voice_package_extracts_only_verified_files(tmp_path):
@@ -570,12 +591,15 @@ def test_install_keeps_settings_and_switches_only_after_smoke(tmp_path, monkeypa
             python.write_bytes(b'python')
         if '-c' in command and str(data / 'voice-assets' / VOICE_ID) in command[0]:
             assert not ready(data / 'voice-assets')
+        if len(command) > 1 and command[1].endswith('piper_worker.py'):
+            return SimpleNamespace(stdout=worker_smoke_output())
     root = data / 'voice-assets'
     assert install_asset(package, root=root, public_key=public, run=fake_run)['phase'] == 'ready'
     assert ready(root) and settings.read_bytes() == b'owner settings'
     assert (root / VOICE_ID / 'sources/piper_tts-1.8.0.tar.gz').is_file()
-    assert len(calls) == 4
+    assert len(calls) == 5
     assert calls[-1][0] == str(root / VOICE_ID / 'venv/bin/python')
+    assert calls[-1][1].endswith('piper_worker.py')
     assert not list(root.glob('.voice-stage-*'))
 
 
@@ -630,6 +654,36 @@ def _fake_voice_install_run(command, **_kwargs):
         python = Path(command[3]) / 'bin/python'
         python.parent.mkdir(parents=True)
         python.write_bytes(b'python')
+    if len(command) > 1 and command[1].endswith('piper_worker.py'):
+        return SimpleNamespace(stdout=worker_smoke_output())
+
+
+def test_worker_smoke_failure_restores_previous_voice_and_settings(tmp_path, monkeypatch):
+    import luma.voice_asset as module
+    monkeypatch.setattr(module, '_runtime_supported', lambda: True)
+    package, public = make_asset(tmp_path)
+    root = tmp_path / 'data' / 'voice-assets'
+    old = root / VOICE_ID
+    (old / MODEL).parent.mkdir(parents=True)
+    (old / MODEL).write_bytes(b'previous model')
+    (old / CONFIG).write_bytes(b'{}')
+    (old / 'venv/bin').mkdir(parents=True)
+    (old / 'venv/bin/python').write_bytes(b'previous python')
+    settings = root.parent / 'luma.db'
+    settings.write_bytes(b'owner settings')
+
+    def bad_worker(command, **kwargs):
+        result = _fake_voice_install_run(command, **kwargs)
+        if len(command) > 1 and command[1].endswith('piper_worker.py'):
+            return SimpleNamespace(stdout=b'MODEL\n')
+        return result
+
+    with pytest.raises(VoiceAssetError, match='worker'):
+        install_asset(package, root=root, public_key=public, run=bad_worker,
+                      replace_existing=True)
+    assert ready(root)
+    assert (old / MODEL).read_bytes() == b'previous model'
+    assert settings.read_bytes() == b'owner settings'
 
 
 def test_signed_repair_replaces_only_voice_and_keeps_settings(tmp_path, monkeypatch):

@@ -7,6 +7,7 @@ data partition after an app update; failure always leaves espeak-ng available.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import platform
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -22,6 +24,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request
 import zipfile
+import wave
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -44,6 +47,29 @@ VOICE_RELEASE_URL = ("https://api.github.com/repos/BrianBGoldshtein/LumaSmartHub
                      f"releases/tags/v{VOICE_RELEASE_VERSION}")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 PREVIOUS_VOICE = f".voice-previous-{VOICE_ID}"
+
+
+def _check_worker_smoke(output: bytes) -> None:
+    """Verify the installed worker's real stdio protocol, not just model import.
+
+    This has no speaker route and is not an audibility test. It catches a
+    relocated venv or worker/API protocol mismatch before marking an asset
+    ready, while keeping the generated sample entirely in memory.
+    """
+    if not isinstance(output, bytes) or not output.startswith(b"READY\n") or len(output) < 55:
+        raise VoiceAssetError("The offline voice worker did not start correctly.")
+    size = struct.unpack_from(">I", output, 6)[0]
+    if not 44 < size <= 10 * 1024 * 1024 or len(output) != size + 10:
+        raise VoiceAssetError("The offline voice worker did not return valid audio.")
+    try:
+        with wave.open(io.BytesIO(output[10:]), "rb") as sample:
+            if (sample.getnchannels() != 1 or sample.getsampwidth() != 2
+                    or sample.getframerate() != 22050 or sample.getnframes() < 1000):
+                raise ValueError("unexpected voice format")
+            if len(sample.readframes(sample.getnframes())) < 2000:
+                raise ValueError("empty voice sample")
+    except (ValueError, EOFError, wave.Error):
+        raise VoiceAssetError("The offline voice worker did not return valid audio.") from None
 
 
 class VoiceAssetError(ValueError):
@@ -308,6 +334,14 @@ def install_asset(bundle: Path, *, root: Path = ASSET_ROOT,
         # the voice agent before declaring this asset ready.
         run([str(final / "venv/bin/python"), "-c", smoke, str(final / MODEL)],
             check=True, timeout=90, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Direct Piper synthesis above cannot catch a broken persistent
+        # worker protocol. Exercise the same entry point used by spoken
+        # replies at the final installed path, without claiming playback.
+        worker = run([str(final / "venv/bin/python"),
+                      str(Path(__file__).with_name("piper_worker.py")), str(final / MODEL)],
+                     input=b'{"text":"Hello."}\n', check=True, timeout=90,
+                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        _check_worker_smoke(worker.stdout)
         write_status(root, "ready", "Offline voice ready.")
         completed = True
         if moved_previous:

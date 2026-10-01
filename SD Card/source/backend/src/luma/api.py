@@ -278,6 +278,7 @@ def create_app(
     voice_asset_retry = asyncio.Event()
     voice_preview_lock = asyncio.Lock()
     voice_preview_job: dict[str, Any] = {}
+    voice_tone_job: dict[str, Any] = {}
     voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None,
                                           "dropped_frames": 0}
     voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
@@ -934,12 +935,31 @@ def create_app(
 
     @app.post('/api/v1/voice/asset/tone', dependencies=[Depends(local_only)])
     async def test_voice_speaker_route() -> dict:
-        """Test the named PipeWire sink without involving the speech model."""
+        """Test the same live audio path used by spoken replies, without Piper."""
         if voice_preview_lock.locked():
             raise HTTPException(409, 'Another speaker test is already running.')
         async with voice_preview_lock:
             try:
-                route = await asyncio.to_thread(play_test_tone)
+                agent_active = (service.settings.voice_enabled and voice_agent_status['last_seen'] > 0 and
+                                monotonic() - voice_agent_status['last_seen'] <= 15 and
+                                voice_agent_status['diagnostic'] is None)
+                if agent_active:
+                    job = voice_tone_job
+                    job.update(id=uuid4().hex, event=asyncio.Event(), result=None)
+                    try:
+                        await asyncio.wait_for(job['event'].wait(), timeout=30)
+                        result = job['result']
+                        if not isinstance(result, VoicePreviewResult) or result.error:
+                            raise VoicePlaybackError(result.error if result else 'speaker_playback_failed')
+                        if result.route is None:
+                            raise VoicePlaybackError('speaker_playback_failed')
+                        route = result.route
+                    except asyncio.TimeoutError as exc:
+                        raise VoicePlaybackError('speaker_playback_failed') from exc
+                    finally:
+                        voice_tone_job.clear()
+                else:
+                    route = await asyncio.to_thread(play_test_tone)
             except VoicePlaybackError as exc:
                 voice_output_status["last_tone_error"] = exc.code
                 voice_output_status["last_tone_route"] = None
@@ -955,6 +975,19 @@ def create_app(
             voice_output_status["last_tone_error"] = None
             voice_output_status["last_tone_route"] = route
         return {'sent': True, 'route': route}
+
+    @app.get('/api/v1/voice/asset/tone/pending', dependencies=[Depends(local_only)])
+    async def pending_voice_tone() -> dict[str, str | None]:
+        return {'request_id': voice_tone_job.get('id')}
+
+    @app.post('/api/v1/voice/asset/tone/result', dependencies=[Depends(local_only)])
+    async def complete_voice_tone(payload: VoicePreviewResult) -> dict[str, bool]:
+        job = voice_tone_job
+        if job.get('id') != payload.request_id or job.get('result') is not None:
+            return {'accepted': False}
+        job['result'] = payload
+        job['event'].set()
+        return {'accepted': True}
 
     @app.post('/api/v1/voice/phrase-preview', dependencies=[Depends(local_only)])
     async def voice_phrase_preview(payload: VoicePhrasePreview) -> dict[str, Any]:

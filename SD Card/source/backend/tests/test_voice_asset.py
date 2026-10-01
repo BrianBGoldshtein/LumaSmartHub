@@ -302,6 +302,37 @@ def test_speaker_tone_result_is_local_and_separate_from_speech(monkeypatch, tmp_
         assert client.get('/api/v1/voice/asset').json()['last_tone_route'] == 'system_speaker'
 
 
+def test_live_speaker_tone_uses_voice_agent_and_reports_its_actual_route(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'play_test_tone', lambda: (_ for _ in ()).throw(
+        AssertionError('API service must not play while voice agent is live')))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        client.post('/api/v1/voice/heartbeat', json={})
+        responses = []
+        thread = threading.Thread(target=lambda: responses.append(client.post('/api/v1/voice/asset/tone')))
+        thread.start()
+        pending = None
+        for _ in range(100):
+            pending = client.get('/api/v1/voice/asset/tone/pending').json()['request_id']
+            if pending:
+                break
+            time.sleep(.01)
+        assert pending
+        assert client.post('/api/v1/voice/asset/tone/result', json={
+            'request_id': pending, 'route': 'system_speaker',
+        }).json() == {'accepted': True}
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert responses[0].json() == {'sent': True, 'route': 'system_speaker'}
+        assert client.get('/api/v1/voice/asset/tone/pending').json()['request_id'] is None
+        assert client.get('/api/v1/voice/asset').json()['last_tone_route'] == 'system_speaker'
+        remote = TestClient(client.app, client=('192.168.1.7', 5000))
+        assert remote.get('/api/v1/voice/asset/tone/pending').status_code == 403
+        assert remote.post('/api/v1/voice/asset/tone/result', json={
+            'request_id': pending, 'route': 'luma_speaker',
+        }).status_code == 403
+
+
 def test_reply_engine_is_reported_without_speech_text(tmp_path):
     with TestClient(create_app(data_dir=tmp_path)) as client:
         response = client.post('/api/v1/voice/output-report', json={
@@ -390,11 +421,14 @@ def test_install_keeps_settings_and_switches_only_after_smoke(tmp_path, monkeypa
             python = Path(command[3]) / 'bin/python'
             python.parent.mkdir(parents=True)
             python.write_bytes(b'python')
+        if '-c' in command and str(data / 'voice-assets' / VOICE_ID) in command[0]:
+            assert not ready(data / 'voice-assets')
     root = data / 'voice-assets'
     assert install_asset(package, root=root, public_key=public, run=fake_run)['phase'] == 'ready'
     assert ready(root) and settings.read_bytes() == b'owner settings'
     assert (root / VOICE_ID / 'sources/piper_tts-1.8.0.tar.gz').is_file()
-    assert len(calls) == 3
+    assert len(calls) == 4
+    assert calls[-1][0] == str(root / VOICE_ID / 'venv/bin/python')
     assert not list(root.glob('.voice-stage-*'))
 
 
@@ -414,6 +448,29 @@ def test_failed_smoke_leaves_previous_settings_and_no_partial_voice(tmp_path, mo
         if '-c' in command:
             raise subprocess.CalledProcessError(1, command)
     root = data / 'voice-assets'
+    with pytest.raises(VoiceAssetError, match='fallback'):
+        install_asset(package, root=root, public_key=public, run=fake_run)
+    assert settings.read_bytes() == b'owner settings'
+    assert not ready(root) and not (root / VOICE_ID).exists()
+    assert not list(root.glob('.voice-stage-*'))
+
+
+def test_post_rename_smoke_failure_removes_only_new_voice_files(tmp_path, monkeypatch):
+    import luma.voice_asset as module
+    monkeypatch.setattr(module, '_runtime_supported', lambda: True)
+    package, public = make_asset(tmp_path)
+    data = tmp_path / 'data'
+    data.mkdir()
+    settings = data / 'luma.db'
+    settings.write_bytes(b'owner settings')
+    root = data / 'voice-assets'
+    def fake_run(command, **_kwargs):
+        if command[1:3] == ['-m', 'venv']:
+            python = Path(command[3]) / 'bin/python'
+            python.parent.mkdir(parents=True)
+            python.write_bytes(b'python')
+        if '-c' in command and str(root / VOICE_ID) in command[0]:
+            raise subprocess.CalledProcessError(1, command)
     with pytest.raises(VoiceAssetError, match='fallback'):
         install_asset(package, root=root, public_key=public, run=fake_run)
     assert settings.read_bytes() == b'owner settings'

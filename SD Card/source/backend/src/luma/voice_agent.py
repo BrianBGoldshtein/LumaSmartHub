@@ -18,7 +18,7 @@ from .voice import WakeGate, command_grammar, parse_local_command
 from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
-from .voice_speech import OfflineSpeaker, VoicePlaybackError
+from .voice_speech import OfflineSpeaker, VoicePlaybackError, play_test_tone
 from .voice_signal import AudioPreprocessor, CalibrationSegmenter, pcm_measurements, read_profile
 
 
@@ -185,6 +185,7 @@ def main() -> None:
                 next_check = 0.0
                 next_preview_check = 0.0
                 handled_preview_id = None
+                handled_tone_id = None
                 next_heartbeat = time.monotonic() + 5
                 next_meter = 0.0
                 meter_energy = meter_count = meter_peak = 0
@@ -215,6 +216,34 @@ def main() -> None:
                                 result = {'request_id': request_id, 'error': exc.code}
                             try:
                                 client.post('/api/v1/voice/asset/preview/result', json=result,
+                                            timeout=3).raise_for_status()
+                            except httpx.HTTPError:
+                                pass
+                            _discard_pending_audio(chunks)
+                            seen_drops = capture.dropped_frames
+                            recognizer.Reset()
+                            free_recognizer.Reset()
+                            utterance.clear()
+                            calibration_segmenter.reset()
+                            early_wake = False
+                            preprocessor.reset()
+                            phase('listening' if calibration['active'] else 'idle')
+                            continue
+                        try:
+                            pending_tone = client.get('/api/v1/voice/asset/tone/pending').json()
+                            tone_id = pending_tone.get('request_id')
+                        except (httpx.HTTPError, ValueError, KeyError):
+                            tone_id = None
+                        if tone_id and tone_id != handled_tone_id:
+                            handled_tone_id = tone_id
+                            phase('speaking')
+                            try:
+                                route = play_test_tone()
+                                result = {'request_id': tone_id, 'route': route}
+                            except VoicePlaybackError as exc:
+                                result = {'request_id': tone_id, 'error': exc.code}
+                            try:
+                                client.post('/api/v1/voice/asset/tone/result', json=result,
                                             timeout=3).raise_for_status()
                             except httpx.HTTPError:
                                 pass

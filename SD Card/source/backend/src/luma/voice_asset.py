@@ -114,6 +114,17 @@ def write_status(root: Path, phase: str, message: str, *, downloaded: int = 0,
 def ready(root: Path = ASSET_ROOT) -> bool:
     folder = root / VOICE_ID
     model, config, python = folder / MODEL, folder / CONFIG, folder / "venv/bin/python"
+    # A newly renamed directory is not ready until its *final-path* smoke
+    # check finishes. Older installations without a status file remain
+    # compatible; an explicit installing state is never mistaken for ready.
+    status_path = root / "status.json"
+    try:
+        if status_path.is_file() and not status_path.is_symlink() and status_path.stat().st_size <= 4096:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            if isinstance(status, dict) and status.get("phase") == "installing":
+                return False
+    except (OSError, ValueError, TypeError):
+        pass
     return (folder.is_dir() and not folder.is_symlink() and model.is_file() and not model.is_symlink()
             and config.is_file() and not config.is_symlink() and python.is_file())
 
@@ -214,7 +225,7 @@ def verify_and_extract(bundle: Path, staging: Path, public_key: Path = PUBLIC_KE
 
 def install_asset(bundle: Path, *, root: Path = ASSET_ROOT,
                   public_key: Path = PUBLIC_KEY, run=subprocess.run) -> dict:
-    """Install pinned wheels without network and rename only after smoke test."""
+    """Install pinned wheels without network and test after the final rename."""
     if ready(root):
         return {"phase": "ready", "message": "Offline voice ready."}
     if not _runtime_supported():
@@ -225,6 +236,8 @@ def install_asset(bundle: Path, *, root: Path = ASSET_ROOT,
     if shutil.disk_usage(root).free < 550 * 1024 * 1024:
         raise VoiceAssetError("Not enough free space to install the offline voice.")
     staging = Path(tempfile.mkdtemp(prefix=".voice-stage-", dir=root))
+    installed_here = False
+    completed = False
     try:
         manifest = verify_and_extract(bundle, staging, public_key)
         write_status(root, "installing", "Installing the verified offline voice.")
@@ -248,13 +261,25 @@ def install_asset(bundle: Path, *, root: Path = ASSET_ROOT,
         if final.exists() or final.is_symlink():
             raise VoiceAssetError("An incomplete offline voice installation needs review.")
         os.replace(staging, final)
+        installed_here = True
+        # The staged venv may pass while an absolute path in a dependency
+        # breaks after rename. Test the exact executable/model path used by
+        # the voice agent before declaring this asset ready.
+        run([str(final / "venv/bin/python"), "-c", smoke, str(final / MODEL)],
+            check=True, timeout=90, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         write_status(root, "ready", "Offline voice ready.")
+        completed = True
         return {"phase": "ready", "message": "Offline voice ready."}
     except VoiceAssetError:
         raise
     except (OSError, subprocess.SubprocessError):
         raise VoiceAssetError("The offline voice did not pass its local install check; fallback voice remains available.") from None
     finally:
+        if installed_here and not completed and (root / VOICE_ID).is_dir() and not (root / VOICE_ID).is_symlink():
+            # Only a directory this invocation just created may be removed.
+            # A successful return keeps it; failures never leave a deceptive
+            # file-presence-only `ready` state that prevents signed retry.
+            shutil.rmtree(root / VOICE_ID)
         if staging.exists() and staging.resolve(strict=False).is_relative_to(root.resolve(strict=True)):
             shutil.rmtree(staging)
 

@@ -33,6 +33,7 @@ class UpdateBrokerImageTests(unittest.TestCase):
         self.assertEqual(service["NoNewPrivileges"], "yes")
         self.assertEqual(service["ProtectSystem"], "strict")
         self.assertEqual(service["ReadWritePaths"].split(), ["/opt"])
+        self.assertEqual(service["UMask"], "0022")
         self.assertEqual(service["RestrictAddressFamilies"].split(), ["AF_UNIX", "AF_INET", "AF_INET6"])
 
         installer = (SYSTEM / "install.sh").read_text()

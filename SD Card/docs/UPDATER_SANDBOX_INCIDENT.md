@@ -39,3 +39,34 @@ replace the installed systemd unit. A synthetic Linux app switch passed before
 release but did not reproduce the real service's mount sandbox. Future image
 qualification must test atomic switching *inside the installed systemd
 service* before publishing an update as stable.
+
+## Second supervised attempt: installed modules unreadable
+
+The first no-flash repair reported `SUCCESS` with healthy 0.2.3 and
+`ReadWritePaths=/opt`. The signed 0.2.4 release was temporarily restored to
+the stable feed. Two subsequent installation attempts completed pip's wheel
+installation but rolled back. The second BOOT report showed a clean rollback,
+and the narrow API journal captured the exact cause: the 0.2.4 API and device
+scripts raised `ModuleNotFoundError` for `luma.api`, `luma.device_agent` and
+`luma.mic_hardware` immediately after the switch. The published wheel's SHA-256
+matched its GitHub asset digest and contains all three modules.
+
+The installed update broker unit has `UMask=0077`. A disposable Linux copy of
+the 0.2.3 environment followed by pip installation of the exact published
+0.2.4 wheel under umask 0077 reproduced package directories mode `0700` and
+Python files mode `0600`. The root broker can import them, but the `luma`
+service user cannot. The same umask also makes freshly created frontend
+directories and assets unreadable to the kiosk. This is why the prior
+synthetic qualification, run under a normal build-host umask and checking only
+package version rather than module visibility, passed.
+
+0.2.4 is paused again. The next narrow no-flash repair changes only the
+installed updater unit's `UMask` to `0022` after verifying the active release
+is still 0.2.3. The prior unit is retained for recovery. Update status and
+lock files explicitly use `0600`, and the signed bundle stays inside a private
+temporary directory; no settings or account data are made public. The source
+unit now carries this corrected umask. Qualification reads that exact unit
+value, installs the signed bundle under it, and asserts the resulting API
+module and frontend files are traversable/readable by a non-root process.
+Only a successful BOOT repair report permits unpausing the signed release and
+another supervised update attempt.

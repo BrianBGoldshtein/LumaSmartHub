@@ -853,12 +853,12 @@ def create_app(
     async def confirm_phrase_correction(payload: PhraseCorrectionConfirm) -> dict:
         """A prompt-specific owner confirmation, never an automatic audio guess."""
         try:
-            heard, canonical, confirmations = calibration.confirm_correction(payload.session)
+            heard_variants, canonical, confirmations = calibration.confirm_correction(payload.session)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         saved = False
         if confirmations >= 2:
-            if not phrase_adaptations.add(heard, canonical):
+            if not phrase_adaptations.add_many(heard_variants, canonical):
                 calibration.message = 'That correction conflicts with a supported command or the personal phrase limit; nothing was saved.'
                 raise HTTPException(409, calibration.message)
             storage.set_cache('voice', 'phrase_adaptations', phrase_adaptations.public())

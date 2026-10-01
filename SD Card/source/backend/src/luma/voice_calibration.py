@@ -74,7 +74,7 @@ class VoiceCalibration:
         self.last_free_text = ''
         self.last_phrase_index = -1
         self.last_confirmed_attempt = -1
-        self.correction_counts: dict[tuple[str, str], int] = {}
+        self.correction_examples: dict[str, list[str]] = {}
         self.last_correction_count = 0
         self.applied_gain: int | None = None
         self.gain_adjustments = 0
@@ -140,7 +140,7 @@ class VoiceCalibration:
         self.last_free_text = ''
         self.last_phrase_index = -1
         self.last_confirmed_attempt = -1
-        self.correction_counts.clear()
+        self.correction_examples.clear()
         self.last_correction_count = 0
         self.applied_gain = None
         self.gain_adjustments = 0
@@ -235,21 +235,22 @@ class VoiceCalibration:
             "results": list(self.results),
         }
 
-    def confirm_correction(self, session: str, now: float | None = None) -> tuple[str, str, int]:
-        """Owner confirms the displayed prompt was spoken, twice per pattern."""
+    def confirm_correction(self, session: str, now: float | None = None) -> tuple[list[str], str, int]:
+        """Owner confirms two attempts, allowing natural ASR variation."""
         now = time.monotonic() if now is None else now
         if session != self.session or not self.status(now)['correction_available']:
             raise ValueError('No recent, safe phrase correction is ready to confirm.')
         heard = normalized_phrase(command_after_wake(self.last_free_text) or '')
         canonical = PHRASES[self.index].removeprefix('hey luma ')
         self.last_confirmed_attempt = self.attempts
-        key = (heard, canonical)
-        self.correction_counts[key] = min(2, self.correction_counts.get(key, 0) + 1)
-        self.last_correction_count = self.correction_counts[key]
-        self.message = ('Confirmed. Say the same displayed phrase once more so Luma can verify the pattern.'
+        examples = self.correction_examples.setdefault(canonical, [])
+        if len(examples) < 2:
+            examples.append(heard)
+        self.last_correction_count = len(examples)
+        self.message = ('Confirmed. Say the displayed phrase once more; a different mishearing is okay.'
                         if self.last_correction_count < 2 else
-                        'Personal phrase correction saved. Repeat the displayed phrase to test it.')
-        return heard, canonical, self.last_correction_count
+                        'Two examples confirmed. Repeat the displayed phrase to test it.')
+        return list(dict.fromkeys(examples)), canonical, self.last_correction_count
 
     def gain_step(self, rms: float, peak: float, clipped_fraction: float = 0) -> int:
         """Adjust only obvious level faults; never chase a recognition mismatch.
@@ -290,7 +291,7 @@ class VoiceCalibration:
         self.last_free_text = ''
         self.last_phrase_index = -1
         self.last_confirmed_attempt = -1
-        self.correction_counts.clear()
+        self.correction_examples.clear()
         self.last_correction_count = 0
         self.last_raw_heard = ""
         self.last_free_available = False
@@ -385,7 +386,8 @@ class VoiceCalibration:
                           if raw_compared else None)
         self.last_free_text = free_text[:160]
         self.last_phrase_index = self.index
-        self.last_correction_count = 0
+        canonical = PHRASES[self.index].removeprefix('hey luma ')
+        self.last_correction_count = len(self.correction_examples.get(canonical, []))
         if command:
             value = getattr(command.value, "value", command.value)
             self.last_intent = (f"{command.name.value}: {value}" if value is not None
@@ -460,5 +462,5 @@ class VoiceCalibration:
         self.last_free_text = ''
         self.last_phrase_index = -1
         self.last_confirmed_attempt = -1
-        self.correction_counts.clear()
+        self.correction_examples.clear()
         self.last_correction_count = 0

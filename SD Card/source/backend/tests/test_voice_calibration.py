@@ -282,12 +282,29 @@ def test_owner_confirms_the_same_safe_mishearing_twice_before_it_can_be_saved():
                                     free_text='hey luma whats the tea')
         assert missed['correction_available']
         heard, canonical, count = calibration.confirm_correction(session, 102 + attempt)
-        assert (heard, canonical, count) == ('whats the tea', 'what time is it', attempt)
+        assert (heard, canonical, count) == (['whats the tea'], 'what time is it', attempt)
         assert not calibration.status(102 + attempt)['correction_available']
         with pytest.raises(ValueError):
             calibration.confirm_correction(session, 102 + attempt)
     assert 'whats the tea' not in json.dumps(calibration.status(105)['results'])
     assert not calibration.status(125)['correction_available']
+
+
+def test_owner_can_confirm_two_different_accent_transcriptions_of_one_phrase():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for phrase in PHRASES[:3]:
+        calibration.submit(session, phrase, .05, .4, 101)
+    variants = ('hey luma whats the tea', 'hey luma whats the tee')
+    for attempt, free_text in enumerate(variants, 1):
+        sample = calibration.submit(session, 'hey luma good morning', .05, .4,
+                                    102 + attempt, free_text=free_text)
+        assert sample['correction_available']
+        heard, canonical, count = calibration.confirm_correction(session, 102 + attempt)
+        assert count == attempt and canonical == 'what time is it'
+    assert heard == ['whats the tea', 'whats the tee']
+    assert all(variant not in json.dumps(calibration.status(105)['results'])
+               for variant in heard)
 
 
 def test_dual_decoder_mode_requires_local_calibration_evidence(tmp_path, monkeypatch):
@@ -339,10 +356,10 @@ def test_confirmed_phrase_correction_persists_without_raw_words_and_can_reset(tm
             client.post('/api/v1/voice/calibration/sample', json={
                 'session': session, 'text': phrase, 'rms': .05, 'peak': .4,
             })
-        for count in (1, 2):
+        for count, heard in enumerate(('whats the tea', 'whats the tee'), 1):
             missed = client.post('/api/v1/voice/calibration/sample', json={
                 'session': session, 'text': 'hey luma good morning',
-                'free_text': 'hey luma whats the tea', 'rms': .05, 'peak': .4,
+                'free_text': 'hey luma ' + heard, 'rms': .05, 'peak': .4,
             }).json()
             assert missed['correction_available']
             confirmed = client.post(endpoint, json={'session': session})
@@ -351,10 +368,13 @@ def test_confirmed_phrase_correction_persists_without_raw_words_and_can_reset(tm
             assert client.post(endpoint, json={'session': session}).status_code == 409
         saved = app.state.luma.storage.get_cache('voice', 'phrase_adaptations')
         assert 'whats the tea' not in json.dumps(saved)
-        assert saved['entries'] and client.get('/api/v1/voice/calibration').json()['learned_phrase_count'] == 1
-        preview = client.post('/api/v1/voice/phrase-preview', json={'text': 'whats the tea'}).json()
-        assert preview['personal_correction'] and preview['intent'] == 'time'
-        assert preview['executed'] is False
+        assert 'whats the tee' not in json.dumps(saved)
+        assert len(saved['entries']) == 2
+        assert client.get('/api/v1/voice/calibration').json()['learned_phrase_count'] == 2
+        for heard in ('whats the tea', 'whats the tee'):
+            preview = client.post('/api/v1/voice/phrase-preview', json={'text': heard}).json()
+            assert preview['personal_correction'] and preview['intent'] == 'time'
+            assert preview['executed'] is False
         remote = TestClient(app, client=('192.168.1.7', 5000))
         assert remote.post('/api/v1/voice/adaptations/reset').status_code == 403
         assert client.post('/api/v1/voice/adaptations/reset').json()['learned_phrase_count'] == 0

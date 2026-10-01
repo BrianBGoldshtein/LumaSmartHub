@@ -28,6 +28,17 @@ def test_learning_never_hijacks_an_existing_valid_command():
     assert learned.resolve('good morning') is None
 
 
+def test_two_confirmed_variants_are_saved_atomically():
+    learned = PhraseAdaptations()
+    assert learned.add_many(['whats the tea', 'whats the tee'], 'what time is it')
+    assert learned.resolve('whats the tea') == 'what time is it'
+    assert learned.resolve('whats the tee') == 'what time is it'
+    before = learned.public()
+    assert not learned.add_many(['another variation', 'good morning'], 'what time is it')
+    assert learned.public() == before
+    assert not learned.add_many(['one', 'two', 'three'], 'what time is it')
+
+
 def test_corrupt_personal_phrase_map_fails_closed():
     learned = PhraseAdaptations()
     assert learned.add('the whether tomorrow', "what's the weather tomorrow")

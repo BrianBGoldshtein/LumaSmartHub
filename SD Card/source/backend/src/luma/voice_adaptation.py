@@ -78,15 +78,23 @@ class PhraseAdaptations:
         return None if learned and conflicts_with_existing_command(phrase, learned) else learned
 
     def add(self, heard: str, canonical: str) -> bool:
-        phrase = normalized_phrase(heard)
-        if not phrase or canonical not in LEARNABLE or conflicts_with_existing_command(phrase, canonical):
+        return self.add_many([heard], canonical)
+
+    def add_many(self, heard_phrases: list[str], canonical: str) -> bool:
+        """Atomically save owner-confirmed variants of one safe intent."""
+        if not 1 <= len(heard_phrases) <= 2 or canonical not in LEARNABLE:
             return False
-        digest = self._digest(phrase)
-        if digest in self.entries and self.entries[digest] != canonical:
+        phrases = [normalized_phrase(heard) for heard in heard_phrases]
+        if (any(not phrase or conflicts_with_existing_command(phrase, canonical)
+                for phrase in phrases)):
             return False
-        if digest not in self.entries and len(self.entries) >= MAX_ENTRIES:
+        digests = {self._digest(phrase) for phrase in phrases}
+        if any(digest in self.entries and self.entries[digest] != canonical
+               for digest in digests):
             return False
-        self.entries[digest] = canonical
+        if len(self.entries) + len(digests - self.entries.keys()) > MAX_ENTRIES:
+            return False
+        self.entries.update({digest: canonical for digest in digests})
         return True
 
     def public(self) -> dict:

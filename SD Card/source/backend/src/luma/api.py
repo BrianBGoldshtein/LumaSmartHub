@@ -38,6 +38,7 @@ from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
+from .voice_call_trial import VoiceCallTrial
 from .voice_asset import (fetch_and_install as fetch_voice_asset,
                           ready as voice_asset_ready, recover_interrupted_repair,
                           voice_status)
@@ -230,6 +231,15 @@ class CalibrationSaveAudio(BaseModel):
     session: str = Field(pattern=r"^[0-9a-f]{32}$")
 
 
+class CallTrialObservation(BaseModel):
+    model_config = {"extra": "forbid"}
+    session: str = Field(pattern=r"^[0-9a-f]{32}$")
+    constrained_wake: bool = Field(strict=True)
+    constrained_near_start: bool = Field(strict=True)
+    free_wake: bool = Field(strict=True)
+    free_near_start: bool = Field(strict=True)
+
+
 class MicGainRequest(BaseModel):
     model_config = {"extra": "forbid"}
     gain: int = Field(strict=True, ge=0, le=63)
@@ -306,6 +316,7 @@ def create_app(
     weather = WeatherRuntime(service, weather_client)
     bluetooth = BluetoothRuntime(service)
     calibration = VoiceCalibration()
+    call_trial = VoiceCallTrial()
     phrase_adaptations = PhraseAdaptations(storage.get_cache('voice', 'phrase_adaptations'))
     voice_asset_root = data_root / "voice-assets"
     voice_asset_retry = asyncio.Event()
@@ -829,6 +840,7 @@ def create_app(
                           if result['active'] else saved_profile)
         wake_mode = read_wake_mode(storage.get_cache('voice', 'wake_confirmation'))
         return {**result, "audio_profile": active_profile.public(),
+                "call_trial": call_trial.status(),
                 "wake_confirmation": {'version': 1, 'mode': wake_mode},
                 "phrase_adaptations": phrase_adaptations.public(),
                 "learned_phrase_count": len(phrase_adaptations.entries),
@@ -840,6 +852,40 @@ def create_app(
     @app.get("/api/v1/voice/calibration", dependencies=[Depends(local_only)])
     async def calibration_status() -> dict:
         return calibration_payload()
+
+    @app.post('/api/v1/voice/call-trial/start', dependencies=[Depends(local_only)])
+    async def start_voice_call_trial() -> dict:
+        if not service.settings.voice_enabled:
+            raise HTTPException(409, 'Enable local voice first.')
+        if calibration.status()['active']:
+            raise HTTPException(409, 'Finish or cancel the guided voice check first.')
+        if (voice_agent_status['last_seen'] <= 0 or
+                monotonic() - voice_agent_status['last_seen'] > 15 or
+                voice_agent_status['diagnostic'] is not None):
+            raise HTTPException(409, 'The local voice service must be live before a call test.')
+        try:
+            return call_trial.start()
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get('/api/v1/voice/call-trial', dependencies=[Depends(local_only)])
+    async def voice_call_trial_status() -> dict:
+        return call_trial.status()
+
+    @app.post('/api/v1/voice/call-trial/stop', dependencies=[Depends(local_only)])
+    async def stop_voice_call_trial() -> dict:
+        return call_trial.stop()
+
+    @app.post('/api/v1/voice/call-trial/observation', dependencies=[Depends(local_only)])
+    async def voice_call_trial_observation(payload: CallTrialObservation) -> dict:
+        try:
+            return call_trial.record(
+                payload.session, constrained_wake=payload.constrained_wake,
+                constrained_near_start=payload.constrained_near_start,
+                free_wake=payload.free_wake,
+                free_near_start=payload.free_near_start)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post('/api/v1/voice/wake-confirmation', dependencies=[Depends(local_only)])
     async def set_wake_confirmation(payload: WakeConfirmationChoice) -> dict:
@@ -894,6 +940,8 @@ def create_app(
     async def calibration_start() -> dict:
         if not service.settings.voice_enabled:
             raise HTTPException(409, "Enable local voice first")
+        if call_trial.status()['active']:
+            raise HTTPException(409, "Finish or stop the call false-wake test first.")
         calibration.start(ambient_seconds=4)
         return calibration_payload()
 
@@ -1178,6 +1226,8 @@ def create_app(
             return {"accepted": False, "message": "Local voice is turned off."}
         if calibration.status()["active"]:
             return {"accepted": False, "message": "Voice check in progress; no commands were applied."}
+        if call_trial.status()['active']:
+            return {"accepted": False, "message": "Call false-wake test in progress; no commands were applied."}
         parsed = parse_local_command(payload.text)
         if parsed is None:
             return {"accepted": False, "message": "That phrase is not in my local library. Say, Hey Luma, what can I say?"}

@@ -23,7 +23,8 @@ from .voice_speech import (OfflineSpeaker, VoicePlaybackError, play_test_tone,
                            speaker_route_warning)
 from .voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter, pcm_measurements,
                            low_frequency_fraction, read_profile, speech_measurements)
-from .voice_wake import command_after_wake, has_wake, read_wake_mode, wake_confirmed
+from .voice_wake import (command_after_wake, has_wake, read_wake_mode,
+                         wake_confirmed, wake_near_start)
 from .voice_adaptation import PhraseAdaptations
 
 
@@ -75,6 +76,19 @@ def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[byt
             "raw_free_text": raw_free_text, "raw_compared": raw_compared,
             "selection": selection, "rms": signal['rms'], "peak": signal['peak'],
             "dc": signal['dc'], "clipped_fraction": signal['clipped_fraction']}
+
+
+def call_trial_decoding_payload(constrained_text: str, unrestricted,
+                                spoken: list[bytes], wake_phrase: str) -> dict:
+    """Only four booleans leave the audio process during a call trial."""
+    proposed = has_wake(constrained_text, wake_phrase)
+    free_text = (_unrestricted_transcript(unrestricted, spoken) if proposed else '')
+    return {
+        'constrained_wake': proposed,
+        'constrained_near_start': wake_near_start(constrained_text, wake_phrase),
+        'free_wake': has_wake(free_text, wake_phrase),
+        'free_near_start': wake_near_start(free_text, wake_phrase),
+    }
 
 
 def partial_has_wake(partial_result: str, wake_phrase: str) -> bool:
@@ -223,7 +237,8 @@ def main() -> None:
             # ReSpeaker node instead of PortAudio's machine-dependent default.
             with PulseCapture(chunks) as capture:
                 phase("idle")
-                calibration = {"active": False, "session": ""}
+                calibration = {"active": False, "session": "",
+                               "call_trial": {"active": False, "session": ""}}
                 wake_mode = 'standard'
                 adaptations = PhraseAdaptations()
                 next_check = 0.0
@@ -326,6 +341,19 @@ def main() -> None:
                                 meter_low_fractions.clear()
                                 next_meter = now
                                 phase("listening" if fresh["active"] else "idle")
+                            old_trial = calibration.get('call_trial') or {}
+                            new_trial = fresh.get('call_trial') or {}
+                            if ((old_trial.get('active'), old_trial.get('session')) !=
+                                    (new_trial.get('active'), new_trial.get('session'))):
+                                # A call trial never consumes audio captured
+                                # before it started and never executes words
+                                # decoded while it was active.
+                                recognizer.Reset()
+                                free_recognizer.Reset()
+                                utterance.clear()
+                                early_wake = False
+                                gate.until = 0
+                                phase('idle')
                             next_wake_mode = read_wake_mode(fresh.get('wake_confirmation'))
                             if next_wake_mode != wake_mode:
                                 wake_mode = next_wake_mode
@@ -437,7 +465,8 @@ def main() -> None:
                     if len(utterance)>36:
                         utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
                     if not recognizer.AcceptWaveform(chunk):
-                        if (not calibration["active"] and wake_mode == 'standard' and not early_wake
+                        if (not calibration["active"] and not calibration.get('call_trial', {}).get('active')
+                                and wake_mode == 'standard' and not early_wake
                                 and partial_has_wake(recognizer.PartialResult(), gate.phrase)):
                             # Show the full-screen orb while the owner is
                             # still speaking. Only a final, exact wake match
@@ -450,6 +479,20 @@ def main() -> None:
                     early_wake = False
                     spoken=utterance
                     utterance=[]
+                    trial = calibration.get('call_trial') or {}
+                    if trial.get('active'):
+                        observation = call_trial_decoding_payload(
+                            text, free_recognizer, spoken, gate.phrase)
+                        try:
+                            client.post('/api/v1/voice/call-trial/observation', json={
+                                'session': trial['session'], **observation,
+                            }).raise_for_status()
+                        except httpx.HTTPError:
+                            pass
+                        recognizer.Reset()
+                        gate.until = 0
+                        phase('idle')
+                        continue  # A call-test utterance can never execute.
                     # The constrained grammar can hallucinate its nearest
                     # allowed phrase over unrelated speech. In the optional
                     # strict mode, a *new* wake must also be present in the

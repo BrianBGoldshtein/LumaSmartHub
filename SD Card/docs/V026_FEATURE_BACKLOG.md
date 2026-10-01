@@ -15,7 +15,7 @@ The first implementation uses a calendar-day delta (not elapsed hours), red for 
 
 ## Robotic or silent speech on the physical 0.2.5 Pi
 
-The owner reports that replies still sound robotic. In the Voice panel, the separately started Kristin sample failed with “The local voice could not generate audio,” while the non-speech speaker tone failed its selected route. “Kristin installed” proves files exist, not that any sound came from that model. “Last command reply: Kristin” is a different, earlier result and cannot establish the sample or current listening experience. We must not call this fixed from software tests.
+The owner reports that replies still sound robotic and that “what time is it?” sometimes succeeds. A new 0.2.5 Voice-panel photo taken after a successful time reply still shows “Last spoken reply: Kristin,” while the separately started Kristin sample failed with “The local voice could not generate audio” and the non-speech speaker tone failed its selected route. In 0.2.5, that label is written only after the command's Piper worker returns audio and `pacat` exits successfully, so a working Kristin path has been observed at least once. However, 0.2.5 shows no timestamp or physical output route: the label may predate the immediately preceding reply, and process success does not prove what the owner heard. “Kristin installed” proves only that files exist. We must not call speech quality fixed from software tests.
 
 0.2.6 work in progress:
 
@@ -35,7 +35,7 @@ Acceptance on the Pi: (1) hear the short tone, (2) hear the fixed Kristin and or
 
 ### Physical voice test decision tree
 
-On the **current 0.2.5 Pi**, ask “Hey Luma, what time is it?” once and read the complete *Last command reply* line immediately afterward. Record its date/time, engine, route and fixed error wording, but no spoken audio, calendar data or account details. The current sample and tone buttons run from the API process rather than the live voice agent, so their failure cannot by itself prove that a spoken command used eSpeak. Do not reflash or repair solely from those two buttons.
+On the **current 0.2.5 Pi**, ask “Hey Luma, what time is it?” once and read *Last spoken reply* immediately afterward. That version shows engine and possibly a generic error, **not** date/time or route, so do not infer freshness or physical output from a photo of the line alone. The current sample and tone buttons run from the API process rather than the live voice agent, so their failure cannot by itself prove that a spoken command used eSpeak. Do not reflash or repair solely from those two buttons.
 
 When a **future, owner-approved 0.2.6 build** is installed, use this order while the room is quiet: test the short tone; play the fixed Kristin sample; play the fixed original-voice sample; then ask the time twice. All three tests report their own route/error and the command reports its actual engine. Confirm with ears that the audio was heard—`pacat` accepting bytes is not proof of sound from the display.
 
@@ -49,9 +49,7 @@ When a **future, owner-approved 0.2.6 build** is installed, use this order while
 | Mic meter stays near zero or no frames arrive | Check the ReSpeaker capture route and physical gain before changing word/intent matching. If level moves but no phrase completes, follow the new calibration hint and pause after speaking. |
 | Raw phrase recognition beats tuned input twice | Luma should bypass the trial processing; reset to untouched audio if a saved profile remains worse on the Pi. |
 
-The owner has not yet provided the fresh 0.2.5 command-reply line, and no 0.2.6 branch has been heard on the Pi. Those facts leave the reported robotic output unresolved even though software tests pass.
-
-On 0.2.5 specifically, a robotic reply likely means the eSpeak fallback, but that is still a hypothesis until the **timestamped last command reply** says “original fallback voice” versus “Kristin.” The owner has been asked for that one status line. If it says current Kristin and the sample is audibly robotic, pursue the model A/B below; reinstalling the same signed voice would not improve its timbre. If it says fallback with a Piper startup/generation error, try the signed repair in 0.2.6 and retest tone, sample, then command. No 0.2.6 fix is claimed physically verified yet.
+The owner has provided a 0.2.5 panel photo after a successful time reply, but 0.2.5 does not timestamp that engine label. No 0.2.6 branch has been heard on the Pi. The reported robotic output therefore remains unresolved even though software tests pass. The previously favored eSpeak-fallback hypothesis is **weaker**, not proven: at least one Piper command playback was reported as successful. If a future timestamped 0.2.6 command says Kristin and its sample is audibly robotic, pursue the model A/B below; reinstalling the same signed voice would not improve its timbre. If it says fallback with a Piper startup/generation error, try the signed repair in 0.2.6 and retest tone, sample, then command. No 0.2.6 fix is claimed physically verified yet.
 
 ## Audio-stage calibration before words and intent
 

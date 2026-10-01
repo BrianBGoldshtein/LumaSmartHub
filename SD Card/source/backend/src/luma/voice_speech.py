@@ -161,17 +161,22 @@ def wav_to_pcm(data: bytes) -> bytes:
 
 
 def fallback_wav_to_pcm(data: bytes) -> tuple[bytes, int]:
-    # eSpeak NG streams WAV to stdout with zero RIFF/data lengths because it
-    # cannot seek back to finalize the header. Python's wave reader sees zero
-    # frames in that case even though the PCM bytes are present.
+    # eSpeak NG cannot seek back to finalize stdout WAV lengths. Versions use
+    # either zero lengths or the observed large RIFF/data placeholder pair
+    # 0x7ffff024/0x7ffff000. Python's wave reader otherwise sees no frames or
+    # a truncated file even though bounded PCM follows the data header.
     if not 44 < len(data) <= MAX_WAV or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
         raise ValueError("invalid fallback audio length")
+    riff_declared = struct.unpack_from("<I", data, 4)[0]
     offset, rate = 12, None
     while offset + 8 <= len(data):
         tag = data[offset:offset + 4]
         declared = struct.unpack_from("<I", data, offset + 4)[0]
         start = offset + 8
-        length = len(data) - start if tag == b"data" and declared == 0 else declared
+        streamed = (tag == b"data" and
+                    ((declared == 0 and riff_declared == 0) or
+                     (declared == 0x7ffff000 and riff_declared == 0x7ffff024)))
+        length = len(data) - start if streamed else declared
         if start + length > len(data):
             raise ValueError("truncated fallback WAV")
         if tag == b"fmt ":

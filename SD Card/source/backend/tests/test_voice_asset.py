@@ -558,6 +558,18 @@ def test_fallback_decoder_accepts_espeak_streaming_header_with_zero_lengths():
         fallback_wav_to_pcm(data[:-1])
 
 
+def test_fallback_decoder_accepts_real_espeak_stdout_placeholder_lengths():
+    pcm = struct.pack('<hhhh', 0, 1000, -1000, 0)
+    data = (b'RIFF' + struct.pack('<I', 0x7ffff024) + b'WAVE'
+            + b'fmt ' + struct.pack('<IHHIIHH', 16, 1, 1, 22050, 44100, 2, 16)
+            + b'data' + struct.pack('<I', 0x7ffff000) + pcm)
+    assert fallback_wav_to_pcm(data) == (pcm, 22050)
+    corrupted = bytearray(data)
+    struct.pack_into('<I', corrupted, 4, 0x7ffff025)
+    with pytest.raises(ValueError):
+        fallback_wav_to_pcm(bytes(corrupted))
+
+
 def test_failed_fallback_marks_reply_silent_instead_of_stale(monkeypatch, tmp_path):
     import luma.voice_speech as speech
     monkeypatch.setattr(speech, 'sys', SimpleNamespace(platform='linux'))

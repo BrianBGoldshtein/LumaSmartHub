@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 import json
+import queue
 import struct
 
 from fastapi.testclient import TestClient
@@ -7,7 +8,9 @@ from fastapi.testclient import TestClient
 from luma.api import create_app
 from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
-from luma.voice_agent import calibration_decoding_payload, choose_command, partial_has_wake, select_command
+from luma.voice_agent import (_discard_pending_audio, calibration_decoding_payload,
+                              choose_command, partial_has_wake, select_command)
+from luma.voice_audio import AudioCaptureError
 from luma.voice_signal import AudioPreprocessor, AudioProfile
 from luma.voice_adaptation import PhraseAdaptations
 
@@ -41,11 +44,12 @@ def test_calibration_decodes_tuned_audio_before_raw_comparison_or_intent():
     result = calibration_decoding_payload(
         constrained, unrestricted, [raw], [tuned], wake_phrase='hey luma',
         noise_rms=.001, profile=profile, now=100)
-    assert constrained.replays == [[tuned]]
+    assert constrained.replays == [[tuned], [raw]]
     assert unrestricted.replays == [[tuned], [raw]]
     assert result['selection'] == 'agree'
     assert result['selected_text'] == "what's the time"
     assert result['raw_compared'] and result['raw_free_text'] == 'hey luma what time is it'
+    assert result['raw_constrained_wake'] is True
     assert result['rms'] > .02 and result['peak'] < .995
 
     untouched = Recorder(lambda _frame: 'hey luma what time is it')
@@ -54,6 +58,7 @@ def test_calibration_decodes_tuned_audio_before_raw_comparison_or_intent():
         noise_rms=.001, profile=AudioProfile(), now=101)
     assert untouched.replays == [[raw]]
     assert not result['raw_compared'] and result['raw_free_text'] == ''
+    assert result['raw_constrained_wake'] is None
 
     learned = PhraseAdaptations()
     assert learned.add('whats the tea', 'what time is it')
@@ -64,6 +69,17 @@ def test_calibration_decodes_tuned_audio_before_raw_comparison_or_intent():
         profile=AudioProfile(), now=102, adaptations=learned)
     assert result['selected_text'] == 'what time is it'
     assert result['selection'] == 'learned'
+
+
+def test_calibration_discards_stale_capture_without_hiding_terminal_failure():
+    chunks = queue.Queue(maxsize=4)
+    chunks.put(b'old speech')
+    chunks.put(b'old tail')
+    failure = AudioCaptureError('capture_stream_stopped')
+    chunks.put(failure)
+    _discard_pending_audio(chunks)
+    assert chunks.get_nowait() is failure
+    assert chunks.empty()
 
 
 def test_wake_gate_requires_phrase_and_expires():

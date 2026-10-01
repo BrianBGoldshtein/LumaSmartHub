@@ -67,6 +67,8 @@ def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[byt
     text = _unrestricted_transcript(constrained, spoken)
     free_text = _unrestricted_transcript(unrestricted, spoken)
     raw_compared = profile.gain > 1 or profile.high_pass
+    raw_constrained_wake = (wake_near_start(_unrestricted_transcript(constrained, raw_spoken),
+                                           wake_phrase) if raw_compared else None)
     raw_free_text = (_unrestricted_transcript(unrestricted, raw_spoken)
                      if raw_compared else "")
     candidate = WakeGate(wake_phrase).accept(text, now)
@@ -74,6 +76,7 @@ def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[byt
                          if candidate is not None else (None, ""))
     return {"text": text, "free_text": free_text, "selected_text": chosen,
             "raw_free_text": raw_free_text, "raw_compared": raw_compared,
+            "raw_constrained_wake": raw_constrained_wake,
             "selection": selection, "rms": signal['rms'], "peak": signal['peak'],
             "dc": signal['dc'], "clipped_fraction": signal['clipped_fraction']}
 
@@ -470,6 +473,17 @@ def main() -> None:
                             next_check = 0.0  # A gain change may restart the quiet-room baseline.
                         except httpx.HTTPError:
                             pass
+                        # A/B replay can run slower than live capture on a Pi.
+                        # Audio queued during decoding belongs to the old
+                        # prompt; do not treat that tail as the next phrase.
+                        if capture.dropped_frames > seen_drops:
+                            recognition_drops += capture.dropped_frames - seen_drops
+                        seen_drops = capture.dropped_frames
+                        _discard_pending_audio(chunks)
+                        recognizer.Reset()
+                        free_recognizer.Reset()
+                        calibration_segmenter.reset()
+                        preprocessor.reset()
                         continue  # Calibration never executes commands.
                     utterance.append(chunk)
                     if len(utterance)>36:

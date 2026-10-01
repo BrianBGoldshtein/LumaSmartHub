@@ -187,6 +187,42 @@ def test_raw_recognition_wins_twice_and_disables_harmful_trial():
     assert finished['audio_profile']['quality'] == 'bypass'
 
 
+def test_raw_wake_wins_twice_even_when_word_scores_are_equal():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for now in (105, 106, 107):
+        result = calibration.submit(session, '', .025, .25, now)
+    assert result['audio_candidate']['gain'] > 1
+    for now in (108, 109):
+        result = calibration.submit(session, '', .025, .25, now,
+                                    free_text='', raw_free_text='', raw_compared=True,
+                                    raw_constrained_wake=True)
+    assert result['processing_regressed']
+    assert result['audio_candidate']['quality'] == 'bypass'
+    assert all('raw_constrained_wake' in row for row in result['results'])
+
+
+def test_new_false_wake_on_negative_control_vetoes_tuned_audio():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for phrase in PHRASES[:-2]:
+        calibration.submit(session, phrase, .025, .25, 105)
+    result = calibration.submit(session, 'hey luma what time is it', .025, .25, 106,
+                                free_text='what time is it', raw_free_text='what time is it',
+                                raw_compared=True, raw_constrained_wake=False)
+    assert result['processing_regressed']
+    assert result['audio_candidate']['quality'] == 'bypass'
+    assert result['results'][-1]['raw_match'] is True
+    assert 'wake detection' in result['message']
+    with pytest.raises(ValueError, match='raw wake'):
+        calibration.submit(session, PHRASES[-2], .025, .25, 107,
+                           raw_constrained_wake=False)
+
+
 def test_learned_intent_cannot_hide_worse_pre_recognizer_audio():
     calibration = VoiceCalibration()
     session = calibration.start(100)['session']

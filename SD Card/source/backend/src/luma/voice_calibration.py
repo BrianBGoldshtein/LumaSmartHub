@@ -87,17 +87,33 @@ class VoiceCalibration:
         self.phrase_prompt_at = 0.0
 
     def processing_regressed(self) -> bool:
-        """Compare *words*, not learned intent, to decide audio processing.
+        """Compare words and wake evidence, never learned intent, before saving.
 
         A personalized phrase correction must never make tuned PCM look
         acoustically superior to an untouched recording of the same speech.
         """
-        comparisons = [(row.get('word_match') or 0, row.get('raw_word_match') or 0)
-                       for row in self.results if row.get('raw_compared')
-                       and (row.get('word_match') is not None
-                            or row.get('raw_word_match') is not None)]
-        raw_wins = sum(raw >= tuned + .12 for tuned, raw in comparisons)
-        tuned_wins = sum(tuned >= raw + .12 for tuned, raw in comparisons)
+        raw_wins = tuned_wins = 0
+        for row in self.results:
+            if not row.get('raw_compared'):
+                continue
+            tuned_words = row.get('word_match') or 0
+            raw_words = row.get('raw_word_match') or 0
+            raw_better = raw_words >= tuned_words + .12
+            tuned_better = tuned_words >= raw_words + .12
+            raw_wake = row.get('raw_constrained_wake')
+            tuned_wake = row.get('constrained_wake_near_start')
+            if raw_wake is not None:
+                if row['phrase_index'] < len(PHRASES) - 2:
+                    raw_better |= bool(raw_wake and not tuned_wake)
+                    tuned_better |= bool(tuned_wake and not raw_wake)
+                elif tuned_wake and not raw_wake:
+                    # New false wake on a no-wake control is enough to veto
+                    # amplification; it must never be saved as a "good" tune.
+                    return True
+                elif raw_wake and not tuned_wake:
+                    tuned_better = True
+            raw_wins += raw_better and not tuned_better
+            tuned_wins += tuned_better and not raw_better
         return raw_wins >= tuned_wins + 2
 
     def measured_profile(self) -> AudioProfile:
@@ -334,6 +350,7 @@ class VoiceCalibration:
 
     def submit(self, session: str, text: str, rms: float, peak: float, now: float | None = None,
                *, free_text: str = "", raw_free_text: str = "", raw_compared: bool = False,
+               raw_constrained_wake: bool | None = None,
                selected_text: str | None = None,
                selection: str = "", dc: float = 0.0,
                clipped_fraction: float = 0.0) -> dict:
@@ -347,6 +364,9 @@ class VoiceCalibration:
             return self.status(now)
         if not 0 <= dc <= 1 or not 0 <= clipped_fraction <= 1:
             raise ValueError("Invalid audio measurements")
+        if raw_constrained_wake is not None and (type(raw_constrained_wake) is not bool
+                                                 or not raw_compared):
+            raise ValueError("Invalid raw wake comparison")
         accepted = WakeGate().accept(text, now)
         # A live decoder conflict deliberately selects nothing. Only legacy
         # direct samples without selection metadata fall back to the wake pass.
@@ -365,8 +385,10 @@ class VoiceCalibration:
         raw_match = False
         if raw_compared:
             raw_wake = WakeGate().accept(raw_free_text, now)
-            raw_command = parse_local_command(raw_wake if expects_wake else raw_free_text)
+            raw_command = parse_local_command((raw_wake if expects_wake else raw_free_text) or '')
             raw_match = bool(raw_command and expected and
+                             (raw_constrained_wake is None
+                              or raw_constrained_wake == expects_wake) and
                              (raw_wake is not None) == expects_wake and
                              (raw_command.name, raw_command.value) == (expected.name, expected.value))
         noise = room_noise_level(self.room_floors) or 0.0
@@ -406,6 +428,7 @@ class VoiceCalibration:
                              "word_match": self.last_word_match,
                              "raw_word_match": raw_word_match,
                              "raw_compared": raw_compared, "raw_match": raw_match,
+                             "raw_constrained_wake": raw_constrained_wake,
                              "level_ok": level_ok,
                              "acoustic_speech": acoustic_speech,
                              "rms": round(rms, 5), "peak": round(peak, 5),
@@ -426,7 +449,7 @@ class VoiceCalibration:
                 elif self.audio_profile['quality'] == 'bypass':
                     self.message += " Room sound was not measured well enough to tune processing; audio remains untouched."
         elif self.processing_regressed():
-            self.message = "Untouched audio recognized better twice; trial processing is off. Repeat the displayed phrase."
+            self.message = "Untouched audio handled words or wake detection better; trial processing is off. Repeat the displayed phrase."
         elif peak >= .995 or clipped_fraction > .002:
             self.message = "The microphone signal is near clipping. Lower its capture gain and repeat."
         elif rms < .002:

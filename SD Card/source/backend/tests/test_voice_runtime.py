@@ -232,7 +232,7 @@ def test_dual_decoder_allows_a_title_only_when_timer_durations_agree():
         None, 'conflict')
     assert choose_command('start a thirty minute timer',
                           'hey luma start a timer for thirty minutes called', 'hey luma') == (
-        None, 'unmatched')
+        None, 'timer_name_unheard')
 
 
 def test_dual_decoder_never_guesses_conflicting_actions_or_negations():

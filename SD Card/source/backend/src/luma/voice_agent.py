@@ -145,6 +145,9 @@ def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> 
     if re.search(r'\b(?:titled|called|named)\b', varied) and varied_command is None:
         # Do not silently start an unnamed timer when the requested title was
         # truncated or failed recognition.
+        if 'timer' in varied or (constrained_command is not None
+                                 and constrained_command.name.value == 'start_timer'):
+            return None, "timer_name_unheard"
         return None, "unmatched"
     if (varied_command is not None and varied_command.name.value == 'start_timer'
             and isinstance(varied_command.value, dict)
@@ -857,13 +860,16 @@ def main() -> None:
                                                preprocessor, gate)
                         phase('idle')
                         continue
-                    if selection in {"conflict", "negated", "timer_duration_unconfirmed"}:
+                    if selection in {"conflict", "negated", "timer_duration_unconfirmed", "timer_name_unheard"}:
                         if selection == "conflict":
                             phase("speaking")
                             say("I heard two different commands. Please repeat that.")
                         elif selection == "timer_duration_unconfirmed":
                             phase("speaking")
                             say("I could not confirm the timer duration. Please repeat the time and name.")
+                        elif selection == "timer_name_unheard":
+                            phase("speaking")
+                            say("I missed the timer name. Please repeat the time and name.")
                         _discard_pending_audio(chunks)
                         seen_drops = capture.dropped_frames
                         recognizer.Reset()

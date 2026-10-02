@@ -9,7 +9,7 @@
 .agenda-hour { position:absolute; left:0; right:0; display:flex; align-items:center; height:0; pointer-events:none; }
 .agenda-hour time { width:var(--agenda-gutter); padding-right:1vmin; font-size:clamp(20px,3vmin,48px); font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .agenda-hour>span { height:1px; background:var(--line); flex:1; }
-.agenda-appointments { position:absolute; inset:0 0 0 var(--agenda-gutter); overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; scrollbar-color:var(--accent) transparent; }
+.agenda-appointments { position:absolute; z-index:1; inset:0 0 0 var(--agenda-gutter); overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; scrollbar-color:var(--accent) transparent; }
 .agenda-appointment-track { position:relative; height:100%; width:max(100%,calc(var(--agenda-lanes)*clamp(200px,28vmin,430px))); }
 .agenda-appointment { position:absolute; top:var(--agenda-top); height:var(--agenda-height); left:var(--agenda-left); width:var(--agenda-width); border:0; border-left:clamp(3px,.5vmin,8px) solid var(--event-color); border-radius:var(--radius); border-right:6px solid var(--bg); border-bottom:4px solid var(--bg); padding:.6vmin 1.2vmin; background:color-mix(in srgb,var(--event-color) 18%,var(--bg)); text-align:left; display:flex; flex-direction:column; gap:0; overflow:hidden; min-width:0; }
 .agenda-appointment time { font-size:clamp(18px,3vmin,46px); font-weight:700; line-height:1.2; white-space:nowrap; min-height:0; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; }
@@ -26,7 +26,7 @@
 .agenda-appointment.is-verbose strong { font-size:clamp(20px,2.45vmin,38px); -webkit-line-clamp:4; }
 .agenda-appointment>span { color:var(--muted); font-size:clamp(14px,2vmin,32px); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .agenda-appointment.is-past { background:color-mix(in srgb,var(--event-color) 9%,var(--bg)); }
-.agenda-now { position:absolute; left:calc(var(--agenda-gutter) - 6px); right:0; height:2px; background:var(--accent); pointer-events:none; }
+.agenda-now { position:absolute; z-index:0; left:calc(var(--agenda-gutter) - 6px); right:0; height:2px; background:var(--accent); pointer-events:none; }
 .agenda-now::before { content:''; display:block; width:10px; height:10px; border-radius:50%; background:var(--accent); transform:translateY(-4px); }
 .agenda-controls { display:flex; align-items:center; justify-content:flex-end; gap:1vmin; padding-top:1vmin; font-size:clamp(18px,2.6vmin,40px); color:var(--muted); }
 .agenda-controls button { border:0; background:transparent; min-width:44px; min-height:44px; padding:.7vmin; display:grid; place-items:center; }

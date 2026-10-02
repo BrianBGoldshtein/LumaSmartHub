@@ -7,6 +7,14 @@ export type AgendaSection={start:number;end:number;items:PlacedEvent[];allDay:Ca
 export const calendarColor=(event:CalendarEvent)=>/^#[0-9a-f]{6}$/i.test(event.event_color||event.calendar_color||'')?event.event_color||event.calendar_color!:'var(--accent)';
 export const eventKey=(event:CalendarEvent)=>`${event.calendar_id}:${event.id}`;
 
+/** Labels on the left ruler are always whole hours, even in a close-up. */
+export function hourRulerTicks(start:number,end:number):number[]{
+  if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return [];
+  const ticks:number[]=[];
+  for(let tick=Math.ceil(start/HOUR)*HOUR;tick<=end;tick+=HOUR)ticks.push(tick);
+  return ticks;
+}
+
 /** Clock-aligned windows grow around long events and tighten around brief ones. */
 function timeWindows(events:CalendarEvent[],start:number,end:number,viewportHeight:number):{start:number;end:number}[]{
   const windows:{start:number;end:number}[]=[];
@@ -46,6 +54,14 @@ function timeWindows(events:CalendarEvent[],start:number,end:number,viewportHeig
     const relevant=timed.filter(event=>event.end>cursor&&event.start<Math.min(target,nextBrief));
     const shortest=Math.min(...relevant.map(event=>event.end-event.start));
     const span=Math.max(HOUR,Math.floor(usableHeight/52*shortest/HOUR)*HOUR);
+    // Nearby but non-overlapping appointments belong on the same slide when
+    // the ruler has room. A one-hour gap must not force a one-event slide.
+    const capacity=cursor+span;
+    for(const event of timed){
+      if(event.start>=capacity||event.start>=nextBrief)break;
+      if(event.start>target&&event.start-target>HOUR)break;
+      if(event.end>target)target=event.end;
+    }
     const next=Math.min(last,nextBrief,Math.ceil(target/HOUR)*HOUR,Math.ceil((cursor+span)/HOUR)*HOUR);
     windows.push({start:cursor,end:next});cursor=next;
   }

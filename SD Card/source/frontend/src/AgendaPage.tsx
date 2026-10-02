@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useRef,useState,type CSSProperties} from 'react';
 import {ChevronLeft,ChevronRight,Pause,Play,X} from 'lucide-react';
 import type {Snapshot,CalendarEvent} from './types';
-import {agendaSections,upcomingAgendaSections,calendarColor,eventKey,HOUR} from './agendaState';
+import {agendaSections,upcomingAgendaSections,calendarColor,eventKey,hourRulerTicks,HOUR} from './agendaState';
 import './agenda.css';
 
 // Only a position survives slide cycling, never event content or private text.
@@ -13,7 +13,7 @@ export function AgendaPage({snapshot,onInteraction}:{snapshot:Snapshot;onInterac
   const now=Date.parse(snapshot.server_time);
   const sections=useMemo(()=>agenda?(fullDay?agendaSections(agenda,columns,viewportHeight):upcomingAgendaSections(agenda,now,columns,viewportHeight)):[],[agenda,columns,viewportHeight,fullDay,now]);
   const page=((index%Math.max(1,sections.length))+Math.max(1,sections.length))%Math.max(1,sections.length),section=sections[page];
-  const hourMarks=section?[section.start,...Array.from({length:Math.ceil((section.end-section.start)/HOUR)+2},(_,i)=>(Math.floor(section.start/HOUR)+i)*HOUR).filter(tick=>tick>section.start&&tick<section.end),section.end]:[];
+  const hourMarks=section?hourRulerTicks(section.start,section.end):[];
   const detail=agenda?.events.find(event=>eventKey(event)===selected);
   const timezone=snapshot.settings.timezone;
   const clock=(value:string|number)=>new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',timeZone:timezone}).format(new Date(value));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {agendaSections,upcomingAgendaSections,calendarColor,eventKey,HOUR} from '../src/agendaState.ts';
+import {agendaSections,upcomingAgendaSections,calendarColor,eventKey,hourRulerTicks,HOUR} from '../src/agendaState.ts';
 import type {CalendarEvent} from '../src/types.ts';
 const at=(hour:number)=>new Date(Date.UTC(2026,8,28)+hour*3600000).toISOString();
 const event=(id:string,start:number,end:number,extra={})=>({id,calendar_id:'work',summary:id,start:at(start),end:at(end),all_day:false,...extra});
@@ -47,6 +47,46 @@ test('only real overlap creates a right-hand lane, including partial overlap',()
   assert.equal(next.columns,1);
   assert.ok(partial.top>first.top && partial.top<first.top+first.height);
   assert.ok(Math.abs(partial.top+partial.height-next.top)<0.00001);
+});
+test('staggered multi-calendar appointments keep exact vertical times and share one truthful interval',()=>{
+  const events=[
+    event('Lecture',9.5,12+10/60,{calendar_id:'school'}),
+    event('Office hours',10,11,{calendar_id:'chem'}),
+    event('Tutorial',11,12,{calendar_id:'cs'}),
+    event('Lunch',12.5,13+20/60,{calendar_id:'personal'}),
+    event('Jewpa',13,14.5,{calendar_id:'personal'}),
+    event('Tree Fest',14,17,{calendar_id:'campus'}),
+    event('Meeting',15+5/60,17,{calendar_id:'work'}),
+  ];
+  const pages=agendaSections(agenda(events));
+  const minute=60000;
+  for(const page of pages.filter(section=>section.items.length)){
+    const expected=events.filter(row=>Date.parse(row.start)<page.end&&Date.parse(row.end)>page.start);
+    assert.deepEqual(page.items.map(item=>eventKey(item.event)).sort(),expected.map(eventKey).sort());
+    for(const item of page.items){
+      const expectedTop=Math.max(0,Date.parse(item.event.start)-page.start)/(page.end-page.start)*100;
+      const expectedBottom=(Math.min(page.end,Date.parse(item.event.end))-page.start)/(page.end-page.start)*100;
+      assert.ok(Math.abs(item.top-expectedTop)<.00001,`${item.event.id} moved off its start time`);
+      assert.ok(Math.abs(item.top+item.height-expectedBottom)<.00001,`${item.event.id} moved off its end time`);
+    }
+    for(const a of page.items)for(const b of page.items){
+      if(a===b)continue;
+      const simultaneous=Math.max(Date.parse(a.event.start),Date.parse(b.event.start),page.start)<Math.min(Date.parse(a.event.end),Date.parse(b.event.end),page.end);
+      if(simultaneous)assert.notEqual(a.column,b.column,`${a.event.id} and ${b.event.id} overlap in one lane`);
+    }
+    assert.ok(hourRulerTicks(page.start,page.end).every(tick=>tick%HOUR===0));
+  }
+  const morning=pages.find(page=>page.items.some(item=>item.event.id==='Office hours'))!;
+  const lecture=morning.items.find(item=>item.event.id==='Lecture')!;
+  const office=morning.items.find(item=>item.event.id==='Office hours')!;
+  assert.ok(Math.abs((office.top-lecture.top)-(30*minute/(morning.end-morning.start)*100))<.00001);
+  assert.notEqual(lecture.column,office.column);
+});
+test('close-up ruler labels only whole hours',()=>{
+  assert.deepEqual(hourRulerTicks(Date.parse(at(10)),Date.parse(at(10.5))),[Date.parse(at(10))]);
+  assert.deepEqual(hourRulerTicks(Date.parse(at(10.5)),Date.parse(at(11))),[Date.parse(at(11))]);
+  assert.deepEqual(hourRulerTicks(Date.parse(at(10)),Date.parse(at(13))),[10,11,12,13].map(hour=>Date.parse(at(hour))));
+  assert.deepEqual(hourRulerTicks(0,0),[]);
 });
 test('one-minute appointments do not invent five-minute overlaps',()=>{
   const pages=agendaSections(agenda([event('a',10+20/60,10+21/60),event('b',10+22/60,10+23/60)]));
@@ -121,6 +161,14 @@ test('many hourly events fit more hours per slide as the screen gets taller',()=
   assert.equal(large[0].start,Date.parse(at(9)));
   assert.equal(large[0].end,Date.parse(at(17)));
   assert.deepEqual(large[0].items.map(item=>item.column),Array(8).fill(0));
+});
+test('nearby non-overlapping hourly appointments share a slide instead of leaving one card in dead space',()=>{
+  const pages=agendaSections(agenda([event('lunch',12,13),event('office',14,15),event('dinner',18,19)]),2,600);
+  const lunch=pages.find(page=>page.items.some(item=>item.event.id==='lunch'))!;
+  assert.deepEqual(lunch.items.map(item=>item.event.id),['lunch','office']);
+  assert.equal(lunch.start,Date.parse(at(12)));
+  assert.equal(lunch.end,Date.parse(at(15)));
+  assert.ok(!lunch.items.some(item=>item.event.id==='dinner'));
 });
 test('a brief appointment still gets a short window inside a long event',()=>{
   const pages=agendaSections(agenda([event('long',9,15),event('brief',12+20/60,12+25/60)]));

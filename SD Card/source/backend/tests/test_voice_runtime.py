@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from luma.api import create_app
 from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
-from luma.voice_agent import (_discard_pending_audio, calibration_decoding_payload,
+from luma.voice_agent import (_discard_pending_audio, _reset_gapped_decoding,
+                              calibration_decoding_payload,
                               choose_command, partial_has_wake, select_command)
 from luma.voice_audio import AudioCaptureError
 from luma.voice_signal import AudioPreprocessor, AudioProfile
@@ -80,6 +81,29 @@ def test_calibration_discards_stale_capture_without_hiding_terminal_failure():
     _discard_pending_audio(chunks)
     assert chunks.get_nowait() is failure
     assert chunks.empty()
+
+
+def test_late_capture_gap_resets_both_decoders_wake_and_audio_state():
+    class Recorder:
+        def __init__(self):
+            self.resets = 0
+        def Reset(self):
+            self.resets += 1
+
+    chunks = queue.Queue(maxsize=4)
+    chunks.put(b'old audio')
+    failure = AudioCaptureError('capture_stream_stopped')
+    chunks.put(failure)
+    constrained, unrestricted = Recorder(), Recorder()
+    processor = AudioPreprocessor(AudioProfile(gain=2, quality='quiet'))
+    processor.applied_gain = .5
+    gate = WakeGate()
+    gate.until = 100
+    _reset_gapped_decoding(chunks, constrained, unrestricted, processor, gate)
+    assert constrained.resets == unrestricted.resets == 1
+    assert processor.applied_gain == 2
+    assert gate.until == 0
+    assert chunks.get_nowait() is failure and chunks.empty()
 
 
 def test_wake_gate_requires_phrase_and_expires():

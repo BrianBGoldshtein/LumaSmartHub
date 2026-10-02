@@ -164,6 +164,16 @@ def _discard_pending_audio(chunks: queue.Queue) -> None:
             break
 
 
+def _reset_gapped_decoding(chunks: queue.Queue, constrained, unrestricted,
+                           preprocessor: AudioPreprocessor, gate: WakeGate) -> None:
+    """Reject a late capture gap before any decoded words cause an action."""
+    gate.until = 0
+    constrained.Reset()
+    unrestricted.Reset()
+    preprocessor.reset()
+    _discard_pending_audio(chunks)
+
+
 def main() -> None:
     def stop(signum, frame):
         raise SystemExit(0)
@@ -502,6 +512,18 @@ def main() -> None:
                             phase("listening")
                         continue
                     text = json.loads(recognizer.Result()).get("text", "")
+                    if capture.dropped_frames != seen_drops:
+                        # The producer may have overflowed *during* Vosk's
+                        # AcceptWaveform/Result call, after the loop's first
+                        # gap check but before this decoded text is used.
+                        recognition_drops += capture.dropped_frames - seen_drops
+                        seen_drops = capture.dropped_frames
+                        _reset_gapped_decoding(chunks, recognizer, free_recognizer,
+                                               preprocessor, gate)
+                        utterance.clear()
+                        early_wake = trial_partial_wake = False
+                        phase('idle')
+                        continue
                     had_early_wake = early_wake
                     early_wake = False
                     spoken=utterance
@@ -512,6 +534,13 @@ def main() -> None:
                             text, free_recognizer, spoken, gate.phrase,
                             partial_wake=trial_partial_wake)
                         trial_partial_wake = False
+                        if capture.dropped_frames != seen_drops:
+                            recognition_drops += capture.dropped_frames - seen_drops
+                            seen_drops = capture.dropped_frames
+                            _reset_gapped_decoding(chunks, recognizer, free_recognizer,
+                                                   preprocessor, gate)
+                            phase('idle')
+                            continue  # Do not count a gapped call utterance.
                         try:
                             client.post('/api/v1/voice/call-trial/observation', json={
                                 'session': trial['session'], **observation,
@@ -536,6 +565,13 @@ def main() -> None:
                             phase('idle')
                             continue
                     accepted = gate.accept(text, time.monotonic())
+                    if capture.dropped_frames != seen_drops:
+                        recognition_drops += capture.dropped_frames - seen_drops
+                        seen_drops = capture.dropped_frames
+                        _reset_gapped_decoding(chunks, recognizer, free_recognizer,
+                                               preprocessor, gate)
+                        phase('idle')
+                        continue
                     if accepted is None:
                         if new_wake and gate.until > time.monotonic():
                             phase('listening')
@@ -552,6 +588,16 @@ def main() -> None:
                         free_text = _unrestricted_transcript(free_recognizer, spoken)
                     accepted, selection = select_command(accepted, free_text, gate.phrase,
                                                          adaptations)
+                    if capture.dropped_frames != seen_drops:
+                        # Replaying the unrestricted decoder can take longer
+                        # than a live quarter-second frame on a busy Pi.
+                        # Check again immediately before feedback or dispatch.
+                        recognition_drops += capture.dropped_frames - seen_drops
+                        seen_drops = capture.dropped_frames
+                        _reset_gapped_decoding(chunks, recognizer, free_recognizer,
+                                               preprocessor, gate)
+                        phase('idle')
+                        continue
                     if selection in {"conflict", "negated"}:
                         if selection == "conflict":
                             phase("speaking")
@@ -567,6 +613,15 @@ def main() -> None:
                             phase("idle")
                         continue
                     phase("thinking")
+                    if capture.dropped_frames != seen_drops:
+                        # Even the phase update is a loopback HTTP call and
+                        # can block while capture continues in its thread.
+                        recognition_drops += capture.dropped_frames - seen_drops
+                        seen_drops = capture.dropped_frames
+                        _reset_gapped_decoding(chunks, recognizer, free_recognizer,
+                                               preprocessor, gate)
+                        phase('idle')
+                        continue
                     try:
                         response = client.post("/api/v1/voice/command", json={"text": accepted}, timeout=8)
                         response.raise_for_status()

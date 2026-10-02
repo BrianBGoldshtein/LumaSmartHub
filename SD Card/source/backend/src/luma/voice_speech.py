@@ -19,6 +19,11 @@ from .voice_asset import ASSET_ROOT, MODEL, VOICE_ID, ready
 
 MAX_WAV = 10 * 1024 * 1024
 SPEAKER_SINK = "luma_speaker"
+PIPER_WORKER_FAILURES = frozenset({
+    "piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
+    "piper_model_load_failed", "piper_memory_pressure",
+    "piper_synthesis_failed", "piper_audio_invalid",
+})
 
 
 class VoicePlaybackError(RuntimeError):
@@ -330,9 +335,7 @@ class OfflineSpeaker:
                 self.last_error = exc.code
                 self.last_primary_error = exc.code
                 self.failure_cause = exc.code
-                if exc.code in {"piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
-                                "piper_model_load_failed", "piper_memory_pressure",
-                                "piper_synthesis_failed", "piper_audio_invalid"}:
+                if exc.code in PIPER_WORKER_FAILURES:
                     self.close()
                     self.retry_after = monotonic() + 30
                 # A changing/missing speaker is not a broken voice model.

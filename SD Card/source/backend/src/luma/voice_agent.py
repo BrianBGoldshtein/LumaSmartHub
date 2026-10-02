@@ -19,7 +19,7 @@ import httpx
 from .voice import WakeGate, command_grammar, parse_local_command
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
-from .voice_speech import (OfflineSpeaker, VoicePlaybackError, play_test_tone,
+from .voice_speech import (OfflineSpeaker, PIPER_WORKER_FAILURES, VoicePlaybackError, play_test_tone,
                            speaker_route_warning)
 from .voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter, pcm_measurements,
                            low_frequency_fraction, read_profile, speech_measurements)
@@ -34,6 +34,12 @@ def _report_diagnostic(client: httpx.Client, code: str) -> None:
         client.post("/api/v1/voice/diagnostic", json={"code": code}).raise_for_status()
     except httpx.HTTPError:
         pass
+
+
+def _recover_preview_failure(speaker: OfflineSpeaker, error: VoicePlaybackError) -> None:
+    """Keep a healthy warm model after a speaker-only sample failure."""
+    if error.code in PIPER_WORKER_FAILURES:
+        speaker.close()
 
 
 def _free_command(text: str, wake_phrase: str) -> str:
@@ -409,7 +415,7 @@ def main() -> None:
                                 result = {'request_id': request_id, 'route': speaker.last_route,
                                           'sink_warning': speaker_route_warning(speaker.last_route)}
                             except VoicePlaybackError as exc:
-                                speaker.close()
+                                _recover_preview_failure(speaker, exc)
                                 result = {'request_id': request_id, 'error': exc.code}
                             try:
                                 client.post('/api/v1/voice/asset/preview/result', json=result,

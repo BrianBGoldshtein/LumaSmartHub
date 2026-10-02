@@ -12,10 +12,11 @@ from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
 from luma.voice_agent import (_arm_call_trial, _calibration_boundary_changed,
                               _discard_pending_audio, _reset_gapped_decoding,
-                              _reset_voice_transition,
+                              _recover_preview_failure, _reset_voice_transition,
                               calibration_decoding_payload,
                               choose_command, partial_has_wake, select_command)
 from luma.voice_audio import AudioCaptureError
+from luma.voice_speech import VoicePlaybackError
 from luma.voice_signal import AudioPreprocessor, AudioProfile, CalibrationSegmenter
 from luma.voice_adaptation import PhraseAdaptations
 
@@ -85,6 +86,22 @@ def test_calibration_discards_stale_capture_without_hiding_terminal_failure():
     _discard_pending_audio(chunks)
     assert chunks.get_nowait() is failure
     assert chunks.empty()
+
+
+def test_speaker_route_failure_keeps_warm_voice_worker():
+    class Worker:
+        def __init__(self):
+            self.closes = 0
+
+        def close(self):
+            self.closes += 1
+
+    worker = Worker()
+    _recover_preview_failure(worker, VoicePlaybackError('speaker_playback_failed'))
+    _recover_preview_failure(worker, VoicePlaybackError('audio_session_unavailable'))
+    assert worker.closes == 0
+    _recover_preview_failure(worker, VoicePlaybackError('piper_model_load_failed'))
+    assert worker.closes == 1
 
 
 def test_late_capture_gap_resets_both_decoders_wake_and_audio_state():

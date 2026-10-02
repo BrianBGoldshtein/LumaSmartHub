@@ -212,6 +212,12 @@ def test_dual_decoder_keeps_known_command_when_free_dictation_is_bad():
 
 
 def test_dual_decoder_allows_a_title_only_when_timer_durations_agree():
+    assert choose_command('',
+                          'hey luma start a timer for seven seconds titled stretch', 'hey luma') == (
+        None, 'timer_duration_unconfirmed')
+    assert choose_command('unrecognized phrase',
+                          'hey luma start a timer for seven seconds titled stretch', 'hey luma') == (
+        None, 'timer_duration_unconfirmed')
     assert choose_command('start a seven second timer',
                           'hey luma start a timer for seven seconds titled stretch', 'hey luma') == (
         'start a timer for seven seconds titled stretch', 'free_title')

@@ -146,6 +146,13 @@ def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> 
         # Do not silently start an unnamed timer when the requested title was
         # truncated or failed recognition.
         return None, "unmatched"
+    if (varied_command is not None and varied_command.name.value == 'start_timer'
+            and isinstance(varied_command.value, dict)
+            and varied_command.value.get('label', 'Timer') != 'Timer'
+            and constrained_command is None):
+        # A freely dictated title needs independent duration evidence. The
+        # grammar cannot verify arbitrary names, but it can verify the number.
+        return None, "timer_duration_unconfirmed"
     if constrained_command and varied_command:
         if (constrained_command.name, constrained_command.value) == (varied_command.name, varied_command.value):
             return varied, "agree"
@@ -850,10 +857,13 @@ def main() -> None:
                                                preprocessor, gate)
                         phase('idle')
                         continue
-                    if selection in {"conflict", "negated"}:
+                    if selection in {"conflict", "negated", "timer_duration_unconfirmed"}:
                         if selection == "conflict":
                             phase("speaking")
                             say("I heard two different commands. Please repeat that.")
+                        elif selection == "timer_duration_unconfirmed":
+                            phase("speaking")
+                            say("I could not confirm the timer duration. Please repeat the time and name.")
                         _discard_pending_audio(chunks)
                         seen_drops = capture.dropped_frames
                         recognizer.Reset()

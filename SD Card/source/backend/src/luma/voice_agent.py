@@ -416,16 +416,12 @@ def main() -> None:
                                             timeout=3).raise_for_status()
                             except httpx.HTTPError:
                                 pass
-                            _discard_pending_audio(chunks)
+                            _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                                    preprocessor, gate, calibration_segmenter,
+                                                    utterance, raw_utterance)
                             seen_drops = capture.dropped_frames
-                            recognizer.Reset()
-                            free_recognizer.Reset()
-                            utterance.clear()
-                            raw_utterance.clear()
-                            calibration_segmenter.reset()
                             early_wake = False
                             trial_partial_wake = False
-                            preprocessor.reset()
                             phase('listening' if calibration['active'] else 'idle')
                             continue
                         try:
@@ -447,16 +443,12 @@ def main() -> None:
                                             timeout=3).raise_for_status()
                             except httpx.HTTPError:
                                 pass
-                            _discard_pending_audio(chunks)
+                            _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                                    preprocessor, gate, calibration_segmenter,
+                                                    utterance, raw_utterance)
                             seen_drops = capture.dropped_frames
-                            recognizer.Reset()
-                            free_recognizer.Reset()
-                            utterance.clear()
-                            raw_utterance.clear()
-                            calibration_segmenter.reset()
                             early_wake = False
                             trial_partial_wake = False
-                            preprocessor.reset()
                             phase('listening' if calibration['active'] else 'idle')
                             continue
                     if now >= next_check:

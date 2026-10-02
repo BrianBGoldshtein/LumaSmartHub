@@ -55,6 +55,12 @@ class VoiceCallTrial:
             "session": self.session,
             "active": active,
             "remaining_seconds": max(0, math.ceil(self.until - now)) if active else 0,
+            # Only a full-length, speech-bearing owner-started trial can
+            # supply the negative evidence for an early wake-only check.
+            # A stopped/empty trial or one with confirmed wakes cannot.
+            "negative_ready": bool(self.session and self.until > self.started_at
+                                   and now >= self.until and self.utterances >= 5
+                                   and self.dual_wakes == 0),
             "utterances": self.utterances,
             "partial_wakes": self.partial_wakes,
             "constrained_wakes": self.constrained_wakes,

@@ -102,6 +102,7 @@ class VoiceCalibration:
         self.ambient_duration = 0.0
         self.ambient_pending = False
         self.phrase_prompt_at = 0.0
+        self.wake_only_finished = False
 
     def processing_regressed(self) -> bool:
         """Compare words and wake evidence, never learned intent, before saving.
@@ -186,6 +187,7 @@ class VoiceCalibration:
         self.ambient_pending = ambient_seconds > 0
         self.phrase_prompt_at = 0.0 if self.ambient_pending else now
         self.index = self.attempts = 0
+        self.wake_only_finished = False
         self.results = []
         self.signal_rms = self.signal_peak = self.signal_at = 0.0
         self.last_heard = ""
@@ -227,6 +229,11 @@ class VoiceCalibration:
                                 and row.get('acoustic_speech') and row.get('level_ok')
                                 and row.get('free_wake')
                                 and row.get('constrained_wake_near_start')}
+        wake_only_positive = sum(bool(row['phrase_index'] < len(PHRASES) - 2
+                                      and row.get('acoustic_speech') and row.get('level_ok')
+                                      and row.get('free_wake')
+                                      and row.get('constrained_wake_near_start'))
+                                 for row in self.results)
         negative_checks = sum(bool(row['phrase_index'] >= len(PHRASES) - 2
                                    and row.get('acoustic_speech')
                                    and not row.get('free_wake')) for row in self.results)
@@ -275,7 +282,7 @@ class VoiceCalibration:
             "completed": self.index, "total": len(PHRASES), "attempts": self.attempts,
             "message": (("Stay quiet while Luma measures room sound."
                          if ambient_remaining else message)
-                        if active or self.index == len(PHRASES)
+                        if active or self.index == len(PHRASES) or self.wake_only_finished
                         else "Start a new check when you are ready."),
             "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3,
             "signal_rms": self.signal_rms, "signal_peak": self.signal_peak,
@@ -303,6 +310,8 @@ class VoiceCalibration:
             "independent_wakes": len(independent_positive),
             "negative_wake_checks": negative_checks,
             "strict_wake_ready": len(independent_positive) >= 4 and negative_checks >= 1,
+            "wake_only_positive_checks": wake_only_positive,
+            "wake_only_finished": self.wake_only_finished,
             "correction_available": correction_available,
             "correction_confirmations": self.last_correction_count,
             "results": list(self.results),
@@ -324,6 +333,29 @@ class VoiceCalibration:
                         if self.last_correction_count < 2 else
                         'Two examples confirmed. Repeat the displayed phrase to test it.')
         return list(dict.fromkeys(examples)), canonical, self.last_correction_count
+
+    def finish_wake_only(self, session: str, now: float | None = None) -> dict:
+        """End phrase checking without calling misheard commands successful.
+
+        Four clean, independently heard *utterances* are enough to compare a
+        later owner-started no-wake call trial. No audio profile or command
+        calibration is saved on this early exit.
+        """
+        now = time.monotonic() if now is None else now
+        current = self.status(now)
+        if (session != self.session or not current['active']
+                or current['wake_only_positive_checks'] < 4):
+            raise ValueError('Four clean, independently heard Hey Luma attempts are required.')
+        self.until = 0.0
+        self.wake_only_finished = True
+        self.audio_profile = None
+        self.trial_profile = None
+        self.last_heard = self.last_raw_heard = self.last_constrained = ''
+        self.last_free_text = ''
+        self.last_intent = self.last_selection = ''
+        self.message = ('Wake-only check recorded; command phrases were not marked as passed. '
+                        'Run the full call test with other voices and no Hey Luma before enabling the stricter wake filter.')
+        return self.status(now)
 
     def gain_step(self, rms: float, peak: float, clipped_fraction: float = 0) -> int:
         """Adjust only obvious level faults; never chase a recognition mismatch.
@@ -350,6 +382,7 @@ class VoiceCalibration:
         # not comparable. Start a fresh room baseline and phrase check while
         # preserving the three-adjustment safety limit for this session.
         self.index = self.attempts = 0
+        self.wake_only_finished = False
         self.results.clear()
         self.room_floors.clear()
         self.room_low_fractions.clear()
@@ -549,6 +582,7 @@ class VoiceCalibration:
 
     def cancel(self) -> None:
         self.until = 0
+        self.wake_only_finished = False
         self.index = self.attempts = 0
         self.results.clear()
         self.room_floors.clear()

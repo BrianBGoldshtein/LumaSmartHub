@@ -446,6 +446,29 @@ def test_wake_evidence_is_separate_from_a_misheard_command():
     assert result['independent_wakes'] == 0
 
 
+def test_wake_only_exit_never_passes_command_or_saves_audio_tuning():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    with pytest.raises(ValueError, match='Four clean'):
+        calibration.finish_wake_only(session, 101)
+    for attempt in range(4):
+        result = calibration.submit(session, PHRASES[0], .05, .4, 101 + attempt,
+                                    free_text='hey luma set volume to fifty',
+                                    selected_text=None, selection='conflict')
+        assert result['completed'] == 0 and not result['passed']
+    assert result['wake_only_positive_checks'] == 4
+    with pytest.raises(ValueError, match='Four clean'):
+        calibration.finish_wake_only('wrong-session', 105)
+    finished = calibration.finish_wake_only(session, 105)
+    assert finished['wake_only_finished'] and not finished['active']
+    assert not finished['passed'] and not finished['strict_wake_ready']
+    assert finished['audio_profile'] is None and finished['audio_candidate'] is None
+    with pytest.raises(ValueError, match='Four clean'):
+        calibration.finish_wake_only(session, 106)
+    calibration.cancel()
+    assert not calibration.status(107)['wake_only_finished']
+
+
 def test_owner_confirms_the_same_safe_mishearing_twice_before_it_can_be_saved():
     calibration = VoiceCalibration()
     session = calibration.start(100)['session']
@@ -514,6 +537,45 @@ def test_dual_decoder_mode_requires_local_calibration_evidence(tmp_path, monkeyp
         remote = TestClient(app, client=('192.168.1.7', 5000))
         assert remote.post(endpoint, json={'mode': 'standard'}).status_code == 403
         assert client.post(endpoint, json={'mode': 'standard'}).status_code == 200
+
+
+def test_wake_only_api_requires_later_negative_trial_and_never_passes_calibration(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        finish = '/api/v1/voice/calibration/finish-wake-only'
+        assert client.post(finish, json={'session': session}).status_code == 409
+        for _ in range(4):
+            sampled = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': PHRASES[0],
+                'free_text': 'hey luma set volume to fifty',
+                'selected_text': None, 'selection': 'conflict',
+                'rms': .05, 'peak': .4,
+            })
+            assert sampled.status_code == 200
+        assert sampled.json()['wake_only_positive_checks'] == 4
+        assert client.post(finish, json={'session': '0' * 32}).status_code == 409
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post(finish, json={'session': session}).status_code == 403
+        finished = client.post(finish, json={'session': session})
+        assert finished.status_code == 200
+        assert finished.json()['wake_only_finished']
+        assert not finished.json()['passed']
+        assert not finished.json()['strict_wake_ready']
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') is None
+        endpoint = '/api/v1/voice/wake-confirmation'
+        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 409
+
+        original_status = api.VoiceCallTrial.status
+        def after_full_negative_trial(self, now=None):
+            return {**original_status(self, now), 'negative_ready': True}
+        monkeypatch.setattr(api.VoiceCallTrial, 'status', after_full_negative_trial)
+        assert client.get('/api/v1/voice/calibration').json()['strict_wake_ready']
+        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 200
 
 
 def test_confirmed_phrase_correction_persists_without_raw_words_and_can_reset(tmp_path, monkeypatch):

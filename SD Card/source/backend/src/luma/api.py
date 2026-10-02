@@ -872,6 +872,7 @@ def create_app(
 
     def calibration_payload() -> dict[str, Any]:
         result = calibration.status()
+        result['strict_wake_ready'] = wake_filter_ready(result)
         seen = voice_agent_status["last_seen"]
         diagnostic = voice_agent_status["diagnostic"]
         available = (service.settings.voice_enabled and seen > 0
@@ -893,6 +894,13 @@ def create_app(
                 "agent_phase": voice_agent_status["phase"] if available else "unavailable",
                 "agent_error": diagnostic,
                 "dropped_frames": voice_agent_status["dropped_frames"]}
+
+    def wake_filter_ready(result: dict | None = None) -> bool:
+        result = calibration.status() if result is None else result
+        return bool(result['strict_wake_ready'] or
+                    (result['wake_only_finished'] and
+                     result['wake_only_positive_checks'] >= 4 and
+                     call_trial.status()['negative_ready']))
 
     @app.get("/api/v1/voice/calibration", dependencies=[Depends(local_only)])
     async def calibration_status() -> dict:
@@ -1036,8 +1044,8 @@ def create_app(
     @app.post('/api/v1/voice/wake-confirmation', dependencies=[Depends(local_only)])
     async def set_wake_confirmation(payload: WakeConfirmationChoice) -> dict:
         """Owner-local false-wake filter; never described as voice identity."""
-        if payload.mode == 'dual_decoder' and not calibration.status()['strict_wake_ready']:
-            raise HTTPException(409, 'Run the local voice check first: Luma needs four independently heard wakes and one no-wake sample before enabling this filter.')
+        if payload.mode == 'dual_decoder' and not wake_filter_ready():
+            raise HTTPException(409, 'Complete the guided wake checks or four clean wake attempts plus a full no-wake call test before enabling this filter.')
         value = {'version': 1, 'mode': payload.mode}
         storage.set_cache('voice', 'wake_confirmation', value)
         return {'wake_confirmation': value}
@@ -1150,6 +1158,14 @@ def create_app(
     @app.post("/api/v1/voice/calibration/cancel", dependencies=[Depends(local_only)])
     async def calibration_cancel() -> dict:
         calibration.cancel()
+        return calibration_payload()
+
+    @app.post('/api/v1/voice/calibration/finish-wake-only', dependencies=[Depends(local_only)])
+    async def calibration_finish_wake_only(payload: CalibrationSaveAudio) -> dict:
+        try:
+            calibration.finish_wake_only(payload.session)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         return calibration_payload()
 
     @app.post("/api/v1/voice/calibration/level", dependencies=[Depends(local_only)])

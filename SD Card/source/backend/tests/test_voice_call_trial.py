@@ -40,6 +40,41 @@ def test_call_trial_counts_only_bounded_boolean_observations_and_expires():
     assert trial.start(191)['utterances'] == 0
 
 
+def test_negative_evidence_requires_full_speech_bearing_trial_without_dual_wake():
+    def observe(trial, session, count, *, wake=False):
+        for index in range(count):
+            trial.record(session, partial_wake=wake, constrained_wake=wake,
+                         constrained_near_start=wake, free_wake=wake,
+                         free_near_start=wake, now=101 + index)
+
+    trial = VoiceCallTrial()
+    session = trial.start(100)['session']
+    observe(trial, session, 4)
+    assert not trial.status(190)['negative_ready']
+    session = trial.start(191)['session']
+    for index in range(5):
+        trial.record(session, partial_wake=False, constrained_wake=False,
+                     constrained_near_start=False, free_wake=False,
+                     free_near_start=False, now=192 + index)
+    assert not trial.status(280)['negative_ready']
+    assert trial.status(281)['negative_ready']
+    session = trial.start(282)['session']
+    trial.record(session, partial_wake=True, constrained_wake=True,
+                 constrained_near_start=True, free_wake=True,
+                 free_near_start=True, now=283)
+    for index in range(4):
+        trial.record(session, partial_wake=False, constrained_wake=False,
+                     constrained_near_start=False, free_wake=False,
+                     free_near_start=False, now=284 + index)
+    assert not trial.status(372)['negative_ready']
+    session = trial.start(373)['session']
+    for index in range(5):
+        trial.record(session, partial_wake=False, constrained_wake=False,
+                     constrained_near_start=False, free_wake=False,
+                     free_near_start=False, now=374 + index)
+    assert not trial.stop()['negative_ready']
+
+
 class FakeRecognizer:
     def __init__(self, text):
         self.text = text

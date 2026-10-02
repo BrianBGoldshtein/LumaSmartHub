@@ -289,6 +289,8 @@ class MicGainRequest(BaseModel):
 class SettingsPatch(BaseModel):
     night_clock_enabled: bool | None = Field(default=None, strict=True)
     night_brightness: int | None = Field(default=None, strict=True, ge=0, le=100)
+    notification_chime_enabled: bool | None = Field(default=None, strict=True)
+    notification_chime_volume: int | None = Field(default=None, strict=True, ge=0, le=100)
     departure_calendar_ids: list[str] | None = Field(default=None, max_length=50)
     departure_enabled: bool | None = Field(default=None, strict=True)
     departure_include_virtual: bool | None = Field(default=None, strict=True)
@@ -775,8 +777,8 @@ def create_app(
 
     @app.post("/api/v1/device/report", dependencies=[Depends(local_only)])
     async def device_report(payload: DeviceReport) -> dict[str, bool]:
-        allowed = {"power", "brightness", "orientation", "volume", "audio_output", "voice", "keyboard", "timer_chime"}
-        if not payload.controls.keys() <= allowed or any(value not in ({'played','silent','unavailable; not replayed'} if key=='timer_chime' else {"ok", "unavailable; retrying"}) for key,value in payload.controls.items()):
+        allowed = {"power", "brightness", "orientation", "volume", "audio_output", "voice", "keyboard", "timer_chime", "notification_chime"}
+        if not payload.controls.keys() <= allowed or any(value not in ({'played','silent','unavailable; not replayed'} if key in {'timer_chime','notification_chime'} else {"ok", "unavailable; retrying"}) for key,value in payload.controls.items()):
             raise HTTPException(422, "Invalid device report")
         device_status.update(last_seen=datetime.now(UTC).isoformat(), controls=payload.controls)
         return {"accepted": True}
@@ -1682,6 +1684,7 @@ def create_app(
     async def patch_settings(patch: SettingsPatch, request: Request) -> dict[str, Any]:
         updates = patch.model_dump(exclude_unset=True)
         if {"phone_address", "voice_enabled", "timer_focus_minutes", "timer_break_minutes",
+            "notification_chime_enabled", "notification_chime_volume",
             "weather_nudges_enabled", "weather_rain_percent", "weather_gust_mph", "weather_hot_f", "weather_cold_f", "night_clock_enabled", "night_brightness",
             "todo_calendar_id", "todo_completed_color_id", "sleep_calendar_ids", "sleep_event_title", "departure_calendar_ids", "departure_enabled",
             "departure_include_virtual", "departure_prep_minutes", "departure_travel_minutes"} & updates.keys():
@@ -1767,6 +1770,12 @@ def create_app(
     async def timer_chime():
         service.timer_tick()
         return JSONResponse({'play': service.timer.claim_chime(muted=service.timer_muted())},
+                            headers={'Cache-Control':'no-store'})
+
+    @app.post('/api/v1/device/notification-chime', dependencies=[Depends(local_only)])
+    async def notification_chime():
+        service.tick()
+        return JSONResponse(service.claim_notification_chime(),
                             headers={'Cache-Control':'no-store'})
 
     @app.get("/api/v1/security/status", dependencies=[secured])

@@ -160,6 +160,30 @@ def play_test_tone() -> str:
     return _play_pcm(bytes(pcm), env)
 
 
+def notification_cue_pcm(level: int) -> bytes:
+    """One restrained two-note Luma cue, distinct from the timer alarm."""
+    if type(level) is not int or not 0 <= level <= 100:
+        raise ValueError("notification cue volume must be 0 to 100")
+    rate = 22050
+    pcm = bytearray()
+    for frequency, duration in ((659.25, .15), (0, .045), (987.77, .23)):
+        count = round(rate * duration)
+        for index in range(count):
+            envelope = min(1.0, index / (rate * .012),
+                           (count - index - 1) / (rate * .07)) if frequency else 0
+            value = round(32767 * .12 * level / 100 * envelope *
+                          math.sin(2 * math.pi * frequency * index / rate))
+            pcm.extend(struct.pack("<h", value))
+    return bytes(pcm)
+
+
+def play_notification_cue(level: int) -> str:
+    """Play only to the selected local speaker, never an implicit phone sink."""
+    if level <= 0:
+        raise ValueError("silent notification cue should not be submitted")
+    return _play_pcm(notification_cue_pcm(level), pulse_playback_environment())
+
+
 def wav_to_pcm(data: bytes) -> bytes:
     with wave.open(io.BytesIO(data), "rb") as wav:
         if wav.getnchannels() != 1 or wav.getsampwidth() != 2 or wav.getframerate() != 22050:

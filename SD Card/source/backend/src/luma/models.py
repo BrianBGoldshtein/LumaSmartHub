@@ -126,6 +126,8 @@ class Settings:
             "com.hammerandchisel.discord",
         ]
     )
+    notification_chime_enabled: bool = True
+    notification_chime_volume: int = 35
     audio_output: str = "auto"
     voice_enabled: bool = True
     timer_focus_minutes: int = 25
@@ -154,6 +156,9 @@ class Settings:
             raise ValueError("Sleep event title must contain 1 to 100 printable characters")
         if type(self.night_clock_enabled) is not bool or type(self.night_brightness) is not int or not 0 <= self.night_brightness <= 100:
             raise ValueError('Night brightness must be a whole percentage and night clock a boolean')
+        if (type(self.notification_chime_enabled) is not bool or
+                type(self.notification_chime_volume) is not int or not 0 <= self.notification_chime_volume <= 100):
+            raise ValueError('Notification chime must be enabled/disabled with volume from 0 to 100')
         if type(self.departure_enabled) is not bool or type(self.departure_include_virtual) is not bool:
             raise ValueError("Departure preferences must be enabled or disabled")
         if (not isinstance(self.departure_calendar_ids, list) or len(self.departure_calendar_ids) > 50

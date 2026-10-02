@@ -15,6 +15,7 @@ from .touch import TouchWake
 from .portal import PortalBrowser
 from .system_keyboard import SystemKeyboard
 from .timer_chime import TimerChimeBridge
+from .voice_speech import VoicePlaybackError, play_notification_cue
 from .display_handoff import apply_display_job
 
 
@@ -107,6 +108,21 @@ def native_windows_awake(snapshot):
     return snapshot['state']['display_power']=='on' and (snapshot.get('display') or {}).get('mode','day')=='day'
 
 
+def apply_notification_chime(claim, play=play_notification_cue):
+    """Claim server-side before sound so failed playback cannot replay alerts."""
+    packet = claim()
+    if packet.get('play') is not True:
+        return None
+    level = packet.get('volume')
+    if type(level) is not int or not 1 <= level <= 100:
+        return 'unavailable; not replayed'
+    try:
+        play(level)
+        return 'played'
+    except (OSError, subprocess.SubprocessError, VoicePlaybackError):
+        return 'unavailable; not replayed'
+
+
 def main() -> None:
     bridge = DeviceBridge(DisplayController(os.environ.get("LUMA_DISPLAY_OUTPUT", "HDMI-A-1")), AudioController(), VoiceController())
     touch = TouchWake()
@@ -133,6 +149,12 @@ def main() -> None:
                     return response.json().get('play') is True
                 if sound := timer_chime.apply(snapshot, claim_chime):
                     report['timer_chime'] = sound
+                def claim_notification():
+                    response = client.post('/api/v1/device/notification-chime')
+                    response.raise_for_status()
+                    return response.json()
+                if sound := apply_notification_chime(claim_notification):
+                    report['notification_chime'] = sound
                 try:
                     keyboard.tick(awake)
                     request = client.get("/api/v1/device/keyboard-request")

@@ -35,7 +35,22 @@ def word_match_fraction(expected: str, heard: str) -> float | None:
     """
     if not heard.strip():
         return None
-    tokens = lambda text: re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", text.casefold())[:32]
+    # Offline ASR may spell a contraction as one token or as its full two
+    # words. Those are the same acoustic phrase, not evidence that one PCM
+    # path recognized speech better. Keep semantic paraphrases distinct here:
+    # intent selection is measured separately from transcription quality.
+    expansions = {
+        "what's": ("what", "is"), "whats": ("what", "is"),
+        "who's": ("who", "is"), "where's": ("where", "is"),
+        "when's": ("when", "is"), "how's": ("how", "is"),
+        "it's": ("it", "is"), "that's": ("that", "is"),
+        "i'm": ("i", "am"), "you're": ("you", "are"),
+        "we're": ("we", "are"), "they're": ("they", "are"),
+    }
+    def tokens(text: str) -> list[str]:
+        words = re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", text.casefold().replace('’', "'"))
+        return [part for word in words for part in expansions.get(word, (word,))][:32]
+
     reference, decoded = tokens(expected), tokens(heard)
     if not reference or not decoded:
         return None

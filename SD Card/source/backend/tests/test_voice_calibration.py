@@ -15,6 +15,12 @@ from luma.voice_calibration import PHRASES, VoiceCalibration, word_match_fractio
 def test_word_match_is_a_separate_bounded_transcription_measure():
     assert word_match_fraction('Hey Luma, what time is it?', 'hey luma what time is it') == 1
     assert word_match_fraction('hey luma what time is it', 'hey luma what date is it') == .83
+    assert word_match_fraction("hey luma what's the weather tomorrow",
+                               'hey luma what is the weather tomorrow') == 1
+    assert word_match_fraction("hey luma what's the weather tomorrow",
+                               'hey luma whats the weather tomorrow') == 1
+    assert word_match_fraction("hey luma what's the time",
+                               'hey luma what time is it') < 1
     assert word_match_fraction('hey luma good morning', '') is None
     assert word_match_fraction('hey luma good morning', 'unrelated call audio') == 0
 
@@ -185,6 +191,27 @@ def test_audio_trial_keeps_one_profile_until_unsafe_or_hardware_gain_changes():
     calibration.record_gain(42)
     assert calibration.trial_profile is None
     assert calibration.status(112)['audio_candidate'] is None
+
+
+def test_contraction_spelling_does_not_falsely_veto_tuned_audio():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for phrase in PHRASES[:5]:
+        calibration.submit(session, phrase, .025, .25, 105)
+    assert calibration.status(106)['audio_candidate']['gain'] > 1
+    expected = PHRASES[5]
+    expanded = expected.replace("what's", 'what is')
+    for now in (107, 108):
+        outcome = calibration.submit(session, expected, .025, .25, now,
+                                     free_text=expanded, raw_free_text=expected,
+                                     raw_compared=True, raw_constrained_wake=True,
+                                     selected_text=None, selection='conflict')
+    assert outcome['results'][-1]['word_match'] == 1
+    assert outcome['results'][-1]['raw_word_match'] == 1
+    assert not outcome['processing_regressed']
+    assert outcome['audio_candidate']['gain'] > 1
 
 
 def test_raw_recognition_wins_twice_and_disables_harmful_trial():

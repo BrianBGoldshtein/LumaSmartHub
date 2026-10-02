@@ -597,7 +597,13 @@ def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
         'capture_on': True, 'route_ready': True,
     })
     monkeypatch.setattr(api.mic_hardware, 'save_and_apply', lambda gain: applied.append(gain))
-    with TestClient(create_app(data_dir=tmp_path)) as client:
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', {
+        'version': 1, 'gain': 2.0, 'high_pass': False,
+        'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+        'quality': 'quiet',
+    })
+    with TestClient(app) as client:
         session = client.post('/api/v1/voice/calibration/start').json()['session']
         response = client.post('/api/v1/voice/calibration/sample', json={
             'session': session, 'text': 'hey luma something unclear', 'rms': .001,
@@ -607,6 +613,7 @@ def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
         assert response.json()['applied_gain'] == 43
         assert 'adjusted' in response.json()['message']
         assert applied == [43]
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
         client.post('/api/v1/voice/calibration/sample', json={
             'session': session, 'text': 'hey luma something unclear', 'rms': .05,
             'peak': .5,
@@ -751,7 +758,12 @@ def test_manual_mic_gain_change_restarts_active_room_measurement(tmp_path, monke
         return hardware_status()
     monkeypatch.setattr(api.mic_hardware, 'status', hardware_status)
     monkeypatch.setattr(api.mic_hardware, 'save_and_apply', save_gain)
-    with TestClient(create_app(data_dir=tmp_path)) as client:
+    app = create_app(data_dir=tmp_path)
+    saved = {'version': 1, 'gain': 2.0, 'high_pass': False,
+             'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+             'quality': 'quiet'}
+    app.state.luma.storage.set_cache('voice', 'audio_profile', saved)
+    with TestClient(app) as client:
         session = client.post('/api/v1/voice/calibration/start').json()['session']
         for _ in range(4):
             client.post('/api/v1/voice/calibration/level', json={
@@ -760,6 +772,7 @@ def test_manual_mic_gain_change_restarts_active_room_measurement(tmp_path, monke
         assert client.get('/api/v1/voice/calibration').json()['room_noise_rms'] == .001
         changed = client.post('/api/v1/voice/hardware/gain', json={'gain': 45})
         assert changed.status_code == 200 and changed.json()['gain'] == 45
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
         status = client.get('/api/v1/voice/calibration').json()
         assert status['active'] and status['completed'] == 0
         assert status['ambient_remaining'] == 4
@@ -768,6 +781,56 @@ def test_manual_mic_gain_change_restarts_active_room_measurement(tmp_path, monke
         unchanged = client.post('/api/v1/voice/hardware/gain', json={'gain': 45})
         assert unchanged.status_code == 200
         assert client.get('/api/v1/voice/calibration').json()['gain_adjustments'] == 1
+        assert client.post('/api/v1/voice/calibration/cancel').json()['audio_profile']['gain'] == 1
+
+
+def test_manual_mic_gain_change_invalidates_saved_pcm_only_on_success(tmp_path, monkeypatch):
+    import luma.api as api
+    gain = {'value': 39}
+    saved = {'version': 1, 'gain': 1.75, 'high_pass': True,
+             'noise_rms': .001, 'speech_rms': .03, 'snr_db': 29.5,
+             'quality': 'quiet'}
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', saved)
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': gain['value'], 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    def save_gain(value):
+        if value == 41:
+            raise api.mic_hardware.MicHardwareError('Mixer did not change')
+        gain['value'] = value
+        return api.mic_hardware.status()
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', save_gain)
+    with TestClient(app) as client:
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 39}).status_code == 200
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') == saved
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 41}).status_code == 409
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') == saved
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 43}).status_code == 200
+        assert client.get('/api/v1/voice/calibration').json()['audio_profile']['gain'] == 1
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['high_pass'] is False
+
+
+def test_unreadable_mixer_after_successful_gain_write_cannot_keep_old_profile(tmp_path, monkeypatch):
+    import luma.api as api
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', {
+        'version': 1, 'gain': 2.0, 'high_pass': False,
+        'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+        'quality': 'quiet',
+    })
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': 39, 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', lambda gain: {
+        'available': False, 'gain': gain, 'max_gain': 63,
+        'capture_on': False, 'route_ready': False,
+    })
+    with TestClient(app) as client:
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 43}).status_code == 200
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
 
 
 def test_owner_can_save_clean_audio_tuning_before_any_phrase_matches(tmp_path, monkeypatch):

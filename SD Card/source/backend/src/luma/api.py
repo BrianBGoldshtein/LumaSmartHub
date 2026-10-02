@@ -1079,9 +1079,16 @@ def create_app(
                 after = await asyncio.to_thread(mic_hardware.save_and_apply, payload.gain)
             except mic_hardware.MicHardwareError as exc:
                 raise HTTPException(409, str(exc)) from exc
-            if (calibration.status()['active'] and before.get('available') and after.get('available')
-                    and before.get('gain') != after.get('gain')):
-                calibration.record_gain(int(after['gain']))
+            if (not before.get('available') or not after.get('available')
+                    or before.get('gain') != after.get('gain')):
+                # PCM tuning was measured at the old analogue capture level.
+                # In particular, cancelling an in-progress check must not
+                # restore that now-stale profile to everyday recognition. If
+                # the mixer cannot be read before/after a successful write,
+                # conservatively treat its prior level as unknown.
+                storage.set_cache('voice', 'audio_profile', AudioProfile().public())
+                if calibration.status()['active']:
+                    calibration.record_gain(int(after['gain']))
             return after
 
     @app.post("/api/v1/voice/calibration/start", dependencies=[Depends(local_only)])
@@ -1164,6 +1171,7 @@ def create_app(
                         except mic_hardware.MicHardwareError:
                             pass  # A failed mixer change never fakes a passed phrase.
                         else:
+                            storage.set_cache('voice', 'audio_profile', AudioProfile().public())
                             calibration.record_gain(adjusted)
             if result["passed"]:
                 storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})

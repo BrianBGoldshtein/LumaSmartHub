@@ -1298,6 +1298,11 @@ def create_app(
         if (calibration.status()['active'] or call_trial.status()['active']
                 or speaker_trial.status()['active']):
             raise HTTPException(409, 'Finish the active microphone check before playing a voice sample.')
+        # A Piper reply/playback can block the single voice loop longer than
+        # its 15-second heartbeat. A stale heartbeat during SPEAKING is not
+        # permission to start a second model on a memory-limited Pi 4.
+        if service.settings.voice_enabled and voice_agent_status['phase'] == 'speaking':
+            raise HTTPException(409, 'Luma is speaking. Wait for the reply to finish before testing a sample.')
         if variant == 'piper' and not voice_asset_ready(voice_asset_root):
             raise HTTPException(409, 'Install the offline voice before previewing it.')
         if voice_preview_lock.locked():
@@ -1393,6 +1398,8 @@ def create_app(
         if (calibration.status()['active'] or call_trial.status()['active']
                 or speaker_trial.status()['active']):
             raise HTTPException(409, 'Finish the active microphone check before playing a speaker tone.')
+        if service.settings.voice_enabled and voice_agent_status['phase'] == 'speaking':
+            raise HTTPException(409, 'Luma is speaking. Wait for the reply to finish before testing the speaker.')
         if voice_preview_lock.locked():
             raise HTTPException(409, 'Another speaker test is already running.')
         async with voice_preview_lock:

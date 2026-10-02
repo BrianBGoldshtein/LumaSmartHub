@@ -331,6 +331,19 @@ def test_speaker_checks_cannot_interrupt_active_microphone_calibration(monkeypat
         assert client.post('/api/v1/voice/calibration/cancel').status_code == 200
 
 
+def test_long_spoken_reply_cannot_start_second_sample_worker(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'play_fallback_preview',
+                        lambda _root: pytest.fail('second voice worker started while Luma spoke'))
+    monkeypatch.setattr(api, 'play_test_tone',
+                        lambda: pytest.fail('speaker test interrupted a spoken reply'))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        assert client.post('/api/v1/voice/phase', json={'phase': 'speaking'}).status_code == 200
+        assert client.post('/api/v1/voice/asset/preview',
+                           json={'variant': 'fallback'}).status_code == 409
+        assert client.post('/api/v1/voice/asset/tone').status_code == 409
+
+
 def test_original_voice_failure_does_not_erase_kristin_error(monkeypatch, tmp_path):
     import luma.api as api
     monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: True)

@@ -377,10 +377,16 @@ class VoiceCalibration:
         if peak >= .995 or clipped_fraction > .002:
             return -4
         if CALIBRATION_MIN_PEAK <= peak < .5 and rms < .002:
-            if self.room_floors:
-                floor = sorted(self.room_floors)[len(self.room_floors) // 2]
-                if floor >= rms / 3:
-                    return 0  # Amplifying this input would mostly raise noise.
+            # A quiet phrase without a measured room baseline is not evidence
+            # for more analogue gain. Digital silence from a missing capture
+            # route is especially easy to mistake for a very quiet room.
+            floors = [value for value in self.room_floors
+                      if math.isfinite(value) and 0 < value <= 1]
+            if len(floors) < 3:
+                return 0
+            floor = room_noise_level(floors)
+            if floor is None or floor >= rms / 3:
+                return 0  # Amplifying this input would mostly raise noise.
             return 4
         return 0
 

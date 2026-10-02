@@ -667,6 +667,8 @@ def test_confirmed_phrase_correction_persists_without_raw_words_and_can_reset(tm
 def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():
     calibration = VoiceCalibration()
     session = calibration.start(100)["session"]
+    for now in (100.1, 100.2, 100.3):
+        calibration.report_level(session, .0001, .001, now, floor_rms=.0001)
     result = calibration.submit(session, "hey luma something unclear", .001, .05, 101)
     assert result["last_heard"] == "hey luma something unclear"
     assert calibration.gain_step(.001, .05) == 4
@@ -680,6 +682,21 @@ def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():
     assert calibration.gain_step(.0001, .001) == 0  # absent route, not low gain
     calibration.cancel()
     assert calibration.status(102)["last_heard"] == ""
+
+
+def test_automatic_gain_increase_requires_nonzero_room_baseline():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    assert calibration.gain_step(.001, .05) == 0
+    for now in (100.1, 100.2, 100.3):
+        calibration.report_level(session, 0, 0, now, floor_rms=0)
+    assert calibration.gain_step(.001, .05) == 0
+    calibration.report_level(session, .0001, .001, 100.4, floor_rms=.0001)
+    assert calibration.gain_step(.001, .05) == 0
+    for now in (100.5, 100.6):
+        calibration.report_level(session, .0001, .001, now, floor_rms=.0001)
+    assert calibration.gain_step(.001, .05) == 4
+    assert calibration.gain_step(.05, .999) == -4
 
 
 def test_hardware_gain_change_restarts_room_baseline_and_discards_old_acoustics():
@@ -737,6 +754,15 @@ def test_faint_clean_audio_can_offer_pre_asr_trial_without_passing_words():
     assert not result['passed']
 
 
+def _report_clean_room_floor(client, session):
+    for _ in range(3):
+        response = client.post('/api/v1/voice/calibration/level', json={
+            'session': session, 'rms': .0001, 'peak': .001,
+            'floor_rms': .0001,
+        })
+        assert response.status_code == 200
+
+
 def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
     import luma.api as api
     original_start = api.VoiceCalibration.start
@@ -759,6 +785,7 @@ def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
     })
     with TestClient(app) as client:
         session = client.post('/api/v1/voice/calibration/start').json()['session']
+        _report_clean_room_floor(client, session)
         response = client.post('/api/v1/voice/calibration/sample', json={
             'session': session, 'text': 'hey luma something unclear', 'rms': .001,
             'peak': .05,
@@ -1042,6 +1069,7 @@ def test_partially_failed_automatic_gain_write_aborts_old_audio_evidence(tmp_pat
     })
     with TestClient(app) as client:
         session = client.post('/api/v1/voice/calibration/start').json()['session']
+        _report_clean_room_floor(client, session)
         sampled = client.post('/api/v1/voice/calibration/sample', json={
             'session': session, 'text': '', 'rms': .001, 'peak': .05,
         })
@@ -1071,6 +1099,7 @@ def test_failed_automatic_gain_without_mixer_change_does_not_retry(tmp_path, mon
     monkeypatch.setattr(api.mic_hardware, 'save_and_apply', failed_save)
     with TestClient(create_app(data_dir=tmp_path)) as client:
         session = client.post('/api/v1/voice/calibration/start').json()['session']
+        _report_clean_room_floor(client, session)
         for _ in range(2):
             sampled = client.post('/api/v1/voice/calibration/sample', json={
                 'session': session, 'text': '', 'rms': .001, 'peak': .05,
@@ -1096,6 +1125,7 @@ def test_automatic_gain_refuses_unreadable_success_result(tmp_path, monkeypatch)
     app = create_app(data_dir=tmp_path)
     with TestClient(app) as client:
         session = client.post('/api/v1/voice/calibration/start').json()['session']
+        _report_clean_room_floor(client, session)
         sampled = client.post('/api/v1/voice/calibration/sample', json={
             'session': session, 'text': '', 'rms': .001, 'peak': .05,
         })

@@ -104,6 +104,8 @@ class OfflineSigningTests(unittest.TestCase):
         self.assertIn("verify_and_extract", source)
         self.assertIn("SD Card/image-builder", source)
         self.assertIn('--store-dir "$(dirname -- "${OUTPUT}")/pnpm-store"', source)
+        self.assertIn('elif [[ "${VERSION}" == "0.2.6" ]]', source)
+        self.assertIn('QUALIFY_FROM="0.2.5"', source)
         self.assertLess(source.index("qualify-update-bundle.py"), source.index('read -r CONFIRMATION'))
         self.assertLess(source.index("verify_and_extract"), source.index('read -r CONFIRMATION'))
 

@@ -38,8 +38,21 @@ from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
-from .voice_asset import fetch_and_install as fetch_voice_asset, ready as voice_asset_ready, voice_status
-from .voice_speech import VoicePlaybackError, play_preview as play_voice_preview, play_test_tone
+from .voice_call_trial import VoiceCallTrial
+from .speaker_trial import SpeakerTrial
+from .voice_speaker import SpeakerVectorError
+from .speaker_asset import (SpeakerAssetError, install as install_speaker_model,
+                            ready as speaker_model_ready)
+from .voice_asset import (fetch_and_install as fetch_voice_asset,
+                          ready as voice_asset_ready, recover_interrupted_repair,
+                          voice_status)
+from .voice_speech import (VoicePlaybackError, play_fallback_preview,
+                           play_preview as play_voice_preview, play_test_tone,
+                           speaker_route_warning)
+from .voice_health import load_history as load_voice_health, record as record_voice_health
+from .voice_signal import AudioProfile, read_profile
+from .voice_wake import read_wake_mode
+from .voice_adaptation import PhraseAdaptations
 from . import mic_hardware
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
@@ -126,6 +139,16 @@ class VoicePhrasePreview(BaseModel):
     text: str = Field(min_length=1, max_length=160)
 
 
+class WakeConfirmationChoice(BaseModel):
+    model_config = {'extra': 'forbid'}
+    mode: Literal['standard', 'dual_decoder']
+
+
+class PhraseCorrectionConfirm(BaseModel):
+    model_config = {'extra': 'forbid'}
+    session: str = Field(pattern=r'^[0-9a-f]{32}$')
+
+
 class VoicePhase(BaseModel):
     phase: AssistantPhase
 
@@ -136,16 +159,46 @@ class VoiceDiagnostic(BaseModel):
         "recognizer_unavailable", "model_unavailable",
         "audio_capture_tool_missing", "capture_source_invalid",
         "capture_source_unavailable", "capture_stream_stopped",
+        "capture_stream_stalled",
     ]
 
 
 class VoiceOutputReport(BaseModel):
     model_config = {"extra": "forbid"}
     engine: Literal["piper", "fallback", "silent"]
+    route: Literal["luma_speaker", "system_speaker"] | None = None
+    sink_warning: Literal["muted", "very_low", "echo_reference_bypassed"] | None = None
     error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable",
+        "speaker_playback_failed", "piper_start_failed", "piper_start_timeout",
+        "piper_runtime_missing", "piper_model_load_failed", "piper_memory_pressure", "piper_synthesis_failed",
+        "piper_audio_invalid", "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
+        "fallback_playback_failed",
+    ] | None = None
+    primary_error: Literal[
+        "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
+        "piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
+        "piper_model_load_failed", "piper_memory_pressure", "piper_synthesis_failed", "piper_audio_invalid",
         "synthesis_unavailable", "voice_asset_unavailable", "piper_retry_wait",
     ] | None = None
+
+
+class VoicePreviewResult(BaseModel):
+    model_config = {"extra": "forbid"}
+    request_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    route: Literal["luma_speaker", "system_speaker"] | None = None
+    sink_warning: Literal["muted", "very_low", "echo_reference_bypassed"] | None = None
+    error: Literal[
+        "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
+        "piper_start_failed", "piper_start_timeout", "piper_runtime_missing",
+        "piper_model_load_failed", "piper_memory_pressure", "piper_synthesis_failed", "piper_audio_invalid",
+        "fallback_playback_failed",
+    ] | None = None
+
+
+class VoicePreviewRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    variant: Literal["piper", "fallback"] = "piper"
 
 
 class VoiceHeartbeat(BaseModel):
@@ -158,10 +211,15 @@ class CalibrationSample(BaseModel):
     session: str = Field(max_length=64)
     text: str = Field(max_length=1000)
     free_text: str = Field(default="", max_length=1000)
+    raw_free_text: str = Field(default="", max_length=1000)
+    raw_compared: bool = Field(default=False, strict=True)
+    raw_constrained_wake: bool | None = Field(default=None, strict=True)
     selected_text: str | None = Field(default=None, max_length=1000)
-    selection: Literal["", "constrained", "free", "agree", "free_query", "conflict", "negated", "unmatched"] = ""
+    selection: Literal["", "constrained", "free", "agree", "conflict", "negated", "unmatched", "learned"] = ""
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
+    dc: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
+    clipped_fraction: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
 
 
 class CalibrationLevel(BaseModel):
@@ -169,6 +227,58 @@ class CalibrationLevel(BaseModel):
     session: str = Field(max_length=64)
     rms: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak: float = Field(ge=0, le=1, allow_inf_nan=False)
+    floor_rms: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    floor_low_frequency_fraction: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+
+
+class CalibrationSaveAudio(BaseModel):
+    model_config = {"extra": "forbid"}
+    session: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
+class CallTrialObservation(BaseModel):
+    model_config = {"extra": "forbid"}
+    session: str = Field(pattern=r"^[0-9a-f]{32}$")
+    partial_wake: bool = Field(strict=True)
+    constrained_wake: bool = Field(strict=True)
+    constrained_near_start: bool = Field(strict=True)
+    free_wake: bool = Field(strict=True)
+    free_near_start: bool = Field(strict=True)
+    raw_compared: bool = Field(default=False, strict=True)
+    raw_constrained_wake: bool | None = Field(default=None, strict=True)
+    raw_constrained_near_start: bool | None = Field(default=None, strict=True)
+    raw_free_wake: bool | None = Field(default=None, strict=True)
+    raw_free_near_start: bool | None = Field(default=None, strict=True)
+
+
+class CallTrialArm(BaseModel):
+    model_config = {"extra": "forbid"}
+    session: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
+class SpeakerTrialSession(BaseModel):
+    model_config = {'extra': 'forbid'}
+    session: str = Field(pattern=r'^[0-9a-f]{32}$')
+
+
+class SpeakerTrialConsent(BaseModel):
+    model_config = {'extra': 'forbid'}
+    confirmed: Literal[True]
+
+
+class SpeakerTrialSample(SpeakerTrialSession):
+    token: str = Field(pattern=r'^[0-9a-f]{32}$')
+
+
+class SpeakerTrialObservation(SpeakerTrialSample):
+    vector: list[float] | None = Field(default=None, max_length=512)
+    spk_frames: int | None = Field(default=None, strict=True, ge=1, le=3000)
+    input_seconds: float | None = Field(default=None, ge=4, le=8, allow_inf_nan=False)
+    model_load_ms: float | None = Field(default=None, ge=0, le=60_000, allow_inf_nan=False)
+    decode_ms: float | None = Field(default=None, ge=0, le=60_000, allow_inf_nan=False)
+    rss_kib: int | None = Field(default=None, strict=True, ge=1, le=8_388_608)
+    error: Literal['capture_gap', 'capture_stopped', 'model_unavailable',
+                   'speech_too_short', 'too_quiet', 'clipped', 'decode_failed'] | None = None
 
 
 class MicGainRequest(BaseModel):
@@ -179,6 +289,8 @@ class MicGainRequest(BaseModel):
 class SettingsPatch(BaseModel):
     night_clock_enabled: bool | None = Field(default=None, strict=True)
     night_brightness: int | None = Field(default=None, strict=True, ge=0, le=100)
+    notification_chime_enabled: bool | None = Field(default=None, strict=True)
+    notification_chime_volume: int | None = Field(default=None, strict=True, ge=0, le=100)
     departure_calendar_ids: list[str] | None = Field(default=None, max_length=50)
     departure_enabled: bool | None = Field(default=None, strict=True)
     departure_include_virtual: bool | None = Field(default=None, strict=True)
@@ -247,13 +359,47 @@ def create_app(
     weather = WeatherRuntime(service, weather_client)
     bluetooth = BluetoothRuntime(service)
     calibration = VoiceCalibration()
+    call_trial = VoiceCallTrial()
+    speaker_trial = SpeakerTrial()
+    speaker_model_root = data_root / 'speaker-model'
+    speaker_model_job: dict[str, str | None] = {'phase': 'idle', 'error': None}
+    speaker_model_task: asyncio.Task | None = None
+    phrase_adaptations = PhraseAdaptations(storage.get_cache('voice', 'phrase_adaptations'))
     voice_asset_root = data_root / "voice-assets"
     voice_asset_retry = asyncio.Event()
+    voice_asset_repair_requested = False
     voice_preview_lock = asyncio.Lock()
+    mic_gain_lock = asyncio.Lock()
+    voice_preview_job: dict[str, Any] = {}
+    voice_tone_job: dict[str, Any] = {}
     voice_agent_status: dict[str, Any] = {"last_seen": 0.0, "phase": "idle", "diagnostic": None,
                                           "dropped_frames": 0}
     voice_output_status: dict[str, Any] = {"last_reply_engine": None, "last_reply_error": None,
-                                          "last_preview_error": None, "last_tone_error": None}
+                                          "last_reply_primary_error": None, "last_reply_at": None,
+                                          "last_reply_route": None, "last_reply_sink_warning": None,
+                                          "last_preview_error": None, "last_preview_route": None,
+                                          "last_preview_sink_warning": None,
+                                          "last_fallback_error": None, "last_fallback_route": None,
+                                          "last_fallback_sink_warning": None,
+                                          "last_tone_error": None, "last_tone_route": None,
+                                          "last_tone_sink_warning": None}
+    voice_health_history = load_voice_health(storage)
+    for event in voice_health_history:
+        if event['kind'] == 'reply':
+            voice_output_status.update(last_reply_engine=event['engine'],
+                                       last_reply_error=event['error'],
+                                       last_reply_primary_error=event['primary_error'],
+                                       last_reply_at=event['at'], last_reply_route=event['route'])
+        elif event['kind'] == 'sample':
+            if event['engine'] == 'fallback':
+                voice_output_status.update(last_fallback_error=event['error'],
+                                           last_fallback_route=event['route'])
+            else:
+                voice_output_status.update(last_preview_error=event['error'],
+                                           last_preview_route=event['route'])
+        elif event['kind'] == 'tone':
+            voice_output_status.update(last_tone_error=event['error'],
+                                       last_tone_route=event['route'])
     google_sync_lock = asyncio.Lock()
     google_status: dict[str, Any] = {"last_synced": None, "error": None}
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
@@ -303,16 +449,23 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async def voice_asset_worker():
+            nonlocal voice_asset_repair_requested
             # The system image sets LUMA_DATA_DIR. Tests and desktop previews
             # never fetch a 130+ MB runtime or touch the host's data partition.
             await asyncio.sleep(20)
-            while not voice_asset_ready(voice_asset_root):
-                try:
-                    await asyncio.to_thread(fetch_voice_asset, root=voice_asset_root)
-                except Exception:
-                    pass  # Fixed, non-secret status is persisted for the UI.
-                if voice_asset_ready(voice_asset_root):
-                    break
+            while True:
+                # A power cut during a repair must restore the previous voice
+                # before another download or any new voice can be advertised.
+                with suppress(Exception):
+                    await asyncio.to_thread(recover_interrupted_repair, voice_asset_root)
+                repair_now = voice_asset_repair_requested
+                voice_asset_repair_requested = False
+                if repair_now or not voice_asset_ready(voice_asset_root):
+                    try:
+                        await asyncio.to_thread(fetch_voice_asset, root=voice_asset_root,
+                                                replace_existing=repair_now)
+                    except Exception:
+                        pass  # Fixed, non-secret status is persisted for the UI.
                 try:
                     await asyncio.wait_for(voice_asset_retry.wait(), 900)
                 except asyncio.TimeoutError:
@@ -356,6 +509,10 @@ def create_app(
             for worker in workers:
                 with suppress(asyncio.CancelledError):
                     await worker
+            if speaker_model_task is not None:
+                speaker_model_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await speaker_model_task
             weather_client.client.close()
             app.state.transit_runtime.close()
             await app.state.room_runtime.close()
@@ -620,8 +777,8 @@ def create_app(
 
     @app.post("/api/v1/device/report", dependencies=[Depends(local_only)])
     async def device_report(payload: DeviceReport) -> dict[str, bool]:
-        allowed = {"power", "brightness", "orientation", "volume", "audio_output", "voice", "keyboard", "timer_chime"}
-        if not payload.controls.keys() <= allowed or any(value not in ({'played','silent','unavailable; not replayed'} if key=='timer_chime' else {"ok", "unavailable; retrying"}) for key,value in payload.controls.items()):
+        allowed = {"power", "brightness", "orientation", "volume", "audio_output", "voice", "keyboard", "timer_chime", "notification_chime"}
+        if not payload.controls.keys() <= allowed or any(value not in ({'played','silent','unavailable; not replayed'} if key in {'timer_chime','notification_chime'} else {"ok", "unavailable; retrying"}) for key,value in payload.controls.items()):
             raise HTTPException(422, "Invalid device report")
         device_status.update(last_seen=datetime.now(UTC).isoformat(), controls=payload.controls)
         return {"accepted": True}
@@ -700,7 +857,9 @@ def create_app(
     async def voice_heartbeat(payload: VoiceHeartbeat | None = None) -> dict[str, bool]:
         if not service.settings.voice_enabled:
             return {"accepted": False}
-        voice_agent_status["last_seen"] = monotonic()
+        now = monotonic()
+        voice_agent_status["last_seen"] = now
+        call_trial.heartbeat(now)
         if payload is not None:
             voice_agent_status["dropped_frames"] = payload.dropped_frames
         return {"accepted": True}
@@ -709,24 +868,230 @@ def create_app(
     async def voice_output_report(payload: VoiceOutputReport) -> dict[str, bool]:
         if not service.settings.voice_enabled:
             return {"accepted": False}
+        event = record_voice_health(voice_health_history, storage, kind='reply',
+                                    engine=payload.engine, route=payload.route,
+                                    error=payload.error, primary_error=payload.primary_error)
         voice_output_status.update(last_reply_engine=payload.engine,
-                                   last_reply_error=payload.error)
+                                   last_reply_error=payload.error,
+                                   last_reply_primary_error=payload.primary_error,
+                                   last_reply_at=event['at'],
+                                   last_reply_route=payload.route,
+                                   last_reply_sink_warning=payload.sink_warning)
         return {"accepted": True}
 
     def calibration_payload() -> dict[str, Any]:
         result = calibration.status()
+        result['strict_wake_ready'] = wake_filter_ready(result)
         seen = voice_agent_status["last_seen"]
         diagnostic = voice_agent_status["diagnostic"]
         available = (service.settings.voice_enabled and seen > 0
                      and monotonic() - seen <= 15 and diagnostic is None)
-        return {**result, "agent_available": available,
+        saved_profile = read_profile(storage.get_cache("voice", "audio_profile"))
+        # A new check must measure untouched capture first. Reusing an old
+        # saved profile during its baseline would taint the A/B comparison;
+        # the saved everyday profile is restored when this check ends.
+        active_profile = (read_profile(result.get('audio_candidate'))
+                          if result['active'] else saved_profile)
+        wake_mode = read_wake_mode(storage.get_cache('voice', 'wake_confirmation'))
+        return {**result, "audio_profile": active_profile.public(),
+                "call_trial": call_trial.status(),
+                "speaker_trial": speaker_trial.status(),
+                "wake_confirmation": {'version': 1, 'mode': wake_mode},
+                "phrase_adaptations": phrase_adaptations.public(),
+                "learned_phrase_count": len(phrase_adaptations.entries),
+                "agent_available": available,
                 "agent_phase": voice_agent_status["phase"] if available else "unavailable",
                 "agent_error": diagnostic,
                 "dropped_frames": voice_agent_status["dropped_frames"]}
 
+    def wake_filter_ready(result: dict | None = None) -> bool:
+        result = calibration.status() if result is None else result
+        return bool(result['strict_wake_ready'] or
+                    (result['wake_only_finished'] and
+                     result['wake_only_positive_checks'] >= 4 and
+                     call_trial.status()['negative_ready']))
+
     @app.get("/api/v1/voice/calibration", dependencies=[Depends(local_only)])
     async def calibration_status() -> dict:
         return calibration_payload()
+
+    def speaker_trial_payload() -> dict:
+        return {**speaker_trial.status(),
+                'model_ready': speaker_model_ready(speaker_model_root),
+                'model_phase': speaker_model_job['phase'],
+                'model_error': speaker_model_job['error']}
+
+    @app.get('/api/v1/voice/speaker-trial', dependencies=[Depends(local_only)])
+    async def speaker_trial_status() -> dict:
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/model/install', dependencies=[Depends(local_only)])
+    async def speaker_model_install(_consent: SpeakerTrialConsent) -> dict:
+        nonlocal speaker_model_task
+        if speaker_model_ready(speaker_model_root):
+            speaker_model_job.update(phase='ready', error=None)
+            return speaker_trial_payload()
+        if speaker_model_task is not None and not speaker_model_task.done():
+            raise HTTPException(409, 'The optional speaker model is already being prepared.')
+
+        async def prepare_model() -> None:
+            speaker_model_job.update(phase='installing', error=None)
+            try:
+                await asyncio.to_thread(install_speaker_model, speaker_model_root)
+            except SpeakerAssetError as exc:
+                speaker_model_job.update(phase='failed', error=str(exc))
+            except Exception:
+                speaker_model_job.update(phase='failed', error='The optional speaker model could not be prepared.')
+            else:
+                speaker_model_job.update(phase='ready', error=None)
+
+        speaker_model_task = asyncio.create_task(prepare_model())
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/start', dependencies=[Depends(local_only)])
+    async def start_speaker_trial(_consent: SpeakerTrialConsent) -> dict:
+        async with mic_gain_lock:
+            if not service.settings.voice_enabled:
+                raise HTTPException(409, 'Enable local voice first.')
+            if voice_preview_lock.locked():
+                raise HTTPException(409, 'Finish the speaker sample or tone before starting an owner-voice trial.')
+            if not speaker_model_ready(speaker_model_root):
+                raise HTTPException(409, 'Prepare the optional speaker model first.')
+            if calibration.status()['active'] or call_trial.status()['active']:
+                raise HTTPException(409, 'Finish the current voice check before starting.')
+            if (voice_agent_status['last_seen'] <= 0 or
+                    monotonic() - voice_agent_status['last_seen'] > 15 or
+                    voice_agent_status['diagnostic'] is not None):
+                raise HTTPException(409, 'The local voice service must be live for this trial.')
+            try:
+                speaker_trial.start()
+            except SpeakerVectorError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/begin', dependencies=[Depends(local_only)])
+    async def begin_speaker_sample(payload: SpeakerTrialSession) -> dict:
+        if not service.settings.voice_enabled or (voice_agent_status['last_seen'] <= 0 or
+                monotonic() - voice_agent_status['last_seen'] > 15 or
+                voice_agent_status['diagnostic'] is not None):
+            raise HTTPException(409, 'The local microphone service is unavailable.')
+        try:
+            speaker_trial.begin(payload.session)
+        except SpeakerVectorError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/armed', dependencies=[Depends(local_only)])
+    async def armed_speaker_sample(payload: SpeakerTrialSample) -> dict:
+        try:
+            speaker_trial.armed(payload.session, payload.token)
+        except SpeakerVectorError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/observation', dependencies=[Depends(local_only)])
+    async def speaker_sample_observation(payload: SpeakerTrialObservation) -> dict:
+        try:
+            speaker_trial.submit(payload.session, payload.token, vector=payload.vector,
+                                 spk_frames=payload.spk_frames,
+                                 input_seconds=payload.input_seconds,
+                                 model_load_ms=payload.model_load_ms,
+                                 decode_ms=payload.decode_ms, rss_kib=payload.rss_kib,
+                                 error=payload.error)
+        except SpeakerVectorError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/cancel', dependencies=[Depends(local_only)])
+    async def cancel_speaker_trial(payload: SpeakerTrialSession) -> dict:
+        if payload.session != speaker_trial.session or not speaker_trial.status()['active']:
+            raise HTTPException(409, 'No matching owner-voice trial is active.')
+        speaker_trial.cancel()
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/call-trial/start', dependencies=[Depends(local_only)])
+    async def start_voice_call_trial() -> dict:
+        async with mic_gain_lock:
+            if not service.settings.voice_enabled:
+                raise HTTPException(409, 'Enable local voice first.')
+            if voice_preview_lock.locked():
+                raise HTTPException(409, 'Finish the speaker sample or tone before starting a call test.')
+            if calibration.status()['active']:
+                raise HTTPException(409, 'Finish or cancel the guided voice check first.')
+            if speaker_trial.status()['active']:
+                raise HTTPException(409, 'Finish or cancel the owner-voice trial first.')
+            if (voice_agent_status['last_seen'] <= 0 or
+                    monotonic() - voice_agent_status['last_seen'] > 15 or
+                    voice_agent_status['diagnostic'] is not None):
+                raise HTTPException(409, 'The local voice service must be live before a call test.')
+            try:
+                return call_trial.start()
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
+    @app.get('/api/v1/voice/call-trial', dependencies=[Depends(local_only)])
+    async def voice_call_trial_status() -> dict:
+        return call_trial.status()
+
+    @app.post('/api/v1/voice/call-trial/armed', dependencies=[Depends(local_only)])
+    async def voice_call_trial_armed(payload: CallTrialArm) -> dict:
+        try:
+            return call_trial.arm(payload.session)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post('/api/v1/voice/call-trial/stop', dependencies=[Depends(local_only)])
+    async def stop_voice_call_trial() -> dict:
+        return call_trial.stop()
+
+    @app.post('/api/v1/voice/call-trial/observation', dependencies=[Depends(local_only)])
+    async def voice_call_trial_observation(payload: CallTrialObservation) -> dict:
+        try:
+            return call_trial.record(
+                payload.session, partial_wake=payload.partial_wake,
+                constrained_wake=payload.constrained_wake,
+                constrained_near_start=payload.constrained_near_start,
+                free_wake=payload.free_wake,
+                free_near_start=payload.free_near_start,
+                raw_compared=payload.raw_compared,
+                raw_constrained_wake=payload.raw_constrained_wake,
+                raw_constrained_near_start=payload.raw_constrained_near_start,
+                raw_free_wake=payload.raw_free_wake,
+                raw_free_near_start=payload.raw_free_near_start)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post('/api/v1/voice/wake-confirmation', dependencies=[Depends(local_only)])
+    async def set_wake_confirmation(payload: WakeConfirmationChoice) -> dict:
+        """Owner-local false-wake filter; never described as voice identity."""
+        if payload.mode == 'dual_decoder' and not wake_filter_ready():
+            raise HTTPException(409, 'Complete the guided wake checks or four clean wake attempts plus a full no-wake call test before enabling this filter.')
+        value = {'version': 1, 'mode': payload.mode}
+        storage.set_cache('voice', 'wake_confirmation', value)
+        return {'wake_confirmation': value}
+
+    @app.post('/api/v1/voice/calibration/confirm-correction', dependencies=[Depends(local_only)])
+    async def confirm_phrase_correction(payload: PhraseCorrectionConfirm) -> dict:
+        """A prompt-specific owner confirmation, never an automatic audio guess."""
+        try:
+            heard_variants, canonical, confirmations = calibration.confirm_correction(payload.session)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        saved = False
+        if confirmations >= 2:
+            if not phrase_adaptations.add_many(heard_variants, canonical):
+                calibration.message = 'That correction conflicts with a supported command or the personal phrase limit; nothing was saved.'
+                raise HTTPException(409, calibration.message)
+            storage.set_cache('voice', 'phrase_adaptations', phrase_adaptations.public())
+            saved = True
+        return {**calibration_payload(), 'correction_saved': saved}
+
+    @app.post('/api/v1/voice/adaptations/reset', dependencies=[Depends(local_only)])
+    async def reset_phrase_adaptations() -> dict:
+        nonlocal phrase_adaptations
+        phrase_adaptations = PhraseAdaptations()
+        storage.set_cache('voice', 'phrase_adaptations', phrase_adaptations.public())
+        return {'learned_phrase_count': 0}
 
     @app.get("/api/v1/voice/hardware", dependencies=[Depends(local_only)])
     async def mic_hardware_status() -> dict:
@@ -734,16 +1099,88 @@ def create_app(
 
     @app.post("/api/v1/voice/hardware/gain", dependencies=[Depends(local_only)])
     async def mic_hardware_gain(payload: MicGainRequest) -> dict:
-        try:
-            return await asyncio.to_thread(mic_hardware.save_and_apply, payload.gain)
-        except mic_hardware.MicHardwareError as exc:
-            raise HTTPException(409, str(exc)) from exc
+        async with mic_gain_lock:
+            if call_trial.status()['active'] or speaker_trial.status()['active']:
+                raise HTTPException(409, 'Finish the active voice trial before changing microphone gain.')
+            before = await asyncio.to_thread(mic_hardware.status)
+            def path_changed(after: dict) -> bool:
+                return (not before.get('available') or not after.get('available')
+                        or any(before.get(key) != after.get(key)
+                               for key in ('gain', 'capture_on', 'route_ready')))
+            try:
+                after = await asyncio.to_thread(mic_hardware.save_and_apply, payload.gain)
+            except (mic_hardware.MicHardwareError, OSError) as exc:
+                # A mixer or gain-file failure can happen *after* some HAT
+                # controls changed. Keep the old PCM profile only if a fresh
+                # read proves that the capture path is still identical.
+                try:
+                    observed = await asyncio.to_thread(mic_hardware.status)
+                except (mic_hardware.MicHardwareError, OSError):
+                    observed = {}
+                if path_changed(observed):
+                    storage.set_cache('voice', 'audio_profile', AudioProfile().public())
+                    # Even a finished wake check belongs to the old capture
+                    # path; it cannot authorize a new strict-wake choice.
+                    calibration.cancel()
+                    raise HTTPException(409, 'Capture gain could not be saved. The microphone path may have changed; old audio tuning was cleared. Recheck hardware and start a new voice check.') from exc
+                raise HTTPException(409, str(exc) if isinstance(exc, mic_hardware.MicHardwareError)
+                                    else 'Capture gain could not be saved.') from exc
+            changed = path_changed(after)
+            if changed:
+                # PCM tuning was measured at the old analogue capture level.
+                # In particular, cancelling an in-progress check must not
+                # restore that now-stale profile to everyday recognition. If
+                # the mixer cannot be read before/after a successful write,
+                # conservatively treat its prior level as unknown.
+                storage.set_cache('voice', 'audio_profile', AudioProfile().public())
+                if calibration.status()['active']:
+                    if after.get('available'):
+                        calibration.record_gain(int(after['gain']))
+                    else:
+                        calibration.cancel()
+                else:
+                    calibration.cancel()
+            return {**after, 'audio_profile_cleared': changed}
 
     @app.post("/api/v1/voice/calibration/start", dependencies=[Depends(local_only)])
     async def calibration_start() -> dict:
         if not service.settings.voice_enabled:
             raise HTTPException(409, "Enable local voice first")
-        calibration.start()
+        if voice_preview_lock.locked():
+            raise HTTPException(409, 'Finish the speaker sample or tone before starting a voice check.')
+        if call_trial.status()['active']:
+            raise HTTPException(409, "Finish or stop the call false-wake test first.")
+        if speaker_trial.status()['active']:
+            raise HTTPException(409, 'Finish or cancel the owner-voice trial first.')
+        calibration.start(ambient_seconds=4)
+        return calibration_payload()
+
+    @app.post('/api/v1/voice/audio-profile/reset', dependencies=[Depends(local_only)])
+    async def reset_voice_audio_profile() -> dict:
+        """Owner-local escape hatch if a room or microphone change degrades recognition."""
+        if (calibration.status()['active'] or call_trial.status()['active']
+                or speaker_trial.status()['active']):
+            raise HTTPException(409, 'Finish the active voice check before changing audio processing.')
+        profile = AudioProfile().public()
+        storage.set_cache('voice', 'audio_profile', profile)
+        # Past wake/call evidence was collected through a different PCM path.
+        # A completed calibration must not silently qualify a new path.
+        calibration.cancel()
+        return {'audio_profile': profile}
+
+    @app.post('/api/v1/voice/calibration/save-audio', dependencies=[Depends(local_only)])
+    async def save_calibrated_audio(payload: CalibrationSaveAudio) -> dict:
+        """Save clean acoustic tuning even when no phrase passed the word test."""
+        result = calibration.status()
+        candidate = result.get('audio_candidate')
+        if not result['active'] or result['session'] != payload.session or not candidate:
+            raise HTTPException(409, 'No active room-audio measurement is ready to save.')
+        profile = read_profile(candidate)
+        if (profile.quality not in {'quiet', 'clear'}
+                or (profile.gain == 1 and not profile.high_pass)):
+            raise HTTPException(409, 'The measured audio does not need safe processing.')
+        storage.set_cache('voice', 'audio_profile', profile.public())
+        calibration.cancel()
         return calibration_payload()
 
     @app.post("/api/v1/voice/calibration/cancel", dependencies=[Depends(local_only)])
@@ -751,40 +1188,80 @@ def create_app(
         calibration.cancel()
         return calibration_payload()
 
+    @app.post('/api/v1/voice/calibration/finish-wake-only', dependencies=[Depends(local_only)])
+    async def calibration_finish_wake_only(payload: CalibrationSaveAudio) -> dict:
+        try:
+            calibration.finish_wake_only(payload.session)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return calibration_payload()
+
     @app.post("/api/v1/voice/calibration/level", dependencies=[Depends(local_only)])
     async def calibration_level(payload: CalibrationLevel) -> dict:
         try:
-            calibration.report_level(payload.session, payload.rms, payload.peak)
+            calibration.report_level(payload.session, payload.rms, payload.peak,
+                                     floor_rms=payload.floor_rms,
+                                     floor_low_frequency_fraction=payload.floor_low_frequency_fraction)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         return calibration_payload()
 
     @app.post("/api/v1/voice/calibration/sample", dependencies=[Depends(local_only)])
     async def calibration_sample(payload: CalibrationSample) -> dict:
-        try:
-            result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak,
-                                        free_text=payload.free_text,
-                                        selected_text=payload.selected_text,
-                                        selection=payload.selection)
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from exc
-        step = calibration.gain_step(payload.rms, payload.peak) if result["active"] else 0
-        if step:
-            hardware = await asyncio.to_thread(mic_hardware.status)
-            if (hardware["available"] and payload.session == calibration.session
-                    and calibration.status()["active"]):
-                current = int(hardware["gain"])
-                adjusted = min(63, max(0, current + step))
-                if adjusted != current:
-                    try:
-                        await asyncio.to_thread(mic_hardware.save_and_apply, adjusted)
-                    except mic_hardware.MicHardwareError:
-                        pass  # A failed mixer change never fakes a passed phrase.
-                    else:
-                        calibration.record_gain(adjusted)
-        if result["passed"]:
-            storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})
-        return calibration_payload()
+        async with mic_gain_lock:
+            try:
+                result = calibration.submit(payload.session, payload.text, payload.rms, payload.peak,
+                                            free_text=payload.free_text,
+                                            raw_free_text=payload.raw_free_text,
+                                            raw_compared=payload.raw_compared,
+                                            raw_constrained_wake=payload.raw_constrained_wake,
+                                            selected_text=payload.selected_text,
+                                            selection=payload.selection, dc=payload.dc,
+                                            clipped_fraction=payload.clipped_fraction)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            step = (calibration.gain_step(payload.rms, payload.peak, payload.clipped_fraction)
+                    if result["active"] and not result["ambient_remaining"]
+                    and result["attempts"] > 0 else 0)
+            if step:
+                try:
+                    hardware = await asyncio.to_thread(mic_hardware.status)
+                except (mic_hardware.MicHardwareError, OSError):
+                    hardware = {'available': False}
+                if (hardware["available"] and payload.session == calibration.session
+                        and calibration.status()["active"]):
+                    current = int(hardware["gain"])
+                    adjusted = min(63, max(0, current + step))
+                    if adjusted != current:
+                        try:
+                            after = await asyncio.to_thread(mic_hardware.save_and_apply, adjusted)
+                        except (mic_hardware.MicHardwareError, OSError):
+                            # Saving the gain file can fail *after* the HAT
+                            # mixer changed. Re-read it before trusting any
+                            # earlier room baseline or phrase result.
+                            try:
+                                observed = await asyncio.to_thread(mic_hardware.status)
+                            except (mic_hardware.MicHardwareError, OSError):
+                                observed = {}
+                            if (not observed.get('available') or
+                                    any(observed.get(key) != hardware.get(key)
+                                        for key in ('gain', 'capture_on', 'route_ready'))):
+                                storage.set_cache('voice', 'audio_profile', AudioProfile().public())
+                                calibration.abort_uncertain_gain()
+                            else:
+                                calibration.gain_write_failed()
+                        else:
+                            storage.set_cache('voice', 'audio_profile', AudioProfile().public())
+                            if (not isinstance(after, dict) or not after.get('available')
+                                    or after.get('gain') != adjusted
+                                    or not after.get('capture_on') or not after.get('route_ready')):
+                                calibration.abort_uncertain_gain()
+                            else:
+                                calibration.record_gain(adjusted)
+            if result["passed"]:
+                storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})
+                storage.set_cache("voice", "audio_profile", result["audio_profile"] or AudioProfile().public())
+            return calibration_payload()
 
     @app.get('/api/v1/voice/library', dependencies=[Depends(local_only)])
     async def voice_library():
@@ -793,7 +1270,8 @@ def create_app(
 
     @app.get('/api/v1/voice/asset', dependencies=[Depends(local_only)])
     async def offline_voice_asset() -> dict:
-        return {**voice_status(voice_asset_root), **voice_output_status}
+        return {**voice_status(voice_asset_root), **voice_output_status,
+                'health_history': list(voice_health_history)}
 
     @app.post('/api/v1/voice/asset/retry', dependencies=[Depends(local_only)])
     async def retry_offline_voice_asset() -> dict:
@@ -802,57 +1280,201 @@ def create_app(
         voice_asset_retry.set()
         return voice_status(voice_asset_root)
 
-    @app.post('/api/v1/voice/asset/preview', dependencies=[Depends(local_only)])
-    async def preview_offline_voice_asset() -> dict:
+    @app.post('/api/v1/voice/asset/repair', dependencies=[Depends(local_only)])
+    async def repair_offline_voice_asset() -> dict:
+        nonlocal voice_asset_repair_requested
+        if sys.platform != 'linux' or os.environ.get('LUMA_DATA_DIR') != '/var/lib/luma':
+            raise HTTPException(409, 'Offline voice repair runs on the Raspberry Pi only.')
         if not voice_asset_ready(voice_asset_root):
+            raise HTTPException(409, 'The offline voice is not installed; use the signed download instead.')
+        if voice_asset_repair_requested or voice_status(voice_asset_root)['phase'] in {
+                'checking', 'downloading', 'verifying', 'installing'}:
+            raise HTTPException(409, 'An offline voice installation is already in progress.')
+        voice_asset_repair_requested = True
+        voice_asset_retry.set()
+        return {'started': True, 'message': 'Signed offline voice repair queued. The previous voice stays available until verification.'}
+
+    @app.post('/api/v1/voice/asset/preview', dependencies=[Depends(local_only)])
+    async def preview_offline_voice_asset(payload: VoicePreviewRequest | None = None) -> dict:
+        variant = payload.variant if payload else 'piper'
+        if (calibration.status()['active'] or call_trial.status()['active']
+                or speaker_trial.status()['active']):
+            raise HTTPException(409, 'Finish the active microphone check before playing a voice sample.')
+        # A Piper reply/playback can block the single voice loop longer than
+        # its 15-second heartbeat. A stale heartbeat during SPEAKING is not
+        # permission to start a second model on a memory-limited Pi 4.
+        if service.settings.voice_enabled and voice_agent_status['phase'] == 'speaking':
+            raise HTTPException(409, 'Luma is speaking. Wait for the reply to finish before testing a sample.')
+        if variant == 'piper' and not voice_asset_ready(voice_asset_root):
             raise HTTPException(409, 'Install the offline voice before previewing it.')
         if voice_preview_lock.locked():
             raise HTTPException(409, 'Voice preview is already playing.')
         async with voice_preview_lock:
             try:
-                await asyncio.to_thread(play_voice_preview, voice_asset_root)
+                # Reuse the live voice agent's warm Piper model when present.
+                # A second simultaneous model on a Pi 4 can exhaust memory;
+                # direct synthesis is reserved for when the agent is inactive.
+                agent_active = (service.settings.voice_enabled and voice_agent_status['last_seen'] > 0 and
+                                monotonic() - voice_agent_status['last_seen'] <= 15 and
+                                voice_agent_status['diagnostic'] is None)
+                if agent_active:
+                    job = voice_preview_job
+                    job.update(id=uuid4().hex, event=asyncio.Event(), result=None,
+                               variant=variant)
+                    try:
+                        await asyncio.wait_for(job['event'].wait(), timeout=120)
+                        result = job['result']
+                        if not isinstance(result, VoicePreviewResult) or result.error:
+                            raise VoicePlaybackError(result.error if result else
+                                                     ('fallback_playback_failed' if variant == 'fallback' else 'piper_synthesis_failed'))
+                        route = result.route
+                        if route is None:
+                            raise VoicePlaybackError('speaker_playback_failed')
+                        sink_warning = result.sink_warning
+                    except asyncio.TimeoutError as exc:
+                        raise VoicePlaybackError('fallback_playback_failed' if variant == 'fallback'
+                                                 else 'piper_synthesis_failed') from exc
+                    finally:
+                        voice_preview_job.clear()
+                else:
+                    preview = play_fallback_preview if variant == 'fallback' else play_voice_preview
+                    route = await asyncio.to_thread(preview, voice_asset_root)
+                    sink_warning = await asyncio.to_thread(speaker_route_warning, route)
             except VoicePlaybackError as exc:
-                voice_output_status["last_preview_error"] = exc.code
+                status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
+                voice_output_status[f'{status_prefix}_error'] = exc.code
+                voice_output_status[f'{status_prefix}_route'] = None
+                voice_output_status[f'{status_prefix}_sink_warning'] = None
+                record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
+                                    error=exc.code)
                 messages = {
                     "audio_session_unavailable": "The Pi audio session is not ready. Try again after the desktop finishes starting.",
-                    "speaker_route_unavailable": "Luma could not send the sample to its selected speaker.",
+                    "speaker_route_unavailable": "No safe local speaker was found. Select HDMI or HAT in Device setup.",
+                    "speaker_playback_failed": "The selected speaker rejected the sample. Check its output and volume.",
+                    "piper_start_failed": "The offline voice worker could not start.",
+                    "piper_start_timeout": "The offline voice took too long to start. Try again after the Pi settles.",
+                    "piper_runtime_missing": "The installed neural voice runtime is incomplete. Try Repair installed voice.",
+                    "piper_model_load_failed": "The installed neural voice model could not load. Try Repair installed voice.",
+                    "piper_memory_pressure": "The neural voice stopped under possible memory pressure. Close other apps and retry.",
+                    "piper_synthesis_failed": "The offline voice worker could not synthesize the sample.",
+                    "piper_audio_invalid": "The offline voice produced an invalid audio format.",
                     "synthesis_unavailable": "The local voice could not synthesize the sample.",
+                    "fallback_playback_failed": "The original local voice could not reach the selected speaker.",
                 }
                 raise HTTPException(409, messages.get(exc.code, 'Offline voice preview could not play.')) from exc
             except Exception as exc:
-                voice_output_status["last_preview_error"] = "synthesis_unavailable"
-                raise HTTPException(409, 'The local voice could not synthesize the sample.') from exc
-            voice_output_status["last_preview_error"] = None
-        return {'played': True}
+                code = 'fallback_playback_failed' if variant == 'fallback' else 'synthesis_unavailable'
+                status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
+                voice_output_status[f'{status_prefix}_error'] = code
+                voice_output_status[f'{status_prefix}_route'] = None
+                voice_output_status[f'{status_prefix}_sink_warning'] = None
+                record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
+                                    error=code)
+                raise HTTPException(409, 'The local voice could not play the sample.') from exc
+            status_prefix = 'last_fallback' if variant == 'fallback' else 'last_preview'
+            voice_output_status[f'{status_prefix}_error'] = None
+            voice_output_status[f'{status_prefix}_route'] = route
+            voice_output_status[f'{status_prefix}_sink_warning'] = sink_warning
+            record_voice_health(voice_health_history, storage, kind='sample', engine=variant,
+                                route=route)
+        return {'played': True, 'route': route}
+
+    @app.get('/api/v1/voice/asset/preview/pending', dependencies=[Depends(local_only)])
+    async def pending_voice_preview() -> dict[str, str | None]:
+        # The agent only receives a nonce; the sample text is fixed locally.
+        return {'request_id': voice_preview_job.get('id'),
+                'variant': voice_preview_job.get('variant')}
+
+    @app.post('/api/v1/voice/asset/preview/result', dependencies=[Depends(local_only)])
+    async def complete_voice_preview(payload: VoicePreviewResult) -> dict[str, bool]:
+        job = voice_preview_job
+        if job.get('id') != payload.request_id or job.get('result') is not None:
+            return {'accepted': False}
+        job['result'] = payload
+        job['event'].set()
+        return {'accepted': True}
 
     @app.post('/api/v1/voice/asset/tone', dependencies=[Depends(local_only)])
     async def test_voice_speaker_route() -> dict:
-        """Test the named PipeWire sink without involving the speech model."""
+        """Test the same live audio path used by spoken replies, without Piper."""
+        if (calibration.status()['active'] or call_trial.status()['active']
+                or speaker_trial.status()['active']):
+            raise HTTPException(409, 'Finish the active microphone check before playing a speaker tone.')
+        if service.settings.voice_enabled and voice_agent_status['phase'] == 'speaking':
+            raise HTTPException(409, 'Luma is speaking. Wait for the reply to finish before testing the speaker.')
         if voice_preview_lock.locked():
             raise HTTPException(409, 'Another speaker test is already running.')
         async with voice_preview_lock:
             try:
-                await asyncio.to_thread(play_test_tone)
+                agent_active = (service.settings.voice_enabled and voice_agent_status['last_seen'] > 0 and
+                                monotonic() - voice_agent_status['last_seen'] <= 15 and
+                                voice_agent_status['diagnostic'] is None)
+                if agent_active:
+                    job = voice_tone_job
+                    job.update(id=uuid4().hex, event=asyncio.Event(), result=None)
+                    try:
+                        await asyncio.wait_for(job['event'].wait(), timeout=30)
+                        result = job['result']
+                        if not isinstance(result, VoicePreviewResult) or result.error:
+                            raise VoicePlaybackError(result.error if result else 'speaker_playback_failed')
+                        if result.route is None:
+                            raise VoicePlaybackError('speaker_playback_failed')
+                        route = result.route
+                        sink_warning = result.sink_warning
+                    except asyncio.TimeoutError as exc:
+                        raise VoicePlaybackError('speaker_playback_failed') from exc
+                    finally:
+                        voice_tone_job.clear()
+                else:
+                    route = await asyncio.to_thread(play_test_tone)
+                    sink_warning = await asyncio.to_thread(speaker_route_warning, route)
             except VoicePlaybackError as exc:
                 voice_output_status["last_tone_error"] = exc.code
+                voice_output_status["last_tone_route"] = None
+                voice_output_status["last_tone_sink_warning"] = None
+                record_voice_health(voice_health_history, storage, kind='tone', error=exc.code)
                 message = ('The Pi audio session is not ready.' if exc.code == 'audio_session_unavailable'
-                           else 'Luma could not find or play through its selected speaker.')
+                           else 'No safe local speaker was found; select HDMI or HAT in Device setup.'
+                           if exc.code == 'speaker_route_unavailable'
+                           else 'The selected speaker could not play the test tone.')
                 raise HTTPException(409, message) from exc
             except Exception as exc:
                 voice_output_status["last_tone_error"] = "speaker_route_unavailable"
+                voice_output_status["last_tone_route"] = None
+                voice_output_status["last_tone_sink_warning"] = None
+                record_voice_health(voice_health_history, storage, kind='tone',
+                                    error='speaker_route_unavailable')
                 raise HTTPException(409, 'The Luma speaker test could not run.') from exc
             voice_output_status["last_tone_error"] = None
-        return {'sent': True, 'route': 'luma_speaker'}
+            voice_output_status["last_tone_route"] = route
+            voice_output_status["last_tone_sink_warning"] = sink_warning
+            record_voice_health(voice_health_history, storage, kind='tone', route=route)
+        return {'sent': True, 'route': route}
+
+    @app.get('/api/v1/voice/asset/tone/pending', dependencies=[Depends(local_only)])
+    async def pending_voice_tone() -> dict[str, str | None]:
+        return {'request_id': voice_tone_job.get('id')}
+
+    @app.post('/api/v1/voice/asset/tone/result', dependencies=[Depends(local_only)])
+    async def complete_voice_tone(payload: VoicePreviewResult) -> dict[str, bool]:
+        job = voice_tone_job
+        if job.get('id') != payload.request_id or job.get('result') is not None:
+            return {'accepted': False}
+        job['result'] = payload
+        job['event'].set()
+        return {'accepted': True}
 
     @app.post('/api/v1/voice/phrase-preview', dependencies=[Depends(local_only)])
     async def voice_phrase_preview(payload: VoicePhrasePreview) -> dict[str, Any]:
         """Explain local intent matching without running a command or reading private data."""
-        parsed = parse_local_command(payload.text)
+        learned = phrase_adaptations.resolve(payload.text)
+        parsed = parse_local_command(learned or payload.text)
         model = predict_voice_intent(payload.text)
         return {
             'understood': parsed is not None,
             'command': parsed.name.value if parsed else None,
             'intent': str(parsed.value) if parsed and parsed.name == CommandName.LOCAL_QUERY else None,
+            'personal_correction': learned is not None,
             'model_suggestion': model[0] if model else None,
             'model_confidence': round(model[1], 2) if model else None,
             'executed': False,
@@ -864,6 +1486,10 @@ def create_app(
             return {"accepted": False, "message": "Local voice is turned off."}
         if calibration.status()["active"]:
             return {"accepted": False, "message": "Voice check in progress; no commands were applied."}
+        if call_trial.status()['active']:
+            return {"accepted": False, "message": "Call false-wake test in progress; no commands were applied."}
+        if speaker_trial.status()['active']:
+            return {"accepted": False, "message": "Owner-voice trial in progress; no commands were applied."}
         parsed = parse_local_command(payload.text)
         if parsed is None:
             return {"accepted": False, "message": "That phrase is not in my local library. Say, Hey Luma, what can I say?"}
@@ -1058,6 +1684,7 @@ def create_app(
     async def patch_settings(patch: SettingsPatch, request: Request) -> dict[str, Any]:
         updates = patch.model_dump(exclude_unset=True)
         if {"phone_address", "voice_enabled", "timer_focus_minutes", "timer_break_minutes",
+            "notification_chime_enabled", "notification_chime_volume",
             "weather_nudges_enabled", "weather_rain_percent", "weather_gust_mph", "weather_hot_f", "weather_cold_f", "night_clock_enabled", "night_brightness",
             "todo_calendar_id", "todo_completed_color_id", "sleep_calendar_ids", "sleep_event_title", "departure_calendar_ids", "departure_enabled",
             "departure_include_virtual", "departure_prep_minutes", "departure_travel_minutes"} & updates.keys():
@@ -1077,6 +1704,10 @@ def create_app(
             raise HTTPException(422, str(exc)) from exc
         if updates.get("voice_enabled") is False:
             calibration.cancel()
+            if call_trial.status()['active']:
+                call_trial.stop()
+            if speaker_trial.status()['active']:
+                speaker_trial.cancel()
             voice_agent_status.update(last_seen=0.0, phase="idle", diagnostic=None,
                                       dropped_frames=0)
             service.state.assistant_phase = AssistantPhase.IDLE
@@ -1139,6 +1770,12 @@ def create_app(
     async def timer_chime():
         service.timer_tick()
         return JSONResponse({'play': service.timer.claim_chime(muted=service.timer_muted())},
+                            headers={'Cache-Control':'no-store'})
+
+    @app.post('/api/v1/device/notification-chime', dependencies=[Depends(local_only)])
+    async def notification_chime():
+        service.tick()
+        return JSONResponse(service.claim_notification_chime(),
                             headers={'Cache-Control':'no-store'})
 
     @app.get("/api/v1/security/status", dependencies=[secured])

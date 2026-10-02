@@ -5,13 +5,28 @@ import type {CalendarEvent} from '../src/types.ts';
 const at=(hour:number)=>new Date(Date.UTC(2026,8,28)+hour*3600000).toISOString();
 const event=(id:string,start:number,end:number,extra={})=>({id,calendar_id:'work',summary:id,start:at(start),end:at(end),all_day:false,...extra});
 const agenda=(events:CalendarEvent[])=>({date:'2026-09-28',start:at(7),end:at(23),wake:at(7),sleep:at(23),stale:false,events});
-test('all timed events across every calendar survive dense timeline pagination',()=>{
+test('all timed events across every calendar share one dense time-window slide',()=>{
   const events=Array.from({length:40},(_,i)=>event(String(i),9,10,{calendar_id:`cal-${i}`}));
   for(const columns of [1,2,3]){
     const pages=agendaSections(agenda(events),columns);
     const rendered=pages.flatMap(page=>page.items.map(item=>eventKey(item.event)));
     assert.equal(new Set(rendered).size,40);assert.equal(rendered.length,40);
-    for(const page of pages)assert.ok(page.items.every(item=>item.columns<=columns));
+    const overlapping=pages.filter(page=>page.start<=Date.parse(at(9))&&page.end>Date.parse(at(9)));
+    assert.equal(overlapping.length,1);
+    assert.equal(overlapping[0].items.length,40);
+    assert.equal(overlapping[0].dense,true);
+  }
+});
+test('every displayed interval contains all events intersecting it without a rival partial slide',()=>{
+  const events=[event('long',8,15),event('a',9,11),event('b',9.5,10),event('c',9.5,10),event('late',18,19)];
+  const sections=agendaSections(agenda(events));
+  const intervals=new Set<string>();
+  for(const section of sections.filter(page=>page.items.length)){
+    const key=`${section.start}:${section.end}`;
+    assert.ok(!intervals.has(key),`duplicate partial interval ${key}`);
+    intervals.add(key);
+    const expected=events.filter(item=>Date.parse(item.start)<section.end&&Date.parse(item.end)>section.start).map(item=>item.id).sort();
+    assert.deepEqual(section.items.map(item=>item.event.id).sort(),expected);
   }
 });
 test('short adjacent events never visually collide in the same lane',()=>{
@@ -30,6 +45,7 @@ test('cross-window appointments continue and all-day items paginate without trun
   const events=[event('long',10,16),...Array.from({length:10},(_,i)=>event(`all-${i}`,0,24,{all_day:true}))];
   const pages=agendaSections(agenda(events));
   assert.equal(pages.flatMap(p=>p.allDay).length,10);
+  assert.equal(pages.filter(p=>p.allDay.length).length,1);
   assert.equal(pages.flatMap(p=>p.items).filter(i=>i.event.id==='long').length,3);
   assert.ok(pages.flatMap(p=>p.items).every(item=>item.top>=0&&item.top+item.height<=100.00001));
 });

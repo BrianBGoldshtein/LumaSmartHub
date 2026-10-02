@@ -76,6 +76,8 @@ class LumaService:
         self.calendar_synced_at: datetime | None = None
         self.calendar_sync_error = False
         self.notifications = self._load_notifications()
+        self._pending_notification_chimes: deque[str] = deque(maxlen=20)
+        self._seen_notification_chimes: deque[str] = deque(maxlen=256)
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self._sync_sleep(datetime.now(UTC))
 
@@ -190,6 +192,9 @@ class LumaService:
     def receive_notification(self, notification: PhoneNotification) -> bool:
         if notification.app_id not in self.settings.notification_app_allowlist:
             return False
+        if notification.id not in self._seen_notification_chimes:
+            self._seen_notification_chimes.append(notification.id)
+            self._pending_notification_chimes.append(notification.id)
         self.notifications = deque((item for item in self.notifications if item.id != notification.id), maxlen=20)
         self.notifications.appendleft(notification)
         self.publish("phone.notification")
@@ -197,7 +202,35 @@ class LumaService:
 
     def remove_notification(self, notification_id: str) -> None:
         self.notifications = deque((item for item in self.notifications if item.id != notification_id), maxlen=20)
+        self._pending_notification_chimes = deque(
+            (key for key in self._pending_notification_chimes if key != notification_id), maxlen=20)
         self.publish("phone.notification")
+
+    def claim_notification_chime(self, now: datetime | None = None) -> dict[str, Any]:
+        """Consume a new local alert once, even if muted or audio is unavailable."""
+        now = now or datetime.now(UTC)
+        view = self.snapshot(now)
+        audible = (not view['privacy_redacted'] and
+                   view['state']['display_power'] == 'on' and
+                   self.settings.notification_chime_enabled and
+                   self.settings.notification_chime_volume > 0 and self.settings.volume > 0)
+        if not audible:
+            self._pending_notification_chimes.clear()
+        else:
+            while self._pending_notification_chimes:
+                key = self._pending_notification_chimes.popleft()
+                notice = next((item for item in self.notifications if item.id == key), None)
+                if notice and timedelta(0) <= now - notice.received_at <= timedelta(seconds=45):
+                    return {'play': True, 'volume': self.settings.notification_chime_volume}
+        # Claim the reminder even during privacy/night/zero volume so it never
+        # announces an old time-to-leave warning after a reconnect or wake.
+        fresh = bool(not self.calendar_sync_error and self.calendar_synced_at and
+                     timedelta(0) <= now - self.calendar_synced_at <= timedelta(minutes=10))
+        reminder = self.departures.snapshot(self.events, self.settings, now,
+                                            private=False, fresh=fresh)
+        new_departure = self.departures.claim_chime(reminder, now)
+        return {'play': bool(audible and new_departure),
+                'volume': self.settings.notification_chime_volume}
 
     def execute(self, command: Command, now: datetime | None = None) -> CommandResult:
         now = now or datetime.now(UTC)
@@ -240,6 +273,7 @@ class LumaService:
     def phone_disconnected(self, now: datetime | None = None) -> None:
         self.machine.phone_disconnected(now)
         self.notifications.clear()
+        self._pending_notification_chimes.clear()
         self._persist_runtime()
         self.publish("presence.updated")
 

@@ -29,6 +29,7 @@ import {visibleTransit,disconnectedTransit,transitCycle,sampleTransit,transitStr
 import {agendaDemo} from './agendaState';
 import {visibleDates,disconnectedDates,sampleDates,dateCycle} from './countdownState';
 import {precipitationLabel} from './weatherState';
+import {STANDBY_CYCLE,standbyPage} from './standbyCycle';
 import {setupLink} from "./setupTheme";
 import { fetchSnapshot, sendCommand, watchSnapshots } from "./api";
 import { demoSnapshot } from "./demo";
@@ -215,16 +216,7 @@ function PrivacyStandby({ snapshot }: { snapshot: Snapshot }) {
 }
 
 function AssistantOrb({ phase, onClick }: { phase: string; onClick: () => void }) {
-  return <button aria-label="Open Luma assistant" className={`assistant-orb ${phase}`} onClick={onClick}><LumaGlow /><b>{phase === "idle" ? "" : phase}</b></button>;
-}
-
-function ListeningPresence({phase}:{phase:Snapshot['state']['assistant_phase']}) {
-  if(!['listening','thinking','speaking'].includes(phase))return null;
-  const label=phase==='listening'?'Listening':phase==='thinking'?'Thinking':'Speaking';
-  return <div className={`assistant-presence ${phase}`} role="status" aria-live="polite" aria-label={`Luma ${label.toLowerCase()}`}>
-    <div className="assistant-presence-glow"><LumaGlow /></div>
-    <div className="assistant-presence-copy"><strong>{label}</strong><span>{phase==='listening'?'Go ahead, I’m here.':phase==='thinking'?'One moment.':'Luma'}</span></div>
-  </div>;
+  return <button aria-label={phase==='idle'?'Open Luma assistant':`Luma ${phase}`} className={`assistant-orb ${phase}`} onClick={onClick}><LumaGlow /><b aria-live="polite">{phase === "idle" ? "" : phase}</b></button>;
 }
 
 function ControlIsland({ snapshot, onUpdate, open, setOpen, onTimer }: { snapshot: Snapshot; onUpdate: (snapshot: Snapshot) => void; open:boolean;setOpen:(open:boolean)=>void;onTimer:()=>void }) {
@@ -299,7 +291,7 @@ function App() {
   useEffect(() => {
     if (!snapshot || (demoMode && demoParameters.has("hold"))) return;
     const pauseRemaining=Math.max(0,pausedUntil?new Date(pausedUntil).getTime()-Date.now():0,page==='agenda'?calendarHoldUntil-Date.now():0);
-    const base:Snapshot["settings"]["cycle"] = privateMode ? [{page:"home",seconds:45},{page:"weather",seconds:25}] : JSON.parse(cycleKey);
+    const base:Snapshot["settings"]["cycle"] = privateMode ? STANDBY_CYCLE : JSON.parse(cycleKey);
     const cycle=transitCycle(dateCycle(base,hasDates),hasTransit);
     if(!cycle.length) return;
     const currentIndex = Math.max(0, cycle.findIndex((item) => item.page === page));
@@ -311,7 +303,10 @@ function App() {
     if (!snapshot) return null;
     if(page==='countdowns')return <CountdownsPage snapshot={snapshot}/>;
     if(page==='transit')return <TransitPage snapshot={snapshot} demo={demoMode}/>;
-    if (snapshot.privacy_redacted) return page === "weather" ? <WeatherPage snapshot={snapshot}/> : <PrivacyStandby snapshot={snapshot} />;
+    if (snapshot.privacy_redacted) {
+      const safePage=standbyPage(page);
+      return safePage==='weather'?<WeatherPage snapshot={snapshot}/>:safePage==='ambient'?<AmbientPage snapshot={snapshot}/>:<PrivacyStandby snapshot={snapshot}/>;
+    }
     if (page === "agenda") return <AgendaPage snapshot={snapshot} onInteraction={()=>setCalendarHoldUntil(Date.now()+60000)}/>;
     if (page === "weather") return <WeatherPage snapshot={snapshot} />;
     if (page === "todos") return <TodosPage snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot}/>;
@@ -322,7 +317,7 @@ function App() {
   const wake=async()=>{if(!snapshot)return;if(demoMode)setSnapshot({...snapshot,display:previewDisplay('waking',snapshot.settings.brightness),state:{...snapshot.state,display_power:'on'}});else setSnapshot(await sendCommand('wake'));};
   const privateSetup=!demoMode&&snapshot?.settings.onboarding_completed===true&&snapshot.privacy_redacted;
   if(snapshot?.display?.mode==='off')return <button className="sleep-screen" onClick={()=>void wake()} aria-label="Wake Luma"/>;
-  if(snapshot?.display?.mode==='night-clock' || snapshot?.display?.mode==='waking')return <div className={`app theme-${snapshot.settings.theme} night-screen`}><NightDisplay snapshot={snapshot} onWake={()=>void wake()}/><ListeningPresence phase={snapshot.state.assistant_phase}/></div>;
+  if(snapshot?.display?.mode==='night-clock' || snapshot?.display?.mode==='waking')return <div className={`app theme-${snapshot.settings.theme} night-screen`}><NightDisplay snapshot={snapshot} onWake={()=>void wake()}/>{snapshot.state.assistant_phase!=='idle'&&<AssistantOrb phase={snapshot.state.assistant_phase} onClick={()=>void wake()}/>}</div>;
   if (demoParameters.get("setup") === "google") return <GoogleSetup demo={demoMode}/>;
   if (demoParameters.get("setup") === "device") return <DeviceSetup demo={demoMode}/>;
   if (demoParameters.get("setup") === "onboarding") return <Onboarding demo={demoMode} locked={privateSetup}/>;
@@ -333,12 +328,11 @@ function App() {
   if (snapshot.state.display_power === "off") return <button className="sleep-screen" onClick={()=>void wake()} aria-label="Wake Luma" />;
 
   return (
-    <div className={`app theme-${snapshot.settings.theme}${page === "ambient" && !snapshot.privacy_redacted ? " is-ambient" : ""}`} onClick={() => {if(page === "ambient") setPage("home");}}>
+    <div className={`app theme-${snapshot.settings.theme}${page === "ambient" ? " is-ambient" : ""}`} onClick={() => {if(page === "ambient") setPage("home");}}>
       <div className="atmosphere" /><StatusBar snapshot={snapshot} page={snapshot.privacy_redacted ? "home" : page} onTimer={()=>setOverlay('timer')} />
       <div className="page-stage" key={`${snapshot.privacy_redacted}-${page}`}>{content}</div>
       {!snapshot.privacy_redacted && <nav className="page-dots" aria-label="Dashboard pages">{(["home", "agenda", "weather", "todos", "ambient",...(hasDates?['countdowns']:[]),...(hasTransit?['transit']:[])] as Page[]).map((item) => <button aria-label={item} className={page === item ? "active" : ""} onClick={() => setPage(item)} key={item} />)}</nav>}
       <AssistantOrb phase={snapshot.state.assistant_phase} onClick={() => setPage("home")} />
-      <ListeningPresence phase={snapshot.state.assistant_phase}/>
       <ControlIsland snapshot={snapshot} onUpdate={setSnapshot} open={overlay==='controls'} setOpen={open=>setOverlay(open?'controls':null)} onTimer={()=>setOverlay('timer')} />
       {overlay==='timer' && <TimerPanel snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}
       {overlay==='departure' && !snapshot.privacy_redacted && snapshot.departure && <DeparturePanel key={snapshot.departure.key} snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}

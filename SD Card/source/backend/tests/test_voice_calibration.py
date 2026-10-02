@@ -9,7 +9,20 @@ from luma.api import create_app
 from luma.hardware import AudioController, VoiceController
 from luma.leds import status_frame
 from luma.voice import command_grammar, parse_local_command
-from luma.voice_calibration import PHRASES, VoiceCalibration
+from luma.voice_calibration import PHRASES, VoiceCalibration, word_match_fraction
+
+
+def test_word_match_is_a_separate_bounded_transcription_measure():
+    assert word_match_fraction('Hey Luma, what time is it?', 'hey luma what time is it') == 1
+    assert word_match_fraction('hey luma what time is it', 'hey luma what date is it') == .83
+    assert word_match_fraction("hey luma what's the weather tomorrow",
+                               'hey luma what is the weather tomorrow') == 1
+    assert word_match_fraction("hey luma what's the weather tomorrow",
+                               'hey luma whats the weather tomorrow') == 1
+    assert word_match_fraction("hey luma what's the time",
+                               'hey luma what time is it') < 1
+    assert word_match_fraction('hey luma good morning', '') is None
+    assert word_match_fraction('hey luma good morning', 'unrelated call audio') == 0
 
 
 def test_calibration_passes_without_retaining_transcripts():
@@ -38,7 +51,7 @@ def test_calibration_rejects_wrong_wake_quiet_clipped_and_expired_samples():
     assert "quiet" in calibration.submit(session, PHRASES[0], .0001, .01, 101)["message"]
     assert "clipping" in calibration.submit(session, PHRASES[0], .1, .999, 101)["message"]
     with pytest.raises(ValueError):
-        calibration.submit(session, PHRASES[0], .1, .5, 401)
+        calibration.submit(session, PHRASES[0], .1, .5, 1001)
     with pytest.raises(ValueError):
         calibration.submit("old-session", PHRASES[0], .1, .5, 101)
 
@@ -54,6 +67,284 @@ def test_calibration_level_is_live_ephemeral_and_expires():
     assert calibration.status(117)["last_intent"] == ""
     with pytest.raises(ValueError):
         calibration.report_level("old-session", .1, .4, 102)
+
+
+def test_calibration_explains_when_live_audio_never_forms_a_phrase():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    calibration.report_level(session, .001, .01, 105, floor_rms=.001)
+    assert 'Stay quiet' in calibration.status(106)['message']
+    calibration.report_level(session, .001, .01, 121)
+    quiet = calibration.status(121)
+    assert quiet['attempts'] == 0 and quiet['completed'] == 0
+    assert 'No speech has risen above' in quiet['message']
+    calibration.report_level(session, .025, .25, 122)
+    assert 'activity but no complete phrase' in calibration.status(122)['message']
+    calibration.report_level(session, .08, .999, 123)
+    assert 'clipping before a phrase completes' in calibration.status(123)['message']
+    calibration.submit(session, '', .025, .25, 124)
+    assert 'no complete phrase' not in calibration.status(124)['message']
+    calibration.record_gain(43)
+    assert 'Stay quiet' in calibration.status(125)['message']
+
+
+def test_calibration_does_not_treat_missing_room_baseline_as_quiet_speech():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    calibration.report_level(session, .001, .01, 105)
+    calibration.report_level(session, .001, .01, 121)
+    status = calibration.status(121)
+    assert 'Room sound was not measured' in status['message']
+    assert status['room_noise_rms'] is None
+
+
+def test_calibration_distinguishes_all_zero_capture_from_low_gain():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    calibration.report_level(session, 0, 0, 101)
+    calibration.report_level(session, 0, 0, 120)
+    status = calibration.status(120)
+    assert status['attempts'] == 0
+    assert 'all-zero audio' in status['message']
+    assert 'raising gain will not help' in status['message']
+    assert calibration.gain_step(0, 0) == 0
+
+
+def test_ambient_clock_begins_with_real_capture_and_profile_precedes_intents():
+    calibration = VoiceCalibration()
+    started = calibration.start(100, ambient_seconds=4)
+    session = started['session']
+    assert started['ambient_remaining'] == 4 and started['phrase'] is None
+    assert calibration.submit(session, PHRASES[0], .025, .25, 102)['attempts'] == 0
+    for now in (105, 106, 107, 108):
+        calibration.report_level(session, .002, .02, now, floor_rms=.001)
+    assert calibration.status(108)['ambient_remaining'] == 1
+    assert calibration.submit(session, PHRASES[0], .025, .25, 108)['completed'] == 0
+    for index, phrase in enumerate(PHRASES):
+        compared = {'free_text': phrase, 'raw_free_text': phrase,
+                    'raw_compared': True,
+                    'raw_constrained_wake': phrase.startswith('hey luma ')} if index >= 3 else {}
+        result = calibration.submit(session, phrase, .025, .25, 110, **compared)
+    assert result['passed']
+    assert result['audio_profile']['quality'] == 'quiet'
+    assert result['audio_profile']['gain'] > 1
+    assert result['audio_trial_ready']
+    assert 'text' not in json.dumps(result['audio_profile'])
+
+
+def test_room_rumble_is_measured_before_words_and_reset_after_gain_change():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .002, .01, now, floor_rms=.002,
+                                 floor_low_frequency_fraction=.65)
+    for index, phrase in enumerate(PHRASES):
+        compared = {'free_text': phrase, 'raw_free_text': phrase,
+                    'raw_compared': True,
+                    'raw_constrained_wake': phrase.startswith('hey luma ')} if index >= 3 else {}
+        result = calibration.submit(session, phrase, .07, .4, 106, **compared)
+    assert result['passed']
+    assert result['room_low_frequency_fraction'] == .65
+    assert result['audio_profile']['high_pass']
+    calibration.record_gain(45)
+    assert calibration.status(107)['room_low_frequency_fraction'] is None
+
+
+def test_unstable_room_baseline_never_saves_audio_amplification():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    for now, floor in zip((101, 102, 103, 104), (.001, .0012, .0011, .006)):
+        calibration.report_level(session, floor, floor * 4, now, floor_rms=floor)
+    for phrase in PHRASES:
+        result = calibration.submit(session, phrase, .025, .25, 106)
+    assert result['passed']
+    assert result['audio_profile']['quality'] == 'unstable'
+    assert result['audio_profile']['gain'] == 1
+    assert 'Room sound changed sharply' in result['message']
+
+
+def test_audio_candidate_is_derived_even_when_no_words_are_understood():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for now in (105, 106, 107):
+        status = calibration.submit(session, '', .025, .25, now)
+    assert status['completed'] == 0 and status['attempts'] == 3
+    assert status['audio_candidate']['gain'] > 1
+    assert all(item['acoustic_speech'] and not item['matched'] for item in status['results'])
+
+
+def test_audio_trial_keeps_one_profile_until_unsafe_or_hardware_gain_changes():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for now in (105, 106, 107):
+        status = calibration.submit(session, '', .025, .25, now)
+    assert status['audio_candidate']['gain'] == 2
+    # Later, louder phrases would lower a freshly derived gain to 1.75.
+    # The raw/tuned A/B trial must continue testing the original 2x profile.
+    for now in (108, 109, 110):
+        status = calibration.submit(session, '', .039, .37, now)
+    assert status['audio_candidate']['gain'] == 2
+    assert calibration.trial_profile is not None
+    assert calibration.trial_profile.gain == 2
+
+    status = calibration.submit(session, '', .04, .98, 111,
+                                clipped_fraction=.01)
+    assert status['audio_candidate']['quality'] == 'clipped'
+    assert status['audio_candidate']['gain'] == 1
+    calibration.record_gain(42)
+    assert calibration.trial_profile is None
+    assert calibration.status(112)['audio_candidate'] is None
+
+
+def test_full_phrase_pass_does_not_auto_save_unpaired_processing():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for index, phrase in enumerate(PHRASES):
+        # The positive checks compared both paths, but the no-wake controls
+        # arrived before a tuned/raw replay was available. A complete phrase
+        # list alone must not bless the untested false-wake behavior.
+        compared = {'free_text': phrase, 'raw_free_text': phrase,
+                    'raw_compared': True, 'raw_constrained_wake': True} if 3 <= index < 8 else {}
+        result = calibration.submit(session, phrase, .025, .25, 105 + index, **compared)
+    assert result['passed']
+    assert result['paired_positive_checks'] == 5
+    assert result['paired_negative_checks'] == 0
+    assert not result['audio_trial_ready']
+    assert result['audio_profile']['gain'] == 1
+    assert result['audio_profile']['quality'] == 'bypass'
+    assert 'Processing was not saved' in result['message']
+
+
+def test_learned_intent_cannot_count_as_pre_intent_audio_validation():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for phrase in PHRASES[:3]:
+        calibration.submit(session, phrase, .025, .25, 105, free_text=phrase)
+    assert calibration.status(106)['audio_candidate']['gain'] > 1
+    for phrase, misheard in zip(PHRASES[3:5],
+                               ('hey luma what date is it', 'hey luma good mourning')):
+        result = calibration.submit(
+            session, phrase, .025, .25, 107,
+            free_text=misheard, raw_free_text=misheard,
+            raw_compared=True, raw_constrained_wake=True,
+            selected_text=phrase.removeprefix('hey luma '), selection='learned')
+        assert result['results'][-1]['matched']
+        assert result['results'][-1]['word_match'] >= .75
+        assert not result['results'][-1]['lexical_evidence']
+    assert result['paired_positive_checks'] == 0
+    genuine = PHRASES[5]
+    result = calibration.submit(session, genuine, .025, .25, 108,
+                                free_text=genuine, raw_free_text=genuine,
+                                raw_compared=True, raw_constrained_wake=True)
+    assert result['paired_positive_checks'] == 1
+
+
+def test_contraction_spelling_does_not_falsely_veto_tuned_audio():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for phrase in PHRASES[:5]:
+        calibration.submit(session, phrase, .025, .25, 105)
+    assert calibration.status(106)['audio_candidate']['gain'] > 1
+    expected = PHRASES[5]
+    expanded = expected.replace("what's", 'what is')
+    for now in (107, 108):
+        outcome = calibration.submit(session, expected, .025, .25, now,
+                                     free_text=expanded, raw_free_text=expected,
+                                     raw_compared=True, raw_constrained_wake=True,
+                                     selected_text=None, selection='conflict')
+    assert outcome['results'][-1]['word_match'] == 1
+    assert outcome['results'][-1]['raw_word_match'] == 1
+    assert not outcome['processing_regressed']
+    assert outcome['audio_candidate']['gain'] > 1
+
+
+def test_raw_recognition_wins_twice_and_disables_harmful_trial():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for now in (105, 106, 107):
+        initial = calibration.submit(session, '', .025, .25, now)
+    assert initial['audio_candidate']['gain'] > 1
+    for now in (108, 109):
+        outcome = calibration.submit(session, '', .025, .25, now,
+                                     free_text='unrelated words',
+                                     raw_free_text=PHRASES[0], raw_compared=True)
+    assert outcome['processing_regressed']
+    assert outcome['audio_candidate']['quality'] == 'bypass'
+    assert outcome['audio_candidate']['gain'] == 1
+    assert outcome['audio_candidate']['snr_db'] is not None
+    assert 'Untouched audio' in outcome['message']
+    assert outcome['last_raw_heard'] == PHRASES[0]
+    assert all('raw_free_text' not in row for row in outcome['results'])
+    for phrase in PHRASES:
+        finished = calibration.submit(session, phrase, .025, .25, 110)
+    assert finished['passed']
+    assert finished['audio_profile']['quality'] == 'bypass'
+    assert 'Untouched audio recognized words or wakes better' in finished['message']
+
+
+def test_raw_wake_wins_twice_even_when_word_scores_are_equal():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for now in (105, 106, 107):
+        result = calibration.submit(session, '', .025, .25, now)
+    assert result['audio_candidate']['gain'] > 1
+    for now in (108, 109):
+        result = calibration.submit(session, '', .025, .25, now,
+                                    free_text='', raw_free_text='', raw_compared=True,
+                                    raw_constrained_wake=True)
+    assert result['processing_regressed']
+    assert result['audio_candidate']['quality'] == 'bypass'
+    assert all('raw_constrained_wake' in row for row in result['results'])
+
+
+def test_new_false_wake_on_negative_control_vetoes_tuned_audio():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for phrase in PHRASES[:-2]:
+        calibration.submit(session, phrase, .025, .25, 105)
+    result = calibration.submit(session, 'hey luma what time is it', .025, .25, 106,
+                                free_text='what time is it', raw_free_text='what time is it',
+                                raw_compared=True, raw_constrained_wake=False)
+    assert result['processing_regressed']
+    assert result['audio_candidate']['quality'] == 'bypass'
+    assert result['results'][-1]['raw_match'] is True
+    assert 'wake detection' in result['message']
+    with pytest.raises(ValueError, match='raw wake'):
+        calibration.submit(session, PHRASES[-2], .025, .25, 107,
+                           raw_constrained_wake=False)
+
+
+def test_learned_intent_cannot_hide_worse_pre_recognizer_audio():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for phrase in PHRASES[:3]:
+        calibration.submit(session, phrase, .05, .4, 101)
+    for phrase in PHRASES[3:5]:
+        result = calibration.submit(
+            session, phrase, .05, .4, 102,
+            free_text='hey luma whats the tea', raw_free_text=phrase,
+            raw_compared=True, selected_text=phrase.removeprefix('hey luma '),
+            selection='learned')
+        assert result['results'][-1]['matched']
+        assert result['results'][-1]['raw_word_match'] == 1
+    assert result['processing_regressed']
+    assert calibration.measured_profile().quality == 'bypass'
 
 
 def test_calibration_shows_raw_decoder_evidence_and_never_passes_a_conflict():
@@ -119,9 +410,265 @@ def test_negative_control_requires_ordinary_speech_without_a_wake():
     assert completed["passed"] is True
 
 
+def test_independent_wake_evidence_tracks_words_without_saving_transcripts():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for phrase in PHRASES[:-2]:
+        result = calibration.submit(session, phrase, .05, .4, 101, free_text=phrase)
+    assert result['independent_wakes'] == 8
+    assert not result['strict_wake_ready']
+    result = calibration.submit(session, PHRASES[-2], .05, .4, 102,
+                                free_text=PHRASES[-2])
+    assert result['negative_wake_checks'] == 1
+    assert result['strict_wake_ready']
+    assert result['last_free_wake_detected'] is False
+    assert result['last_word_match'] == 1
+    assert result['results'][-1]['word_match'] == 1
+    assert all('text' not in row and 'free_text' not in row for row in result['results'])
+
+
+def test_wake_evidence_is_separate_from_a_misheard_command():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    result = calibration.submit(session, PHRASES[0], .05, .4, 101,
+                                free_text='hey luma set volume to fifty',
+                                selected_text=None, selection='conflict')
+    assert result['completed'] == 0 and not result['passed']
+    assert result['independent_wakes'] == 1
+    assert not result['strict_wake_ready']
+    assert result['last_selection'] == 'conflict'
+    # A clipped or nearly inaudible sample cannot qualify the wake setting.
+    faint = VoiceCalibration()
+    faint_session = faint.start(100)['session']
+    result = faint.submit(faint_session, PHRASES[0], .001, .003, 102,
+                          free_text='hey luma set volume to fifty',
+                          selected_text=None, selection='conflict')
+    assert result['independent_wakes'] == 0
+
+
+def test_wake_only_exit_never_passes_command_or_saves_audio_tuning():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    with pytest.raises(ValueError, match='Four clean'):
+        calibration.finish_wake_only(session, 101)
+    for attempt in range(4):
+        result = calibration.submit(session, PHRASES[0], .05, .4, 101 + attempt,
+                                    free_text='hey luma set volume to fifty',
+                                    selected_text=None, selection='conflict')
+        assert result['completed'] == 0 and not result['passed']
+    assert result['wake_only_positive_checks'] == 4
+    with pytest.raises(ValueError, match='Four clean'):
+        calibration.finish_wake_only('wrong-session', 105)
+    finished = calibration.finish_wake_only(session, 105)
+    assert finished['wake_only_finished'] and not finished['active']
+    assert not finished['passed'] and not finished['strict_wake_ready']
+    assert finished['audio_profile'] is None and finished['audio_candidate'] is None
+    with pytest.raises(ValueError, match='Four clean'):
+        calibration.finish_wake_only(session, 106)
+    calibration.cancel()
+    assert not calibration.status(107)['wake_only_finished']
+
+
+def test_owner_confirms_the_same_safe_mishearing_twice_before_it_can_be_saved():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for phrase in PHRASES[:3]:
+        calibration.submit(session, phrase, .05, .4, 101)
+    for attempt in (1, 2):
+        missed = calibration.submit(session, 'hey luma good morning', .05, .4, 102 + attempt,
+                                    free_text='hey luma whats the tea')
+        assert missed['correction_available']
+        heard, canonical, count = calibration.confirm_correction(session, 102 + attempt)
+        assert (heard, canonical, count) == (['whats the tea'], 'what time is it', attempt)
+        assert not calibration.status(102 + attempt)['correction_available']
+        with pytest.raises(ValueError):
+            calibration.confirm_correction(session, 102 + attempt)
+    assert 'whats the tea' not in json.dumps(calibration.status(105)['results'])
+    assert not calibration.status(125)['correction_available']
+
+
+def test_owner_can_confirm_two_different_accent_transcriptions_of_one_phrase():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for phrase in PHRASES[:3]:
+        calibration.submit(session, phrase, .05, .4, 101)
+    variants = ('hey luma whats the tea', 'hey luma whats the tee')
+    for attempt, free_text in enumerate(variants, 1):
+        sample = calibration.submit(session, 'hey luma good morning', .05, .4,
+                                    102 + attempt, free_text=free_text)
+        assert sample['correction_available']
+        heard, canonical, count = calibration.confirm_correction(session, 102 + attempt)
+        assert count == attempt and canonical == 'what time is it'
+    assert heard == ['whats the tea', 'whats the tee']
+    assert all(variant not in json.dumps(calibration.status(105)['results'])
+               for variant in heard)
+
+
+def test_dual_decoder_mode_requires_local_calibration_evidence(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        endpoint = '/api/v1/voice/wake-confirmation'
+        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 409
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for phrase in PHRASES[:-2]:
+            response = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': phrase, 'free_text': phrase,
+                'rms': .05, 'peak': .4,
+            })
+            assert response.status_code == 200
+        assert not response.json()['strict_wake_ready']
+        response = client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': PHRASES[-2], 'free_text': PHRASES[-2],
+            'rms': .05, 'peak': .4,
+        })
+        assert response.json()['strict_wake_ready']
+        enabled = client.post(endpoint, json={'mode': 'dual_decoder'})
+        assert enabled.status_code == 200
+        assert enabled.json()['wake_confirmation']['mode'] == 'dual_decoder'
+        assert client.get('/api/v1/voice/calibration').json()['wake_confirmation']['mode'] == 'dual_decoder'
+        assert app.state.luma.storage.get_cache('voice', 'wake_confirmation') == {
+            'version': 1, 'mode': 'dual_decoder',
+        }
+        assert client.post(endpoint, json={'mode': 'off'}).status_code == 422
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post(endpoint, json={'mode': 'standard'}).status_code == 403
+        assert client.post(endpoint, json={'mode': 'standard'}).status_code == 200
+
+
+def test_wake_only_api_requires_later_negative_trial_and_never_passes_calibration(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        finish = '/api/v1/voice/calibration/finish-wake-only'
+        assert client.post(finish, json={'session': session}).status_code == 409
+        for _ in range(4):
+            sampled = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': PHRASES[0],
+                'free_text': 'hey luma set volume to fifty',
+                'selected_text': None, 'selection': 'conflict',
+                'rms': .05, 'peak': .4,
+            })
+            assert sampled.status_code == 200
+        assert sampled.json()['wake_only_positive_checks'] == 4
+        assert client.post(finish, json={'session': '0' * 32}).status_code == 409
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post(finish, json={'session': session}).status_code == 403
+        finished = client.post(finish, json={'session': session})
+        assert finished.status_code == 200
+        assert finished.json()['wake_only_finished']
+        assert not finished.json()['passed']
+        assert not finished.json()['strict_wake_ready']
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') is None
+        endpoint = '/api/v1/voice/wake-confirmation'
+        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 409
+
+        original_status = api.VoiceCallTrial.status
+        def after_full_negative_trial(self, now=None):
+            return {**original_status(self, now), 'negative_ready': True}
+        monkeypatch.setattr(api.VoiceCallTrial, 'status', after_full_negative_trial)
+        assert client.get('/api/v1/voice/calibration').json()['strict_wake_ready']
+        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 200
+
+
+def test_changing_mic_path_invalidates_finished_wake_evidence(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    original_trial_status = api.VoiceCallTrial.status
+    monkeypatch.setattr(api.VoiceCallTrial, 'status', lambda self, now=None: {
+        **original_trial_status(self, now), 'negative_ready': True,
+    })
+    hardware = {'gain': 39}
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': hardware['gain'], 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    def apply_gain(value):
+        hardware['gain'] = value
+        return api.mic_hardware.status()
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', apply_gain)
+    app = create_app(data_dir=tmp_path)
+    def finish_wake_only(client):
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(4):
+            sampled = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': PHRASES[0],
+                'free_text': 'hey luma set volume to fifty',
+                'selected_text': None, 'selection': 'conflict',
+                'rms': .05, 'peak': .4,
+            })
+            assert sampled.status_code == 200
+        assert client.post('/api/v1/voice/calibration/finish-wake-only', json={
+            'session': session,
+        }).json()['strict_wake_ready']
+
+    with TestClient(app) as client:
+        finish_wake_only(client)
+        changed = client.post('/api/v1/voice/hardware/gain', json={'gain': 40})
+        assert changed.status_code == 200 and changed.json()['audio_profile_cleared']
+        assert not client.get('/api/v1/voice/calibration').json()['strict_wake_ready']
+        assert client.post('/api/v1/voice/wake-confirmation', json={
+            'mode': 'dual_decoder',
+        }).status_code == 409
+
+        finish_wake_only(client)
+        assert client.post('/api/v1/voice/audio-profile/reset', json={}).status_code == 200
+        assert not client.get('/api/v1/voice/calibration').json()['strict_wake_ready']
+
+
+def test_confirmed_phrase_correction_persists_without_raw_words_and_can_reset(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        endpoint = '/api/v1/voice/calibration/confirm-correction'
+        assert client.post(endpoint, json={'session': session}).status_code == 409
+        for phrase in PHRASES[:3]:
+            client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': phrase, 'rms': .05, 'peak': .4,
+            })
+        for count, heard in enumerate(('whats the tea', 'whats the tee'), 1):
+            missed = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': 'hey luma good morning',
+                'free_text': 'hey luma ' + heard, 'rms': .05, 'peak': .4,
+            }).json()
+            assert missed['correction_available']
+            confirmed = client.post(endpoint, json={'session': session})
+            assert confirmed.status_code == 200
+            assert confirmed.json()['correction_saved'] is (count == 2)
+            assert client.post(endpoint, json={'session': session}).status_code == 409
+        saved = app.state.luma.storage.get_cache('voice', 'phrase_adaptations')
+        assert 'whats the tea' not in json.dumps(saved)
+        assert 'whats the tee' not in json.dumps(saved)
+        assert len(saved['entries']) == 2
+        assert client.get('/api/v1/voice/calibration').json()['learned_phrase_count'] == 2
+        for heard in ('whats the tea', 'whats the tee'):
+            preview = client.post('/api/v1/voice/phrase-preview', json={'text': heard}).json()
+            assert preview['personal_correction'] and preview['intent'] == 'time'
+            assert preview['executed'] is False
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post('/api/v1/voice/adaptations/reset').status_code == 403
+        assert client.post('/api/v1/voice/adaptations/reset').json()['learned_phrase_count'] == 0
+        assert not app.state.luma.storage.get_cache('voice', 'phrase_adaptations')['entries']
+
+
 def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():
     calibration = VoiceCalibration()
     session = calibration.start(100)["session"]
+    for now in (100.1, 100.2, 100.3):
+        calibration.report_level(session, .0001, .001, now, floor_rms=.0001)
     result = calibration.submit(session, "hey luma something unclear", .001, .05, 101)
     assert result["last_heard"] == "hey luma something unclear"
     assert calibration.gain_step(.001, .05) == 4
@@ -137,16 +684,108 @@ def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():
     assert calibration.status(102)["last_heard"] == ""
 
 
+def test_automatic_gain_increase_requires_nonzero_room_baseline():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    assert calibration.gain_step(.001, .05) == 0
+    for now in (100.1, 100.2, 100.3):
+        calibration.report_level(session, 0, 0, now, floor_rms=0)
+    assert calibration.gain_step(.001, .05) == 0
+    calibration.report_level(session, .0001, .001, 100.4, floor_rms=.0001)
+    assert calibration.gain_step(.001, .05) == 0
+    for now in (100.5, 100.6):
+        calibration.report_level(session, .0001, .001, now, floor_rms=.0001)
+    assert calibration.gain_step(.001, .05) == 4
+    assert calibration.gain_step(.05, .999) == -4
+
+
+def test_hardware_gain_change_restarts_room_baseline_and_discards_old_acoustics():
+    calibration = VoiceCalibration()
+    started = calibration.start(100, ambient_seconds=4)
+    session = started['session']
+    for now in (101, 102, 103, 104, 105):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    assert calibration.submit(session, PHRASES[0], .025, .25, 106)['completed'] == 1
+    assert calibration.room_floors and calibration.results
+    calibration.record_gain(43)
+    restarted = calibration.status(107)
+    assert restarted['session'] == session
+    assert restarted['capture_revision'] == started['capture_revision'] + 1
+    assert restarted['completed'] == restarted['attempts'] == 0
+    assert restarted['ambient_remaining'] == 4
+    assert restarted['audio_candidate'] is None
+    assert restarted['room_noise_rms'] is None
+    assert restarted['gain_adjustments'] == 1
+    assert restarted['last_heard'] == ''
+    assert calibration.submit(session, PHRASES[0], .025, .25, 107)['attempts'] == 0
+
+
+def test_hardware_gain_does_not_amplify_a_low_signal_to_noise_room():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103):
+        calibration.report_level(session, .009, .08, now, floor_rms=.008)
+    assert calibration.gain_step(.001, .05) == 0
+    # A low *absolute* noise floor can still have poor SNR. The previous
+    # fixed .004 cutoff mistakenly treated it as safe to amplify.
+    calibration.room_floors[:] = [.0008, .0009, .001]
+    assert calibration.gain_step(.001, .05) == 0
+    calibration.room_floors[:] = [.0001, .0002, .0002]
+    assert calibration.gain_step(.001, .05) == 4
+    # The formerly unreachable very-quiet segment is eligible only when it
+    # rises clearly above the measured room floor; silence is never boosted.
+    assert calibration.gain_step(.001, .003) == 4
+    assert calibration.gain_step(.0001, .0001) == 0
+    calibration.room_floors[:] = [.0008, .0009, .001]
+    assert calibration.gain_step(.001, .003) == 0
+
+
+def test_faint_clean_audio_can_offer_pre_asr_trial_without_passing_words():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .00015, .001, now,
+                                 floor_rms=.00015)
+    for now in (106, 107, 108):
+        result = calibration.submit(session, '', .0015, .003, now)
+    assert result['completed'] == 0 and result['attempts'] == 3
+    assert result['audio_candidate']['quality'] == 'quiet'
+    assert result['audio_candidate']['gain'] > 1
+    assert not result['passed']
+
+
+def _report_clean_room_floor(client, session):
+    for _ in range(3):
+        response = client.post('/api/v1/voice/calibration/level', json={
+            'session': session, 'rms': .0001, 'peak': .001,
+            'floor_rms': .0001,
+        })
+        assert response.status_code == 200
+
+
 def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
     import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
     applied = []
     monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
         'available': True, 'gain': 39 + 4 * len(applied), 'max_gain': 63,
         'capture_on': True, 'route_ready': True,
     })
-    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', lambda gain: applied.append(gain))
-    with TestClient(create_app(data_dir=tmp_path)) as client:
+    def save_and_apply(gain):
+        applied.append(gain)
+        return api.mic_hardware.status()
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', save_and_apply)
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', {
+        'version': 1, 'gain': 2.0, 'high_pass': False,
+        'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+        'quality': 'quiet',
+    })
+    with TestClient(app) as client:
         session = client.post('/api/v1/voice/calibration/start').json()['session']
+        _report_clean_room_floor(client, session)
         response = client.post('/api/v1/voice/calibration/sample', json={
             'session': session, 'text': 'hey luma something unclear', 'rms': .001,
             'peak': .05,
@@ -155,6 +794,7 @@ def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
         assert response.json()['applied_gain'] == 43
         assert 'adjusted' in response.json()['message']
         assert applied == [43]
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
         client.post('/api/v1/voice/calibration/sample', json={
             'session': session, 'text': 'hey luma something unclear', 'rms': .05,
             'peak': .5,
@@ -162,7 +802,11 @@ def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
         assert applied == [43]  # Wrong transcript alone cannot change gain.
 
 
-def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp_path):
+def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
     app = create_app(data_dir=tmp_path)
     client = TestClient(app)
     assert client.patch("/api/v1/settings", json={"voice_enabled": False}).status_code == 200
@@ -199,6 +843,383 @@ def test_calibration_api_suppresses_actions_and_lan_cannot_enable_microphone(tmp
     assert remote.post("/api/v1/voice/calibration/level", json={"session": session, "rms": .1, "peak": .5}, headers=headers).status_code == 403
     assert remote.post("/api/v1/voice/diagnostic", json={"code": "capture_source_unavailable"}, headers=headers).status_code == 403
     assert client.post("/api/v1/voice/diagnostic", json={"code": "arbitrary text"}).status_code == 422
+
+
+def test_api_ambient_measurement_precedes_phrase_checks(tmp_path):
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        started = client.post('/api/v1/voice/calibration/start').json()
+        assert started['ambient_remaining'] >= 3
+        assert started['phrase'] is None
+        ignored = client.post('/api/v1/voice/calibration/sample', json={
+            'session': started['session'], 'text': PHRASES[0], 'rms': .08, 'peak': .4,
+        }).json()
+        assert ignored['completed'] == 0 and ignored['attempts'] == 0
+        assert ignored['applied_gain'] is None
+
+
+def test_profile_persists_as_numeric_data_and_can_be_reset(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(4):
+            client.post('/api/v1/voice/calibration/level', json={
+                'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
+            })
+        for index, phrase in enumerate(PHRASES):
+            compared = {'free_text': phrase, 'raw_free_text': phrase,
+                        'raw_compared': True,
+                        'raw_constrained_wake': phrase.startswith('hey luma ')} if index >= 3 else {}
+            result = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': phrase, 'rms': .025, 'peak': .25,
+                **compared,
+            })
+        assert result.json()['passed']
+        saved = app.state.luma.storage.get_cache('voice', 'audio_profile')
+        assert saved['gain'] > 1 and saved['quality'] == 'quiet'
+        assert 'hey luma' not in json.dumps(saved)
+        assert client.get('/api/v1/voice/calibration').json()['audio_profile'] == saved
+        reset = client.post('/api/v1/voice/audio-profile/reset').json()['audio_profile']
+        assert reset['gain'] == 1 and reset['high_pass'] is False
+        assert client.get('/api/v1/voice/calibration').json()['audio_profile'] == reset
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post('/api/v1/voice/audio-profile/reset').status_code == 403
+
+
+def test_api_exposes_trial_audio_profile_before_intent_recognition_succeeds(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(4):
+            client.post('/api/v1/voice/calibration/level', json={
+                'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
+            })
+        for _ in range(3):
+            result = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'rms': .025, 'peak': .25,
+            }).json()
+        assert result['completed'] == 0
+        assert result['audio_profile']['gain'] > 1
+        assert result['audio_candidate']['gain'] == result['audio_profile']['gain']
+
+
+def test_new_check_starts_untouched_and_restores_saved_profile_on_cancel(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    saved = {'version': 1, 'gain': 1.75, 'high_pass': False,
+             'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+             'quality': 'quiet'}
+    app.state.luma.storage.set_cache('voice', 'audio_profile', saved)
+    with TestClient(app) as client:
+        assert client.get('/api/v1/voice/calibration').json()['audio_profile'] == saved
+        started = client.post('/api/v1/voice/calibration/start').json()
+        assert started['active'] and started['audio_profile']['gain'] == 1
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') == saved
+        cancelled = client.post('/api/v1/voice/calibration/cancel').json()
+        assert not cancelled['active'] and cancelled['audio_profile'] == saved
+
+
+def test_manual_mic_gain_change_restarts_active_room_measurement(tmp_path, monkeypatch):
+    import luma.api as api
+    gain = {'value': 39}
+    def hardware_status():
+        return {'available': True, 'gain': gain['value'], 'max_gain': 63,
+                'capture_on': True, 'route_ready': True}
+    def save_gain(value):
+        gain['value'] = value
+        return hardware_status()
+    monkeypatch.setattr(api.mic_hardware, 'status', hardware_status)
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', save_gain)
+    app = create_app(data_dir=tmp_path)
+    saved = {'version': 1, 'gain': 2.0, 'high_pass': False,
+             'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+             'quality': 'quiet'}
+    app.state.luma.storage.set_cache('voice', 'audio_profile', saved)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(4):
+            client.post('/api/v1/voice/calibration/level', json={
+                'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
+            })
+        assert client.get('/api/v1/voice/calibration').json()['room_noise_rms'] == .001
+        changed = client.post('/api/v1/voice/hardware/gain', json={'gain': 45})
+        assert changed.status_code == 200 and changed.json()['gain'] == 45
+        assert changed.json()['audio_profile_cleared'] is True
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
+        status = client.get('/api/v1/voice/calibration').json()
+        assert status['active'] and status['completed'] == 0
+        assert status['ambient_remaining'] == 4
+        assert status['room_noise_rms'] is None
+        assert status['applied_gain'] == 45
+        unchanged = client.post('/api/v1/voice/hardware/gain', json={'gain': 45})
+        assert unchanged.status_code == 200
+        assert unchanged.json()['audio_profile_cleared'] is False
+        assert client.get('/api/v1/voice/calibration').json()['gain_adjustments'] == 1
+        assert client.post('/api/v1/voice/calibration/cancel').json()['audio_profile']['gain'] == 1
+
+
+def test_manual_mic_gain_change_invalidates_saved_pcm_only_on_success(tmp_path, monkeypatch):
+    import luma.api as api
+    gain = {'value': 39}
+    saved = {'version': 1, 'gain': 1.75, 'high_pass': True,
+             'noise_rms': .001, 'speech_rms': .03, 'snr_db': 29.5,
+             'quality': 'quiet'}
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', saved)
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': gain['value'], 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    def save_gain(value):
+        if value == 41:
+            raise api.mic_hardware.MicHardwareError('Mixer did not change')
+        gain['value'] = value
+        return api.mic_hardware.status()
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', save_gain)
+    with TestClient(app) as client:
+        same = client.post('/api/v1/voice/hardware/gain', json={'gain': 39})
+        assert same.status_code == 200 and same.json()['audio_profile_cleared'] is False
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') == saved
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 41}).status_code == 409
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') == saved
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 43}).status_code == 200
+        assert client.get('/api/v1/voice/calibration').json()['audio_profile']['gain'] == 1
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['high_pass'] is False
+
+
+def test_unreadable_mixer_after_successful_gain_write_cannot_keep_old_profile(tmp_path, monkeypatch):
+    import luma.api as api
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', {
+        'version': 1, 'gain': 2.0, 'high_pass': False,
+        'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+        'quality': 'quiet',
+    })
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': 39, 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', lambda gain: {
+        'available': False, 'gain': gain, 'max_gain': 63,
+        'capture_on': False, 'route_ready': False,
+    })
+    with TestClient(app) as client:
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 43}).status_code == 200
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
+
+
+def test_partially_failed_gain_write_discards_profile_and_active_check(tmp_path, monkeypatch):
+    import luma.api as api
+    gain = {'value': 39, 'route_ready': True}
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', {
+        'version': 1, 'gain': 2.0, 'high_pass': False,
+        'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+        'quality': 'quiet',
+    })
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': gain['value'], 'max_gain': 63,
+        'capture_on': True, 'route_ready': gain['route_ready'],
+    })
+    def partial_failure(value):
+        gain['value'] = value
+        raise OSError('private gain-file path')
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', partial_failure)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        failed = client.post('/api/v1/voice/hardware/gain', json={'gain': 43})
+        assert failed.status_code == 409
+        assert 'private gain-file path' not in failed.text
+        assert 'old audio tuning was cleared' in failed.json()['detail']
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
+        assert not client.get('/api/v1/voice/calibration').json()['active']
+        assert client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': PHRASES[0], 'rms': .03, 'peak': .3,
+        }).status_code == 409
+
+
+def test_partially_failed_automatic_gain_write_aborts_old_audio_evidence(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    gain = {'value': 39}
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': gain['value'], 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    def partial_failure(value):
+        gain['value'] = value
+        raise OSError('private gain-file path')
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', partial_failure)
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', {
+        'version': 1, 'gain': 2.0, 'high_pass': False,
+        'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+        'quality': 'quiet',
+    })
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        _report_clean_room_floor(client, session)
+        sampled = client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': '', 'rms': .001, 'peak': .05,
+        })
+        assert sampled.status_code == 200
+        assert not sampled.json()['active']
+        assert 'may have changed' in sampled.json()['message']
+        assert gain['value'] == 43
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
+        assert client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': '', 'rms': .001, 'peak': .05,
+        }).status_code == 409
+
+
+def test_failed_automatic_gain_without_mixer_change_does_not_retry(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': 39, 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    attempted = []
+    def failed_save(value):
+        attempted.append(value)
+        raise OSError('gain file not writable')
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', failed_save)
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        _report_clean_room_floor(client, session)
+        for _ in range(2):
+            sampled = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'rms': .001, 'peak': .05,
+            })
+            assert sampled.status_code == 200 and sampled.json()['active']
+        assert attempted == [43]
+        assert sampled.json()['auto_gain_failed']
+
+
+def test_automatic_gain_refuses_unreadable_success_result(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': 39, 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', lambda value: {
+        'available': False, 'gain': value, 'max_gain': 63,
+        'capture_on': False, 'route_ready': False,
+    })
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        _report_clean_room_floor(client, session)
+        sampled = client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': '', 'rms': .001, 'peak': .05,
+        })
+        assert sampled.status_code == 200
+        assert not sampled.json()['active']
+        assert 'recheck hardware' in sampled.json()['message']
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
+
+
+def test_repaired_capture_route_invalidates_old_profile_without_gain_difference(tmp_path, monkeypatch):
+    import luma.api as api
+    route = {'ready': False}
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', {
+        'version': 1, 'gain': 1.5, 'high_pass': True,
+        'noise_rms': .001, 'speech_rms': .03, 'snr_db': 29.0,
+        'quality': 'quiet',
+    })
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': 39, 'max_gain': 63,
+        'capture_on': True, 'route_ready': route['ready'],
+    })
+    def repair_route(_gain):
+        route['ready'] = True
+        return api.mic_hardware.status()
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', repair_route)
+    with TestClient(app) as client:
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 39}).status_code == 200
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
+
+
+def test_owner_can_save_clean_audio_tuning_before_any_phrase_matches(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        assert client.post('/api/v1/voice/calibration/save-audio', json={
+            'session': session,
+        }).status_code == 409
+        for _ in range(4):
+            client.post('/api/v1/voice/calibration/level', json={
+                'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
+            })
+        for _ in range(3):
+            client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'rms': .025, 'peak': .25,
+            })
+        assert client.post('/api/v1/voice/calibration/save-audio', json={
+            'session': '0' * 32,
+        }).status_code == 409
+        remote = TestClient(app, client=('192.168.1.7', 5000))
+        assert remote.post('/api/v1/voice/calibration/save-audio', json={
+            'session': session,
+        }).status_code == 403
+        saved = client.post('/api/v1/voice/calibration/save-audio', json={
+            'session': session,
+        })
+        assert saved.status_code == 200
+        assert not saved.json()['active']
+        profile = app.state.luma.storage.get_cache('voice', 'audio_profile')
+        assert profile['gain'] > 1 and profile['quality'] == 'quiet'
+        assert 'hey luma' not in json.dumps(profile)
+
+
+def test_regressed_audio_trial_cannot_be_saved(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(4):
+            client.post('/api/v1/voice/calibration/level', json={
+                'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
+            })
+        for _ in range(3):
+            client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'rms': .025, 'peak': .25,
+            })
+        for _ in range(2):
+            result = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'free_text': 'unrelated',
+                'raw_free_text': PHRASES[0], 'raw_compared': True,
+                'rms': .025, 'peak': .25,
+            })
+        assert result.json()['processing_regressed']
+        assert client.post('/api/v1/voice/calibration/save-audio', json={
+            'session': session,
+        }).status_code == 409
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile') is None
 
 
 def test_command_grammar_covers_supported_controls_and_unknown_audio():

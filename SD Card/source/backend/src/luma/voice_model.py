@@ -1,7 +1,8 @@
 """Small, offline bag-of-character-ngrams neural intent classifier.
 
-The released int8 weights are trained from public, authored examples. Audio,
-calendar content and calibration phrases never train or leave this device.
+The released int8 weights are trained from public, authored examples and are
+never retrained from device audio or calibration. Owner-confirmed phrase
+corrections live in a separate, bounded local matcher.
 """
 from __future__ import annotations
 

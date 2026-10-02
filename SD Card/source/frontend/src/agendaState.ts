@@ -2,7 +2,7 @@ import type {CalendarEvent,Snapshot} from './types';
 
 export const HOUR=3600000;
 export type PlacedEvent={event:CalendarEvent;top:number;height:number;column:number;columns:number};
-export type AgendaSection={start:number;end:number;items:PlacedEvent[];allDay:CalendarEvent[];lane:number;lanes:number};
+export type AgendaSection={start:number;end:number;items:PlacedEvent[];allDay:CalendarEvent[];dense:boolean};
 export const calendarColor=(event:CalendarEvent)=>/^#[0-9a-f]{6}$/i.test(event.event_color||event.calendar_color||'')?event.event_color||event.calendar_color!:'var(--accent)';
 export const eventKey=(event:CalendarEvent)=>`${event.calendar_id}:${event.id}`;
 
@@ -16,7 +16,7 @@ export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns
   const allDay=agenda.events.filter(e=>e.all_day);
   // A lone all-day item does not deserve an otherwise empty full-screen slide.
   // Pair it with the first populated time window, keeping its full-detail tap.
-  if(allDay.length!==1)for(let i=0;i<allDay.length;i+=3)sections.push({start,end,items:[],allDay:allDay.slice(i,i+3),lane:0,lanes:1});
+  if(allDay.length>1)sections.push({start,end,items:[],allDay,dense:allDay.length>3});
   for(let from=start;from<end;from+=4*HOUR){
     const to=Math.min(end,from+4*HOUR),duration=to-from,minHeight=Math.min(80*60000,duration);
     const items=agenda.events.filter(e=>!e.all_day && Date.parse(e.start)<to && Date.parse(e.end)>from)
@@ -34,15 +34,15 @@ export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns
       item.column=column;ends[column]=item.top+item.height;group.push(item);groupEnd=Math.max(groupEnd,ends[column]);
     }
     finish();
-    const lanes=Math.max(1,...items.map(item=>Math.ceil(item.columns/maxColumns)));
-    for(let lane=0;lane<lanes;lane++){
-      sections.push({start:from,end:to,allDay:[],lane,lanes,items:items.filter(item=>Math.floor(item.column/maxColumns)===lane).map(item=>({...item,column:item.column%maxColumns,columns:Math.min(maxColumns,item.columns-lane*maxColumns)}))});
-    }
+    // Never paginate the same four-hour interval into competing partial
+    // schedules. Dense overlaps switch to a scrollable same-slide overview.
+    sections.push({start:from,end:to,allDay:[],items,
+      dense:items.some(item=>item.columns>maxColumns)});
   }
   if(allDay.length===1){
     const firstPopulated=sections.find(section=>section.items.length>0);
     if(firstPopulated)firstPopulated.allDay=[allDay[0]];
-    else sections.unshift({start,end,items:[],allDay,lane:0,lanes:1});
+    else sections.unshift({start,end,items:[],allDay,dense:false});
   }
   return sections;
 }

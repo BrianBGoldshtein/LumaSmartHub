@@ -36,6 +36,7 @@ class Departures:
                     if expiry.tzinfo is None or (snooze and snooze.tzinfo is None):
                         continue
                     record = {'expires':expiry.astimezone(UTC).isoformat(),'dismissed':value.get('dismissed') is True}
+                    if value.get('chimed') is True: record['chimed'] = True
                     if snooze: record['snooze_until'] = min(snooze,expiry).astimezone(UTC).isoformat()
                     if _minutes(value.get('prep')) and _minutes(value.get('travel')):
                         record.update(prep=value['prep'],travel=value['travel'])
@@ -63,6 +64,31 @@ class Departures:
                                    'depart_at':departure.isoformat(),'prep_minutes':prep,'travel_minutes':travel,
                                    'color':event.event_color or event.calendar_color})
         return min(candidates,key=lambda item:(item['depart_at'],item['start'],item['key'])) if candidates else None
+
+    def claim_chime(self, reminder, now):
+        """Persist an at-most-once cue claim for a displayed occurrence.
+
+        Claiming before playback deliberately avoids replay after a bridge
+        restart, failed speaker route, snooze, or a calendar refresh.
+        """
+        if not reminder or not isinstance(reminder.get('key'), str):
+            return False
+        key = reminder['key']
+        if self.records.get(key, {}).get('chimed'):
+            return False
+        expiry = datetime.fromisoformat(reminder['start']).astimezone(UTC)
+        if expiry <= now.astimezone(UTC):
+            return False
+        record = dict(self.records.get(key, {}))
+        record.update(expires=expiry.isoformat(), chimed=True)
+        retained = {k: v for k, v in self.records.items()
+                    if datetime.fromisoformat(v['expires']) > now.astimezone(UTC)}
+        retained.pop(key, None)
+        retained = dict(sorted(retained.items(), key=lambda item: item[1]['expires'])[:255])
+        retained[key] = record
+        self.storage.set_cache('departures', 'occurrences', retained)
+        self.records = retained
+        return True
 
     def act(self, *, key, action, events, settings, now, prep=None, travel=None):
         if action not in {'snooze','dismiss','override'}:

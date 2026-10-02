@@ -98,12 +98,40 @@ test('cross-window appointments continue and all-day items paginate without trun
   const pages=agendaSections(agenda(events));
   assert.equal(pages.flatMap(p=>p.allDay).length,10);
   assert.equal(pages.filter(p=>p.allDay.length).length,1);
-  assert.equal(pages.flatMap(p=>p.items).filter(i=>i.event.id==='long').length,6);
+  assert.equal(pages.flatMap(p=>p.items).filter(i=>i.event.id==='long').length,1);
+  assert.equal(pages.find(p=>p.items.some(i=>i.event.id==='long'))?.end-Date.parse(at(10)),6*HOUR);
   assert.ok(pages.flatMap(p=>p.items).every(item=>item.top>=0&&item.top+item.height<=100.00001));
+});
+test('overlapping long events share one long ruler instead of duplicating across slides',()=>{
+  const pages=agendaSections(agenda([event('first',9,15),event('second',12,17)]));
+  const populated=pages.filter(page=>page.items.length);
+  assert.equal(populated.length,1);
+  assert.equal(populated[0].start,Date.parse(at(9)));
+  assert.equal(populated[0].end,Date.parse(at(17)));
+  assert.deepEqual(populated[0].items.map(item=>item.column),[0,1]);
+});
+test('many hourly events fit more hours per slide as the screen gets taller',()=>{
+  const events=Array.from({length:8},(_,i)=>event(`hour-${i}`,9+i,10+i));
+  const small=agendaSections(agenda(events),2,600).filter(page=>page.items.length);
+  const large=agendaSections(agenda(events),2,1080).filter(page=>page.items.length);
+  assert.equal(small.length,2);
+  assert.equal(small[0].start,Date.parse(at(9)));
+  assert.equal(small[0].end,Date.parse(at(15)));
+  assert.equal(large.length,1);
+  assert.equal(large[0].start,Date.parse(at(9)));
+  assert.equal(large[0].end,Date.parse(at(17)));
+  assert.deepEqual(large[0].items.map(item=>item.column),Array(8).fill(0));
+});
+test('a brief appointment still gets a short window inside a long event',()=>{
+  const pages=agendaSections(agenda([event('long',9,15),event('brief',12+20/60,12+25/60)]));
+  const brief=pages.find(page=>page.items.some(item=>item.event.id==='brief'))!;
+  assert.equal(brief.start,Date.parse(at(12)));
+  assert.equal(brief.end,Date.parse(at(12.5)));
+  assert.deepEqual(brief.items.map(item=>item.event.id).sort(),['brief','long']);
 });
 test('one all-day item shares the first populated time window instead of taking a blank slide',()=>{
   const pages=agendaSections(agenda([event('all',0,24,{all_day:true}),event('first',9,10)]));
-  assert.equal(pages.length,16);
+  assert.equal(pages.length,3);
   assert.equal(pages.filter(page=>page.allDay.length>0).length,1);
   assert.equal(pages.find(page=>page.allDay.length>0)?.items[0]?.event.id,'first');
   assert.equal(pages.flatMap(page=>page.allDay).length,1);
@@ -114,7 +142,7 @@ test('shared IDs on different calendars stay distinct and event colors override 
   assert.equal(calendarColor({...a,event_color:'url(evil)'}),'var(--accent)');
 });
 test('empty day retains every time section and invalid ranges are rejected',()=>{
-  assert.equal(agendaSections(agenda([])).length,16);
+  assert.equal(agendaSections(agenda([])).length,1);
   assert.deepEqual(agendaSections({...agenda([]),end:at(6)}),[]);
 });
 test('a non-hour wake and sleep still produce clock-aligned ruler boundaries',()=>{

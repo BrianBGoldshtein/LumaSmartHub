@@ -7,11 +7,11 @@ import './agenda.css';
 // Only a position survives slide cycling, never event content or private text.
 let nextAgendaSection=0;
 export function AgendaPage({snapshot,onInteraction}:{snapshot:Snapshot;onInteraction?:()=>void}){
-  const [index,setIndex]=useState(()=>nextAgendaSection),[columns,setColumns]=useState(2),[paused,setPaused]=useState(false),[fullDay,setFullDay]=useState(false),[selected,setSelected]=useState<string|null>(null);
+  const [index,setIndex]=useState(()=>nextAgendaSection),[columns,setColumns]=useState(2),[viewportHeight,setViewportHeight]=useState(600),[paused,setPaused]=useState(false),[fullDay,setFullDay]=useState(false),[selected,setSelected]=useState<string|null>(null);
   const root=useRef<HTMLElement>(null),close=useRef<HTMLButtonElement>(null),restoreFocus=useRef<HTMLButtonElement|null>(null);
   const agenda=snapshot.privacy_redacted?null:snapshot.agenda;
   const now=Date.parse(snapshot.server_time);
-  const sections=useMemo(()=>agenda?(fullDay?agendaSections(agenda,columns):upcomingAgendaSections(agenda,now,columns)):[],[agenda,columns,fullDay,now]);
+  const sections=useMemo(()=>agenda?(fullDay?agendaSections(agenda,columns,viewportHeight):upcomingAgendaSections(agenda,now,columns,viewportHeight)):[],[agenda,columns,viewportHeight,fullDay,now]);
   const page=((index%Math.max(1,sections.length))+Math.max(1,sections.length))%Math.max(1,sections.length),section=sections[page];
   const hourMarks=section?[section.start,...Array.from({length:Math.ceil((section.end-section.start)/HOUR)+2},(_,i)=>(Math.floor(section.start/HOUR)+i)*HOUR).filter(tick=>tick>section.start&&tick<section.end),section.end]:[];
   const detail=agenda?.events.find(event=>eventKey(event)===selected);
@@ -19,7 +19,7 @@ export function AgendaPage({snapshot,onInteraction}:{snapshot:Snapshot;onInterac
   const clock=(value:string|number)=>new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',timeZone:timezone}).format(new Date(value));
   const date=(value:string|number)=>new Intl.DateTimeFormat('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:timezone}).format(new Date(value));
   const weekday=(value:string|number)=>new Intl.DateTimeFormat('en-US',{weekday:'short',timeZone:timezone}).format(new Date(value));
-  useEffect(()=>{const observer=new ResizeObserver(entries=>{setColumns(entries[0].contentRect.width<620?1:2);});if(root.current)observer.observe(root.current);return()=>observer.disconnect();},[]);
+  useEffect(()=>{const observer=new ResizeObserver(entries=>{setColumns(entries[0].contentRect.width<620?1:2);setViewportHeight(Math.round(entries[0].contentRect.height));});if(root.current)observer.observe(root.current);return()=>observer.disconnect();},[]);
   useEffect(()=>{nextAgendaSection=page+1;},[page]);
   useEffect(()=>{if(paused||detail||sections.length<=1)return;const timer=setTimeout(()=>setIndex(value=>value+1),9000);return()=>clearTimeout(timer);},[paused,detail,sections.length,index]);
   useEffect(()=>{if(detail)close.current?.focus();},[selected,!!detail]);
@@ -32,7 +32,7 @@ export function AgendaPage({snapshot,onInteraction}:{snapshot:Snapshot;onInterac
       {section.allDay.length>0&&section.items.length>0&&<section className="agenda-all-day-ribbon" aria-label="All-day event">{section.allDay.map(event=><button key={eventKey(event)} style={style(event)} onClick={e=>{restoreFocus.current=e.currentTarget;setSelected(eventKey(event));}}><strong>{event.summary}</strong><span>{event.calendar_name||'All day'} · All day</span></button>)}</section>}
       {section.allDay.length>0&&!section.items.length ? <section className={`agenda-all-day${section.dense?' is-dense':''}`} aria-label="All-day events">{section.allDay.map(event=><button key={eventKey(event)} style={style(event)} onClick={e=>{restoreFocus.current=e.currentTarget;setSelected(eventKey(event));}}><strong>{event.summary}</strong><span>{event.calendar_name||'All day'}</span></button>)}</section>:
       <section className={`agenda-timeline${section.end-section.start<=60*60000?' is-zoom':''}`} aria-label={`Calendar from ${clock(section.start)} to ${clock(section.end)}`}>
-        {Array.from({length:Math.ceil((section.end-section.start)/(5*60000))-1},(_,i)=>section.start+(i+1)*5*60000).filter(tick=>tick<section.end&&tick%HOUR!==0).map(tick=><div className="agenda-five-minute" key={tick} style={{top:`${(tick-section.start)/(section.end-section.start)*100}%`}} aria-hidden="true"/>)}
+        {section.end-section.start<=HOUR&&Array.from({length:Math.ceil((section.end-section.start)/(5*60000))-1},(_,i)=>section.start+(i+1)*5*60000).filter(tick=>tick<section.end&&tick%HOUR!==0).map(tick=><div className="agenda-five-minute" key={tick} style={{top:`${(tick-section.start)/(section.end-section.start)*100}%`}} aria-hidden="true"/>)}
         {hourMarks.map(tick=><div className="agenda-hour" key={tick} style={{top:`${(tick-section.start)/(section.end-section.start)*100}%`}}><time>{clock(tick)}</time><span/></div>)}
         <div className="agenda-appointments"><div className="agenda-appointment-track" style={{'--agenda-lanes':Math.max(1,...section.items.map(item=>item.columns))} as CSSProperties}>{section.items.map(item=><button key={eventKey(item.event)} className={`agenda-appointment${item.height<28?' is-compact':''}${item.event.summary.length>44?' is-long-title':''}${item.event.summary.length>90?' is-verbose':''}${Date.parse(item.event.end)<=now?' is-past':''}`} style={{...style(item.event),'--agenda-top':`${item.top}%`,'--agenda-height':`${item.height}%`,'--agenda-left':`${item.column/item.columns*100}%`,'--agenda-width':`${100/item.columns}%`} as CSSProperties} onClick={e=>{restoreFocus.current=e.currentTarget;setSelected(eventKey(item.event));}} aria-label={`${item.event.summary}, ${clock(item.event.start)} to ${clock(item.event.end)}, ${item.event.calendar_name||'Calendar'}`}>
           <strong>{item.event.summary}</strong><time>{clock(item.event.start)} – {clock(item.event.end)}</time>

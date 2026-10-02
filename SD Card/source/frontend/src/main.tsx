@@ -60,7 +60,7 @@ function initialDemoSnapshot(): Snapshot {
     },
     privacy_redacted: privateMode,
   };
-  result.agenda=privateMode?null:agendaDemo(result.calendar,['packed','crowded','short'].includes(demoParameters.get('fixture')||''),demoParameters.get('fixture')==='crowded',demoParameters.get('fixture')==='short');
+  result.agenda=privateMode?null:agendaDemo(result.calendar,['packed','crowded','short'].includes(demoParameters.get('fixture')||''),demoParameters.get('fixture')==='crowded',demoParameters.get('fixture')==='short',demoParameters.get('fixture')==='long');
   if(['packed','crowded','short'].includes(demoParameters.get('fixture')||''))result.calendar=result.agenda?.events.filter(event=>Date.parse(event.end)>Date.now())||[];
   return result;
 }

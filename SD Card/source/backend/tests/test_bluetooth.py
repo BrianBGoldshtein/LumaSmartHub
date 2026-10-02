@@ -39,6 +39,17 @@ async def test_missing_bond_stays_private_and_reports_fixed_status():
 
 
 @pytest.mark.asyncio
+async def test_stalled_bluez_object_query_times_out_instead_of_blocking_reconnect():
+    async def no_reply():
+        await asyncio.Event().wait()
+
+    manager = SimpleNamespace(call_get_managed_objects=AsyncMock(side_effect=no_reply))
+    with pytest.raises(asyncio.TimeoutError):
+        await wait_for_trusted_connection(manager, "/phone", query_timeout=0.02)
+    manager.call_get_managed_objects.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_periodic_discovery_checks_only_saved_phone_and_releases_its_scan():
     def snapshot(connected):
         return {"/phone": {"org.bluez.Device1": {"Connected": SimpleNamespace(value=connected)}},

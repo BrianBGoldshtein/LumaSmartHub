@@ -73,11 +73,14 @@ async def scan_for_paired_phone(manager, adapter, phone_path: str, *, phone_addr
             await asyncio.wait_for(adapter.call_stop_discovery(), 5)
 
 
-async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: float = 12) -> dict:
+async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: float = 12,
+                                      query_timeout: float = 5) -> dict:
     """BlueZ can report Connected before iOS GATT service discovery finishes."""
     deadline = monotonic() + timeout
     while True:
-        objects = await manager.call_get_managed_objects()
+        # A stuck BlueZ ObjectManager reply must not strand the reconnect
+        # worker forever. Let the outer loop release this bus and retry.
+        objects = await asyncio.wait_for(manager.call_get_managed_objects(), query_timeout)
         device = objects.get(phone_path, {}).get("org.bluez.Device1")
         if device is None:
             raise BluetoothStatusError("Saved iPhone bond is missing from Bluetooth")
@@ -235,14 +238,15 @@ class BluetoothRuntime:
         from dbus_next import BusType, Variant
         from dbus_next.aio import MessageBus
 
-        bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        bus = MessageBus(bus_type=BusType.SYSTEM)
         try:
+            await asyncio.wait_for(bus.connect(), 10)
             async def interface(path, name):
                 introspection = await asyncio.wait_for(bus.introspect("org.bluez", path), 10)
                 return bus.get_proxy_object("org.bluez", path, introspection).get_interface(name)
 
             manager = await interface("/", "org.freedesktop.DBus.ObjectManager")
-            objects = await manager.call_get_managed_objects()
+            objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
             adapter_path = next((path for path, obj in objects.items() if "org.bluez.Adapter1" in obj), None)
             phone_path = next((path for path, obj in objects.items() if "org.bluez.Device1" in obj and plain(obj["org.bluez.Device1"]).get("Address", "").casefold() == address.casefold()), None)
             if not phone_path:
@@ -264,7 +268,7 @@ class BluetoothRuntime:
                             # Some controllers cannot scan while another radio
                             # operation is active. Still attempt the direct bond.
                             pass
-                        objects = await manager.call_get_managed_objects()
+                        objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
                         properties = plain(objects.get(phone_path, {}).get("org.bluez.Device1", {}))
                 if not all(properties.get(key) for key in ("Paired", "Bonded", "Trusted")):
                     raise BluetoothStatusError("iPhone bond or trust was lost")
@@ -372,7 +376,8 @@ class BluetoothRuntime:
                     continue
         finally:
             self.scene_authorized = None
-            bus.disconnect()
+            with suppress(Exception):
+                bus.disconnect()
 
 
 async def prefer_le_bearer(properties_interface, properties: dict) -> bool:

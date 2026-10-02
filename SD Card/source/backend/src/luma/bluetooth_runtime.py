@@ -31,7 +31,8 @@ class BluetoothStatusError(Exception):
     """A fixed, user-safe explanation; never include BlueZ exception text."""
 
 
-async def scan_for_paired_phone(manager, adapter, phone_path: str, *, pause=asyncio.sleep) -> bool:
+async def scan_for_paired_phone(manager, adapter, phone_path: str, *, phone_address: str | None = None,
+                                pause=asyncio.sleep) -> bool:
     """Briefly refresh BlueZ's LE view before a normal bonded reconnect.
 
     Discovery is only a hint that a device may be reachable. It never changes
@@ -41,12 +42,26 @@ async def scan_for_paired_phone(manager, adapter, phone_path: str, *, pause=asyn
     """
     from dbus_next import Variant
 
-    await asyncio.wait_for(adapter.call_set_discovery_filter({
+    basic_filter = {
         "Transport": Variant("s", "le"), "DuplicateData": Variant("b", False),
-    }), 5)
+    }
+    if phone_address:
+        # BlueZ can initiate a connection as soon as the selected, bonded
+        # iPhone advertises. A full address pattern excludes other phones.
+        try:
+            await asyncio.wait_for(adapter.call_set_discovery_filter({
+                **basic_filter, "Pattern": Variant("s", phone_address),
+                "AutoConnect": Variant("b", True),
+            }), 5)
+        except Exception:
+            # Older BlueZ builds may reject AutoConnect. Preserve the LE scan
+            # and explicit Device1.Connect path rather than losing both.
+            await asyncio.wait_for(adapter.call_set_discovery_filter(basic_filter), 5)
+    else:
+        await asyncio.wait_for(adapter.call_set_discovery_filter(basic_filter), 5)
     await asyncio.wait_for(adapter.call_start_discovery(), 5)
     try:
-        for _ in range(6):
+        for _ in range(12):
             await pause(0.5)
             objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
             device = objects.get(phone_path, {}).get("org.bluez.Device1")
@@ -238,13 +253,13 @@ class BluetoothRuntime:
             device = await interface(phone_path, "org.bluez.Device1")
             device_props = await interface(phone_path, "org.freedesktop.DBus.Properties")
             if not properties.get("Connected"):
-                if monotonic() - self.last_discovery >= 45:
+                if monotonic() - self.last_discovery >= 30:
                     self.last_discovery = monotonic()
                     if adapter_path:
                         self.status = "Looking for paired iPhone"
                         try:
                             adapter = await interface(adapter_path, "org.bluez.Adapter1")
-                            await scan_for_paired_phone(manager, adapter, phone_path)
+                            await scan_for_paired_phone(manager, adapter, phone_path, phone_address=address)
                         except Exception:
                             # Some controllers cannot scan while another radio
                             # operation is active. Still attempt the direct bond.
@@ -421,7 +436,8 @@ async def recover_stalled_services(manager, device, properties_interface, phone_
                 # A fresh LE advertisement helps BlueZ choose the GATT bearer
                 # when an iPhone also has a BR/EDR bond. Discovery is bounded
                 # and belongs only to this D-Bus connection.
-                await scan_for_paired_phone(manager, adapter, phone_path, pause=pause)
+                await scan_for_paired_phone(manager, adapter, phone_path,
+                                            phone_address=fresh.get('Address'), pause=pause)
             except Exception:
                 pass
         objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)

@@ -60,7 +60,35 @@ async def test_discovery_timeout_releases_scan_without_claiming_phone_presence()
     adapter = SimpleNamespace(call_set_discovery_filter=AsyncMock(), call_start_discovery=AsyncMock(),
                               call_stop_discovery=AsyncMock())
     assert not await scan_for_paired_phone(manager, adapter, "/phone", pause=AsyncMock())
-    assert manager.call_get_managed_objects.await_count == 6
+    assert manager.call_get_managed_objects.await_count == 12
+    adapter.call_stop_discovery.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_selected_bonded_phone_gets_scoped_le_autoconnect_scan():
+    props={"Connected":SimpleNamespace(value=True)}
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(return_value={"/phone":{"org.bluez.Device1":props}}))
+    adapter=SimpleNamespace(call_set_discovery_filter=AsyncMock(),call_start_discovery=AsyncMock(),
+                            call_stop_discovery=AsyncMock())
+    assert await scan_for_paired_phone(manager,adapter,"/phone",
+                                       phone_address="AA:BB:CC:DD:EE:FF",pause=AsyncMock())
+    selected=adapter.call_set_discovery_filter.await_args.args[0]
+    assert selected['Transport'].value=='le'
+    assert selected['Pattern'].value=='AA:BB:CC:DD:EE:FF'
+    assert selected['AutoConnect'].value is True
+    adapter.call_stop_discovery.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unsupported_autoconnect_falls_back_to_plain_le_discovery():
+    manager=SimpleNamespace(call_get_managed_objects=AsyncMock(return_value={}))
+    adapter=SimpleNamespace(call_set_discovery_filter=AsyncMock(side_effect=[RuntimeError('unsupported'),None]),
+                            call_start_discovery=AsyncMock(),call_stop_discovery=AsyncMock())
+    assert not await scan_for_paired_phone(manager,adapter,"/phone",
+                                           phone_address="AA:BB:CC:DD:EE:FF",pause=AsyncMock())
+    assert adapter.call_set_discovery_filter.await_count==2
+    fallback=adapter.call_set_discovery_filter.await_args.args[0]
+    assert fallback['Transport'].value=='le' and 'AutoConnect' not in fallback
     adapter.call_stop_discovery.assert_awaited_once()
 
 

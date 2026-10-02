@@ -142,9 +142,28 @@ def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> 
         return None, "negated"
     constrained_command = parse_local_command(constrained) if constrained else None
     varied_command = parse_local_command(varied)
+    if re.search(r'\b(?:titled|called|named)\b', varied) and varied_command is None:
+        # Do not silently start an unnamed timer when the requested title was
+        # truncated or failed recognition.
+        return None, "unmatched"
     if constrained_command and varied_command:
         if (constrained_command.name, constrained_command.value) == (varied_command.name, varied_command.value):
             return varied, "agree"
+        if (constrained_command.name == varied_command.name and
+                constrained_command.name.value == 'start_timer'):
+            def seconds(value):
+                if type(value) is int:
+                    return value * 60
+                if isinstance(value, dict):
+                    return value.get('seconds', value.get('minutes', 0) * 60)
+                return None
+            if (seconds(constrained_command.value) == seconds(varied_command.value) and
+                    isinstance(varied_command.value, dict) and
+                    varied_command.value.get('label', 'Timer') != 'Timer' and
+                    (type(constrained_command.value) is int or
+                     isinstance(constrained_command.value, dict) and
+                     constrained_command.value.get('label', 'Timer') == 'Timer')):
+                return varied, "free_title"
         return None, "conflict"
     if constrained_command:
         return constrained, "constrained"

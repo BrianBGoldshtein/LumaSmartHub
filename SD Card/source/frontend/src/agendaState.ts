@@ -1,13 +1,31 @@
 import type {CalendarEvent,Snapshot} from './types';
 
 export const HOUR=3600000;
+const MINUTE=60000;
 export type PlacedEvent={event:CalendarEvent;top:number;height:number;column:number;columns:number};
 export type AgendaSection={start:number;end:number;items:PlacedEvent[];allDay:CalendarEvent[];dense:boolean};
 export const calendarColor=(event:CalendarEvent)=>/^#[0-9a-f]{6}$/i.test(event.event_color||event.calendar_color||'')?event.event_color||event.calendar_color!:'var(--accent)';
 export const eventKey=(event:CalendarEvent)=>`${event.calendar_id}:${event.id}`;
 
-// Minimum visual duration keeps short events legible. Column packing uses that
-// same visual extent, so adjacent five-minute appointments never paint over one another.
+/** Every ruler begins on a clock boundary. Brief appointments get fixed half-hours. */
+function timeWindows(events:CalendarEvent[],start:number,end:number):{start:number;end:number}[]{
+  const windows:{start:number;end:number}[]=[];
+  const short=events.filter(event=>!event.all_day).map(event=>({start:Date.parse(event.start),end:Date.parse(event.end)}))
+    .filter(event=>event.end>event.start&&event.end-event.start<=30*MINUTE);
+  // Wake/sleep can fall between ticks; frame the visible ruler on whole hours.
+  const first=Math.floor(start/HOUR)*HOUR,last=Math.ceil(end/HOUR)*HOUR;
+  for(let cursor=first;cursor<last;){
+    const hourEnd=(Math.floor(cursor/HOUR)+1)*HOUR;
+    const hasBrief=short.some(event=>event.start<hourEnd&&event.end>cursor);
+    const halfHourEnd=(Math.floor(cursor/(30*MINUTE))+1)*30*MINUTE;
+    const next=Math.min(hourEnd,hasBrief?halfHourEnd:hourEnd);
+    windows.push({start:cursor,end:next});cursor=next;
+  }
+  return windows;
+}
+
+// A card's height is its real time interval. Even a one-minute event must not
+// manufacture a collision with a later appointment just to gain visual space.
 export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns=2):AgendaSection[]{
   maxColumns=Math.max(1,Math.floor(maxColumns));
   const start=Date.parse(agenda.start),end=Date.parse(agenda.end);
@@ -17,12 +35,14 @@ export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns
   // A lone all-day item does not deserve an otherwise empty full-screen slide.
   // Pair it with the first populated time window, keeping its full-detail tap.
   if(allDay.length>1)sections.push({start,end,items:[],allDay,dense:allDay.length>3});
-  for(let from=start;from<end;from+=4*HOUR){
-    const to=Math.min(end,from+4*HOUR),duration=to-from,minHeight=Math.min(80*60000,duration);
-    const items=agenda.events.filter(e=>!e.all_day && Date.parse(e.start)<to && Date.parse(e.end)>from)
+  for(const window of timeWindows(agenda.events,start,end)){
+    const from=window.start,to=window.end,duration=to-from;
+    const items=agenda.events.filter(e=>!e.all_day && Date.parse(e.end)>Date.parse(e.start) && Date.parse(e.start)<to && Date.parse(e.end)>from)
       .map(event=>{
-        const top=Math.max(0,Math.min(Date.parse(event.start)-from,duration-minHeight));
-        const bottom=Math.min(duration,Math.max(Date.parse(event.end)-from,top+minHeight));
+        // Never pull an event upward to make its card fit: its top edge is the
+        // exact start time (or the section boundary for an ongoing event).
+        const top=Math.max(0,Math.min(Date.parse(event.start)-from,duration));
+        const bottom=Math.min(duration,Date.parse(event.end)-from);
         return {event,top:top/duration*100,height:(bottom-top)/duration*100,column:0,columns:1};
       }).sort((a,b)=>a.top-b.top||b.height-a.height||eventKey(a.event).localeCompare(eventKey(b.event)));
     let group:PlacedEvent[]=[],groupEnd=0,ends:number[]=[];
@@ -34,8 +54,8 @@ export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns
       item.column=column;ends[column]=item.top+item.height;group.push(item);groupEnd=Math.max(groupEnd,ends[column]);
     }
     finish();
-    // Never paginate the same four-hour interval into competing partial
-    // schedules. Dense overlaps switch to a scrollable same-slide overview.
+    // Every two-hour interval is one complete schedule. Dense overlaps stay
+    // on the same time axis, with horizontal scrolling for extra lanes.
     sections.push({start:from,end:to,allDay:[],items,
       dense:items.some(item=>item.columns>maxColumns)});
   }
@@ -62,7 +82,9 @@ export function agendaDemo(events:CalendarEvent[],packed=false,crowded=false,sho
   const samples=names.map((summary,i)=>({id:`packed-${i}`,calendar_id:['work','personal','school'][i%3],calendar_name:['Work','Personal','School'][i%3],calendar_color:['#7986cb','#33b679','#f6bf26'][i%3],summary,start:at([7,9,10,12,14,15,18,21][i]),end:at([8,11,11,13,15,16,19,22][i]),all_day:false}));
   const extra=crowded?Array.from({length:12},(_,i)=>({...samples[1],id:`overlap-${i}`,summary:`Concurrent appointment ${i+1}`,calendar_id:`calendar-${i}`,start:at(9),end:at(10)})):[];
   const brief=short?[{...samples[0],id:'short-1',summary:'CS 279: Prof. Dmor Office Hours',start:at(9),end:new Date(Date.parse(at(9))+25*60000).toISOString()},
-    {...samples[1],id:'short-2',summary:'A longer departmental planning session with everyone',start:new Date(Date.parse(at(9))+30*60000).toISOString(),end:new Date(Date.parse(at(9))+50*60000).toISOString()}]:[];
+    {...samples[2],id:'short-overlap',summary:'Team check-in',start:new Date(Date.parse(at(9))+15*MINUTE).toISOString(),end:new Date(Date.parse(at(9))+40*MINUTE).toISOString()},
+    {...samples[1],id:'short-2',summary:'A longer departmental planning session with everyone',start:new Date(Date.parse(at(9))+30*60000).toISOString(),end:new Date(Date.parse(at(9))+50*60000).toISOString()},
+    ...[20,25,30].map((minute,i)=>({...samples[i],id:`five-minute-${i}`,summary:['Quick check-in','Call Maya','Next appointment'][i],start:new Date(Date.parse(at(10))+minute*MINUTE).toISOString(),end:new Date(Date.parse(at(10))+(minute+5)*MINUTE).toISOString()}))]:[];
   const chosen=packed?[...(short?brief:samples),...extra,{...samples[0],id:'all-day',summary:'Campus open day',start:at(0),end:at(24),all_day:true}]:events.filter(e=>Date.parse(e.start)<Date.parse(at(24)) && Date.parse(e.end)>Date.parse(at(0)));
   return {date:new Intl.DateTimeFormat('en-CA').format(now),start:at(7),end:at(23),wake:at(7),sleep:at(23),stale:false,events:chosen};
 }

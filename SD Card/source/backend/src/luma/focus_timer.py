@@ -43,7 +43,7 @@ class FocusTimer:
                 for key in ('duration', 'remaining'):
                     if type(raw.get(key)) not in (int,float) or not math.isfinite(raw[key]) or not 0 <= raw[key] <= 14400:
                         raise ValueError()
-                if raw['duration'] < 60 or raw['remaining'] > raw['duration']:
+                if raw['duration'] < 1 or raw['remaining'] > raw['duration']:
                     raise ValueError()
                 _date(raw['saved_at'])
                 if raw['status'] == 'running':
@@ -126,24 +126,27 @@ class FocusTimer:
                 value = {'minutes': focus if value == 'focus' else rest, 'label': 'Focus' if value == 'focus' else 'Break'}
             if type(value) is int:
                 value = {'minutes': value}
-            if not isinstance(value, dict) or set(value)-{'minutes','label','replace_id'}:
-                raise ValueError('Use a timer duration from 1 to 240 minutes.')
+            if not isinstance(value, dict) or set(value)-{'minutes','seconds','label','replace_id'}:
+                raise ValueError('Use a timer duration from 1 second to 4 hours.')
             minutes, label = value.get('minutes'), value.get('label','Timer')
-            if type(minutes) is not int or not 1 <= minutes <= 240:
-                raise ValueError('Use a timer duration from 1 to 240 minutes.')
+            if ('seconds' in value) == ('minutes' in value):
+                raise ValueError('Choose minutes or seconds for the timer.')
+            seconds = value['seconds'] if 'seconds' in value else minutes * 60 if type(minutes) is int else None
+            if type(seconds) is not int or not 1 <= seconds <= 14400:
+                raise ValueError('Use a timer duration from 1 second to 4 hours.')
             if not isinstance(label,str) or not 1 <= len(label.strip()) <= 40 or any(ord(c)<32 for c in label):
                 raise ValueError('Use a timer label of 1 to 40 characters.')
-            if source in {'voice','siri'} and (label not in {'Focus','Break','Timer'} or 'replace_id' in value):
-                raise ValueError('Replace timers and edit labels on the screen.')
+            if source in {'voice','siri'} and 'replace_id' in value:
+                raise ValueError('Replace timers on the screen.')
             active = self.data['status'] in {'running','paused'}
             if active and value.get('replace_id') != self.data['id']:
                 return CommandResult(False, 'A timer is already active. Confirm replacement on the screen.',
                                      data={'overlay':'timer','confirmation_required':True})
             if 'replace_id' in value and (not active or value['replace_id'] != self.data['id']):
                 return CommandResult(False, 'The timer changed. Review it before starting again.', data={'overlay':'timer'})
-            self.end = self.clock()+minutes*60
-            self.data.update(status='running', id=str(uuid4()), label=label.strip(), duration=minutes*60,
-                             deadline=(now+timedelta(minutes=minutes)).isoformat(), trusted=self.trusted)
+            self.end = self.clock()+seconds
+            self.data.update(status='running', id=str(uuid4()), label=label.strip(), duration=seconds,
+                             deadline=(now+timedelta(seconds=seconds)).isoformat(), trusted=self.trusted)
             self.chime_until = None
             self.note = ''
         elif name == 'pause_timer' and self.data['status'] == 'running':

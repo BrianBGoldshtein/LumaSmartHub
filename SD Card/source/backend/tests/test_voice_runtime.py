@@ -211,6 +211,21 @@ def test_dual_decoder_keeps_known_command_when_free_dictation_is_bad():
         "what's the time", "free")
 
 
+def test_dual_decoder_allows_a_title_only_when_timer_durations_agree():
+    assert choose_command('start a thirty second timer',
+                          'hey luma start a thirty second timer titled tea', 'hey luma') == (
+        'start a thirty second timer titled tea', 'free_title')
+    assert choose_command('start a thirty minute timer',
+                          'hey luma start a timer for thirty minutes called laundry', 'hey luma') == (
+        'start a timer for thirty minutes called laundry', 'free_title')
+    assert choose_command('start a thirty minute timer',
+                          'hey luma start a timer for forty minutes called laundry', 'hey luma') == (
+        None, 'conflict')
+    assert choose_command('start a thirty minute timer',
+                          'hey luma start a timer for thirty minutes called', 'hey luma') == (
+        None, 'unmatched')
+
+
 def test_dual_decoder_never_guesses_conflicting_actions_or_negations():
     assert choose_command("set brightness to fifty", "hey luma set brightness to sixty", "hey luma") == (
         None, "conflict")

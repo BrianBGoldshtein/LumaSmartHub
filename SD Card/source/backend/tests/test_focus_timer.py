@@ -156,11 +156,31 @@ def test_api_timer_privacy_and_remote_bounds(tmp_path):
 def test_voice_and_shortcut_timer_language():
     assert parse_local_command('hey luma start a twenty five minute timer').value==25
     assert parse_local_command('start a 45 minute timer').value==45
-    assert parse_local_command('start a 200 minute timer') is None
+    assert parse_local_command('start a 200 minute timer').value==200
+    assert parse_local_command('start a 241 minute timer') is None
+    assert parse_local_command('start a 45 second timer').value=={'seconds':45,'label':'Timer'}
+    assert parse_local_command('start a timer for two hours titled Laundry').value=={'seconds':7200,'label':'laundry'}
+    assert parse_local_command('set timer for five mins called tea').value=={'seconds':300,'label':'tea'}
+    assert parse_local_command('start a timer for one minute named bread').value=={'seconds':60,'label':'bread'}
     assert parse_local_command('start focus timer').value=='focus'
     assert parse_local_command('pause timer').name.value=='pause_timer'
     assert 'hey luma start a fifteen minute timer' in command_grammar()
     assert parse_command(b'{"name":"start_timer","value":30}').source=='siri'
+
+
+def test_voice_named_seconds_timer_persists_and_cannot_replace_existing(timer):
+    t,c=timer
+    command=parse_local_command('hey luma start a timer for thirty seconds called tea')
+    assert command is not None
+    assert t.execute(command.name.value,command.value,now=NOW,source='voice').accepted
+    assert t.snapshot()['duration_seconds']==30
+    assert t.snapshot()['label']=='tea'
+    recovered=FocusTimer(t.storage,clock=c)
+    recovered.tick(NOW+timedelta(seconds=10),trusted=True)
+    assert recovered.snapshot()['remaining_seconds']==20
+    other=parse_local_command('start a timer for two hours titled laundry')
+    assert not t.execute(other.name.value,other.value,now=NOW,source='voice').accepted
+    assert t.snapshot()['label']=='tea'
 
 
 def test_chime_claim_and_bridge_failures_do_not_repeat():

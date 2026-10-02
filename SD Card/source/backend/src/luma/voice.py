@@ -39,6 +39,29 @@ def _spoken_number(value: str) -> int | None:
     return None
 
 
+def _timer_command(text: str) -> Command | None:
+    """Extract a bounded timer duration and optional name from local speech."""
+    match = re.fullmatch(
+        r'(?:start|set|create)(?: a)? (?:timer (?:for|of) |)(.+?)\s*'
+        r'(seconds?|secs?|minutes?|mins?|hours?|hrs?)'
+        r'(?:\s+timer)?(?:\s+(?:titled|called|named)\s+(.+))?', text,
+    )
+    if not match:
+        return None
+    amount = _spoken_number(match[1])
+    unit = match[2]
+    seconds = amount * (3600 if unit.startswith(('hour', 'hr')) else
+                        60 if unit.startswith(('minute', 'min')) else 1) if amount is not None else None
+    if seconds is None or not 1 <= seconds <= 14400:
+        return None
+    label = (match[3] or '').strip(' .,!?')
+    if match[3] and (not 1 <= len(label) <= 40 or any(ord(char) < 32 for char in label)):
+        return None
+    if not label and seconds % 60 == 0:
+        return Command(CommandName.START_TIMER, seconds // 60, 'voice')
+    return Command(CommandName.START_TIMER, {'seconds': seconds, 'label': label or 'Timer'}, 'voice')
+
+
 def command_grammar(wake_phrase: str = "hey luma") -> list[str]:
     """Constrain the small offline model to supported device commands, not dictation."""
     commands = [
@@ -52,6 +75,9 @@ def command_grammar(wake_phrase: str = "hey luma") -> list[str]:
     ]
     commands += [f"set {control} to {number}" for control in ("brightness", "volume") for number in NUMBER_WORDS]
     commands += [f"start a {number} minute timer" for number in TIMER_MINUTES]
+    commands += [f"start a {number} second timer" for number in TIMER_MINUTES]
+    commands += [f"start a {number} hour timer" for number in ('one', 'two', 'three', 'four')]
+    commands += [f"start a timer for {number} minutes" for number in TIMER_MINUTES]
     commands += [phrase for phrases in QUERY_PHRASES.values() for phrase in phrases]
     return ["[unk]", wake_phrase, *commands, *(f"{wake_phrase} {command}" for command in commands)]
 
@@ -117,16 +143,8 @@ def parse_local_command(transcript: str) -> Command | None:
         return Command(CommandName.START_TIMER, 'focus' if 'focus' in text else 'break', 'voice')
     if text in {'pause timer','resume timer','cancel timer','show timer','dismiss timer'}:
         return Command(CommandName(text.replace(' ', '_')), source='voice')
-    timer_match = re.fullmatch(r'(?:start|set)(?: a)? (.+?)(?:-| )(minute|minutes|hour|hours) timer', text)
-    if timer_match:
-        amount=_spoken_number(timer_match[1])
-        minutes=amount*(60 if timer_match[2].startswith('hour') else 1) if amount is not None else None
-        return Command(CommandName.START_TIMER, minutes, 'voice') if minutes is not None and 1<=minutes<=120 else None
-    timer_match = re.fullmatch(r'(?:start|set)(?: a)? timer (?:for|of) (.+?) (minute|minutes|hour|hours)', text)
-    if timer_match:
-        amount=_spoken_number(timer_match[1])
-        minutes=amount*(60 if timer_match[2].startswith('hour') else 1) if amount is not None else None
-        return Command(CommandName.START_TIMER, minutes, 'voice') if minutes is not None and 1<=minutes<=120 else None
+    if timer := _timer_command(text):
+        return timer
     if "good morning" in text:
         return Command(CommandName.GOOD_MORNING, source="voice")
     if "good night" in text:

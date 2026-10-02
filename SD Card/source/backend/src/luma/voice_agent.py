@@ -242,6 +242,17 @@ def _reset_gapped_decoding(chunks: queue.Queue, constrained, unrestricted,
     _discard_pending_audio(chunks)
 
 
+def _reset_voice_transition(chunks: queue.Queue, constrained, unrestricted,
+                            preprocessor: AudioPreprocessor, gate: WakeGate,
+                            segmenter: CalibrationSegmenter,
+                            utterance: list[bytes], raw_utterance: list[bytes]) -> None:
+    """Isolate calibration/trial/mode changes from audio captured before them."""
+    _reset_gapped_decoding(chunks, constrained, unrestricted, preprocessor, gate)
+    segmenter.reset()
+    utterance.clear()
+    raw_utterance.clear()
+
+
 def main() -> None:
     def stop(signum, frame):
         raise SystemExit(0)
@@ -424,13 +435,12 @@ def main() -> None:
                             response.raise_for_status()
                             fresh = response.json()
                             if (fresh["active"], fresh["session"]) != (calibration["active"], calibration["session"]):
-                                recognizer.Reset()
-                                utterance.clear()
-                                raw_utterance.clear()
-                                calibration_segmenter.reset()
+                                _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                                        preprocessor, gate, calibration_segmenter,
+                                                        utterance, raw_utterance)
+                                seen_drops = capture.dropped_frames
                                 early_wake = False
                                 trial_partial_wake = False
-                                gate.until = 0
                                 meter_energy = meter_count = meter_peak = 0
                                 meter_floors.clear()
                                 meter_low_fractions.clear()
@@ -443,13 +453,12 @@ def main() -> None:
                                 # A call trial never consumes audio captured
                                 # before it started and never executes words
                                 # decoded while it was active.
-                                recognizer.Reset()
-                                free_recognizer.Reset()
-                                utterance.clear()
-                                raw_utterance.clear()
+                                _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                                        preprocessor, gate, calibration_segmenter,
+                                                        utterance, raw_utterance)
+                                seen_drops = capture.dropped_frames
                                 early_wake = False
                                 trial_partial_wake = False
-                                gate.until = 0
                                 phase('idle')
                             old_speaker_trial = calibration.get('speaker_trial') or {}
                             new_speaker_trial = fresh.get('speaker_trial') or {}
@@ -457,14 +466,10 @@ def main() -> None:
                                     (new_speaker_trial.get('active'), new_speaker_trial.get('session'))):
                                 # Nothing heard before explicit owner consent
                                 # can enter a speaker sample or execute later.
-                                recognizer.Reset()
-                                free_recognizer.Reset()
-                                utterance.clear()
-                                raw_utterance.clear()
-                                calibration_segmenter.reset()
+                                _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                                        preprocessor, gate, calibration_segmenter,
+                                                        utterance, raw_utterance)
                                 early_wake = trial_partial_wake = False
-                                gate.until = 0
-                                _discard_pending_audio(chunks)
                                 seen_drops = capture.dropped_frames
                                 phase('idle')
                             if not new_speaker_trial.get('active'):
@@ -473,13 +478,12 @@ def main() -> None:
                             next_wake_mode = read_wake_mode(fresh.get('wake_confirmation'))
                             if next_wake_mode != wake_mode:
                                 wake_mode = next_wake_mode
-                                recognizer.Reset()
-                                free_recognizer.Reset()
-                                utterance.clear()
-                                raw_utterance.clear()
+                                _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                                        preprocessor, gate, calibration_segmenter,
+                                                        utterance, raw_utterance)
+                                seen_drops = capture.dropped_frames
                                 early_wake = False
                                 trial_partial_wake = False
-                                gate.until = 0
                                 phase("listening" if fresh["active"] else "idle")
                             adaptations = PhraseAdaptations(fresh.get('phrase_adaptations'))
                             target_profile = read_profile(fresh.get('audio_profile'))

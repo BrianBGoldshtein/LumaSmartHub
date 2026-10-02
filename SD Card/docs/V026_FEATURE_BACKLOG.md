@@ -122,6 +122,8 @@ The guided check also distinguishes an **all-zero capture stream** from a merely
 
 The call and owner-voice trials now freeze capture gain and audio-profile resets so one result cannot silently mix processing conditions. Turning the microphone off ends the call trial and discards an active owner-voice trial. Guided calibration may still change gain, but each change restarts its room baseline and discards earlier acoustic measurements. These are source-tested invariants, not yet Pi-tested audio behavior.
 
+The live voice loop now treats the beginning/end of a guided check, call trial, owner-voice trial, and wake-filter mode switch as audio boundaries: both recognizers, the pre-recognizer filter state, acoustic segmenter, wake window, and buffered utterances are reset, and already queued mic frames are discarded while preserving capture-error/EOF markers. Previously the guided-check boundary left the unrestricted recognizer and queued pre-check audio intact, allowing stale words to contaminate the first check or a phrase tail to be interpreted after a check ended. A focused runtime test covers the common reset helper and terminal-marker preservation. The actual timing of these transitions still needs a Pi trial, especially while someone is speaking as a check starts or ends.
+
 ### Remaining audio hypotheses to discriminate on hardware
 
 | Stage | Possible cause | Evidence needed |

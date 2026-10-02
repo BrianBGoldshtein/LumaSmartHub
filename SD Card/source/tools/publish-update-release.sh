@@ -72,6 +72,9 @@ elif [[ "${VERSION}" == "0.2.5" ]]; then
 elif [[ "${VERSION}" == "0.2.6" ]]; then
   # The owner's installed beta is 0.2.5; exercise that exact upgrade path.
   QUALIFY_FROM="0.2.5"
+elif [[ "${VERSION}" == "0.2.7" ]]; then
+  # Exercise the next beta against the 0.2.6 app release, not the old image.
+  QUALIFY_FROM="0.2.6"
 fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"

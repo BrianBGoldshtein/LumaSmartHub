@@ -684,13 +684,16 @@ def test_gain_tuning_is_bounded_and_transcript_is_ephemeral():
 
 def test_hardware_gain_change_restarts_room_baseline_and_discards_old_acoustics():
     calibration = VoiceCalibration()
-    session = calibration.start(100, ambient_seconds=4)['session']
+    started = calibration.start(100, ambient_seconds=4)
+    session = started['session']
     for now in (101, 102, 103, 104, 105):
         calibration.report_level(session, .001, .01, now, floor_rms=.001)
     assert calibration.submit(session, PHRASES[0], .025, .25, 106)['completed'] == 1
     assert calibration.room_floors and calibration.results
     calibration.record_gain(43)
     restarted = calibration.status(107)
+    assert restarted['session'] == session
+    assert restarted['capture_revision'] == started['capture_revision'] + 1
     assert restarted['completed'] == restarted['attempts'] == 0
     assert restarted['ambient_remaining'] == 4
     assert restarted['audio_candidate'] is None

@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from luma.api import create_app
 from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
-from luma.voice_agent import (_arm_call_trial, _discard_pending_audio, _reset_gapped_decoding,
+from luma.voice_agent import (_arm_call_trial, _calibration_boundary_changed,
+                              _discard_pending_audio, _reset_gapped_decoding,
                               _reset_voice_transition,
                               calibration_decoding_payload,
                               choose_command, partial_has_wake, select_command)
@@ -155,6 +156,13 @@ def test_agent_accepts_only_matching_armed_call_trial_acknowledgment():
     with httpx.Client(transport=httpx.MockTransport(wrong_session), base_url='http://127.0.0.1') as client:
         with pytest.raises(ValueError, match='not armed'):
             _arm_call_trial(client, {'session': session})
+
+
+def test_gain_restart_is_a_new_voice_boundary_with_the_same_session():
+    before = {'active': True, 'session': 'same-session', 'capture_revision': 3}
+    assert not _calibration_boundary_changed(before, dict(before))
+    assert _calibration_boundary_changed(before, {**before, 'capture_revision': 4})
+    assert _calibration_boundary_changed(before, {**before, 'active': False})
 
 
 def test_wake_gate_requires_phrase_and_expires():

@@ -103,6 +103,7 @@ class VoiceCalibration:
         self.ambient_pending = False
         self.phrase_prompt_at = 0.0
         self.wake_only_finished = False
+        self.capture_revision = 0
 
     def processing_regressed(self) -> bool:
         """Compare words and wake evidence, never learned intent, before saving.
@@ -177,6 +178,7 @@ class VoiceCalibration:
         if not 0 <= ambient_seconds <= 10:
             raise ValueError("Invalid room-noise interval")
         self.session = uuid.uuid4().hex
+        self.capture_revision += 1
         # Ten prompts plus two confirmations of a repeatable mishearing can
         # take longer than five minutes at a normal, unhurried pace.
         self.until = now + 900
@@ -274,6 +276,7 @@ class VoiceCalibration:
                            "at normal distance, then pause for a second.")
         return {
             "session": self.session, "active": active,
+            "capture_revision": self.capture_revision,
             "passed": self.index == len(PHRASES),
             "phrase": PHRASES[self.index] if active and not ambient_remaining else None,
             "ambient_remaining": ambient_remaining,
@@ -378,6 +381,7 @@ class VoiceCalibration:
     def record_gain(self, gain: int) -> None:
         self.applied_gain = gain
         self.gain_adjustments += 1
+        self.capture_revision += 1
         # Raw noise and speech measurements from different hardware gains are
         # not comparable. Start a fresh room baseline and phrase check while
         # preserving the three-adjustment safety limit for this session.

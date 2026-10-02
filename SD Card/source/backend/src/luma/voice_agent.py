@@ -266,6 +266,14 @@ def _arm_call_trial(client: httpx.Client, trial: dict) -> dict:
     return armed
 
 
+def _calibration_boundary_changed(previous: dict, current: dict) -> bool:
+    """A mixer change restarts baseline even if the session ID stays the same."""
+    return ((previous.get('active'), previous.get('session'),
+             previous.get('capture_revision')) !=
+            (current.get('active'), current.get('session'),
+             current.get('capture_revision')))
+
+
 def main() -> None:
     def stop(signum, frame):
         raise SystemExit(0)
@@ -344,7 +352,7 @@ def main() -> None:
             # ReSpeaker node instead of PortAudio's machine-dependent default.
             with PulseCapture(chunks) as capture:
                 phase("idle")
-                calibration = {"active": False, "session": "",
+                calibration = {"active": False, "session": "", "capture_revision": 0,
                                "call_trial": {"active": False, "session": ""},
                                "speaker_trial": {"active": False, "session": ""}}
                 speaker_model = None
@@ -447,7 +455,7 @@ def main() -> None:
                             response = client.get("/api/v1/voice/calibration")
                             response.raise_for_status()
                             fresh = response.json()
-                            if (fresh["active"], fresh["session"]) != (calibration["active"], calibration["session"]):
+                            if _calibration_boundary_changed(calibration, fresh):
                                 _reset_voice_transition(chunks, recognizer, free_recognizer,
                                                         preprocessor, gate, calibration_segmenter,
                                                         utterance, raw_utterance)

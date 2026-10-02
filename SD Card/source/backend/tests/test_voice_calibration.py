@@ -427,6 +427,25 @@ def test_independent_wake_evidence_tracks_words_without_saving_transcripts():
     assert all('text' not in row and 'free_text' not in row for row in result['results'])
 
 
+def test_wake_evidence_is_separate_from_a_misheard_command():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    result = calibration.submit(session, PHRASES[0], .05, .4, 101,
+                                free_text='hey luma set volume to fifty',
+                                selected_text=None, selection='conflict')
+    assert result['completed'] == 0 and not result['passed']
+    assert result['independent_wakes'] == 1
+    assert not result['strict_wake_ready']
+    assert result['last_selection'] == 'conflict'
+    # A clipped or nearly inaudible sample cannot qualify the wake setting.
+    faint = VoiceCalibration()
+    faint_session = faint.start(100)['session']
+    result = faint.submit(faint_session, PHRASES[0], .001, .003, 102,
+                          free_text='hey luma set volume to fifty',
+                          selected_text=None, selection='conflict')
+    assert result['independent_wakes'] == 0
+
+
 def test_owner_confirms_the_same_safe_mishearing_twice_before_it_can_be_saved():
     calibration = VoiceCalibration()
     session = calibration.start(100)['session']

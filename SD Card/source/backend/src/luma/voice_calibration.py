@@ -224,7 +224,8 @@ class VoiceCalibration:
         regressed = self.processing_regressed()
         independent_positive = {row['phrase_index'] for row in self.results
                                 if row['phrase_index'] < len(PHRASES) - 2
-                                and row['matched'] and row.get('free_wake')
+                                and row.get('acoustic_speech') and row.get('level_ok')
+                                and row.get('free_wake')
                                 and row.get('constrained_wake_near_start')}
         negative_checks = sum(bool(row['phrase_index'] >= len(PHRASES) - 2
                                    and row.get('acoustic_speech')

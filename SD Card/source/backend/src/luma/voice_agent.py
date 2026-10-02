@@ -505,7 +505,7 @@ def main() -> None:
                         if (not calibration["active"] and not calibration.get('call_trial', {}).get('active')
                                 and wake_mode == 'standard' and not early_wake
                                 and partial_has_wake(recognizer.PartialResult(), gate.phrase)):
-                            # Show the full-screen orb while the owner is
+                            # Light the small corner orb while the owner is
                             # still speaking. Only a final, exact wake match
                             # below can dispatch a command.
                             early_wake = True
@@ -578,7 +578,7 @@ def main() -> None:
                         elif had_early_wake and gate.until <= time.monotonic():
                             phase("idle")
                         continue
-                    # Light the full-screen listening state as soon as the
+                    # Light the corner listening state as soon as the
                     # wake phrase is accepted, including one-shot commands.
                     phase("listening")
                     # The constrained recognizer verifies wake. Re-transcribe

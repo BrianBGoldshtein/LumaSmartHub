@@ -1074,13 +1074,30 @@ def create_app(
         async with mic_gain_lock:
             if call_trial.status()['active'] or speaker_trial.status()['active']:
                 raise HTTPException(409, 'Finish the active voice trial before changing microphone gain.')
+            before = await asyncio.to_thread(mic_hardware.status)
+            def path_changed(after: dict) -> bool:
+                return (not before.get('available') or not after.get('available')
+                        or any(before.get(key) != after.get(key)
+                               for key in ('gain', 'capture_on', 'route_ready')))
             try:
-                before = await asyncio.to_thread(mic_hardware.status)
                 after = await asyncio.to_thread(mic_hardware.save_and_apply, payload.gain)
-            except mic_hardware.MicHardwareError as exc:
-                raise HTTPException(409, str(exc)) from exc
-            if (not before.get('available') or not after.get('available')
-                    or before.get('gain') != after.get('gain')):
+            except (mic_hardware.MicHardwareError, OSError) as exc:
+                # A mixer or gain-file failure can happen *after* some HAT
+                # controls changed. Keep the old PCM profile only if a fresh
+                # read proves that the capture path is still identical.
+                try:
+                    observed = await asyncio.to_thread(mic_hardware.status)
+                except (mic_hardware.MicHardwareError, OSError):
+                    observed = {}
+                if path_changed(observed):
+                    storage.set_cache('voice', 'audio_profile', AudioProfile().public())
+                    if calibration.status()['active']:
+                        calibration.cancel()
+                    raise HTTPException(409, 'Capture gain could not be saved. The microphone path may have changed; old audio tuning was cleared. Recheck hardware and start a new voice check.') from exc
+                raise HTTPException(409, str(exc) if isinstance(exc, mic_hardware.MicHardwareError)
+                                    else 'Capture gain could not be saved.') from exc
+            changed = path_changed(after)
+            if changed:
                 # PCM tuning was measured at the old analogue capture level.
                 # In particular, cancelling an in-progress check must not
                 # restore that now-stale profile to everyday recognition. If
@@ -1088,8 +1105,11 @@ def create_app(
                 # conservatively treat its prior level as unknown.
                 storage.set_cache('voice', 'audio_profile', AudioProfile().public())
                 if calibration.status()['active']:
-                    calibration.record_gain(int(after['gain']))
-            return after
+                    if after.get('available'):
+                        calibration.record_gain(int(after['gain']))
+                    else:
+                        calibration.cancel()
+            return {**after, 'audio_profile_cleared': changed}
 
     @app.post("/api/v1/voice/calibration/start", dependencies=[Depends(local_only)])
     async def calibration_start() -> dict:

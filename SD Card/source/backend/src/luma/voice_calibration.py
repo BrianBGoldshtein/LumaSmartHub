@@ -81,6 +81,7 @@ class VoiceCalibration:
         self.room_floors: list[float] = []
         self.room_low_fractions: list[float] = []
         self.audio_profile: dict | None = None
+        self.trial_profile: AudioProfile | None = None
         self.ambient_until = 0.0
         self.ambient_duration = 0.0
         self.ambient_pending = False
@@ -123,7 +124,16 @@ class VoiceCalibration:
             return AudioProfile(1, False, measured.noise_rms,
                                 measured.speech_rms, measured.snr_db, 'bypass',
                                 measured.low_frequency_noise_fraction)
-        return measured
+        # The raw/tuned decoder comparison must evaluate one stable filter.
+        # Measurements may continue to update the displayed SNR, but cannot
+        # silently change the candidate half-way through the phrase check.
+        # A newly unsafe signal still vetoes the frozen choice immediately.
+        if measured.quality not in {'clear', 'quiet'} or self.trial_profile is None:
+            return measured
+        trial = self.trial_profile
+        return AudioProfile(trial.gain, trial.high_pass, measured.noise_rms,
+                            measured.speech_rms, measured.snr_db, trial.quality,
+                            measured.low_frequency_noise_fraction)
 
     def start(self, now: float | None = None, *, ambient_seconds: float = 0) -> dict:
         now = time.monotonic() if now is None else now
@@ -163,6 +173,7 @@ class VoiceCalibration:
         self.room_floors = []
         self.room_low_fractions = []
         self.audio_profile = None
+        self.trial_profile = None
         self.message = ("Stay quiet while Luma measures room sound."
                         if ambient_seconds else "Wait for the microphone to start, then say the phrase.")
         return self.status(now)
@@ -302,6 +313,7 @@ class VoiceCalibration:
         self.room_floors.clear()
         self.room_low_fractions.clear()
         self.audio_profile = None
+        self.trial_profile = None
         self.ambient_until = 0.0
         self.ambient_pending = self.ambient_duration > 0
         self.phrase_prompt_at = 0.0
@@ -434,6 +446,12 @@ class VoiceCalibration:
                              "rms": round(rms, 5), "peak": round(peak, 5),
                              "dc": round(dc, 5),
                              "clipped_fraction": round(clipped_fraction, 5)})
+        if (self.trial_profile is None and len(self.room_floors) >= 3
+                and sum(bool(item.get('acoustic_speech')) for item in self.results) >= 3):
+            proposed = derive_profile(self.room_floors, self.results,
+                                      room_low_fractions=self.room_low_fractions)
+            if proposed.quality in {'clear', 'quiet'}:
+                self.trial_profile = proposed
         if matched and level_ok:
             self.index += 1
             self.message = "All voice checks passed. Try again if the room or microphone placement changes." if self.index == len(PHRASES) else "That worked. Say the next phrase."
@@ -477,6 +495,7 @@ class VoiceCalibration:
         self.room_floors.clear()
         self.room_low_fractions.clear()
         self.audio_profile = None
+        self.trial_profile = None
         self.phrase_prompt_at = 0.0
         self.last_heard = ""
         self.last_raw_heard = ""

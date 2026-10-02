@@ -162,6 +162,31 @@ def test_audio_candidate_is_derived_even_when_no_words_are_understood():
     assert all(item['acoustic_speech'] and not item['matched'] for item in status['results'])
 
 
+def test_audio_trial_keeps_one_profile_until_unsafe_or_hardware_gain_changes():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for now in (105, 106, 107):
+        status = calibration.submit(session, '', .025, .25, now)
+    assert status['audio_candidate']['gain'] == 2
+    # Later, louder phrases would lower a freshly derived gain to 1.75.
+    # The raw/tuned A/B trial must continue testing the original 2x profile.
+    for now in (108, 109, 110):
+        status = calibration.submit(session, '', .039, .37, now)
+    assert status['audio_candidate']['gain'] == 2
+    assert calibration.trial_profile is not None
+    assert calibration.trial_profile.gain == 2
+
+    status = calibration.submit(session, '', .04, .98, 111,
+                                clipped_fraction=.01)
+    assert status['audio_candidate']['quality'] == 'clipped'
+    assert status['audio_candidate']['gain'] == 1
+    calibration.record_gain(42)
+    assert calibration.trial_profile is None
+    assert calibration.status(112)['audio_candidate'] is None
+
+
 def test_raw_recognition_wins_twice_and_disables_harmful_trial():
     calibration = VoiceCalibration()
     session = calibration.start(100)['session']

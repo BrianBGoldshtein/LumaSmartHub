@@ -39,6 +39,46 @@ def test_two_confirmed_variants_are_saved_atomically():
     assert not learned.add_many(['one', 'two', 'three'], 'what time is it')
 
 
+def test_two_confirmed_mishearings_generalize_only_to_close_safe_variants():
+    learned = PhraseAdaptations()
+    assert learned.add_many(['whats the tea', 'whats the tee'], 'what time is it')
+    assert learned.resolve('whats the te') == 'what time is it'
+    assert learned.resolve('whats the weather') is None
+    saved = learned.public()
+    assert 'whats the tea' not in str(saved)
+    assert 'whats the tee' not in str(saved)
+    assert PhraseAdaptations(saved).resolve('whats the te') == 'what time is it'
+    assert len(saved['families']) == 1
+
+
+def test_one_confirmed_example_does_not_enable_approximate_matching():
+    learned = PhraseAdaptations()
+    assert learned.add('whats the tea', 'what time is it')
+    assert learned.resolve('whats the tea') == 'what time is it'
+    assert learned.resolve('whats the te') is None
+    assert learned.public()['families'] == []
+
+
+def test_fuzzy_correction_never_reinterprets_supported_commands():
+    learned = PhraseAdaptations()
+    assert learned.add_many(['how is the whether', 'hows the whether'],
+                            "what's the weather tomorrow")
+    assert learned.resolve('what is the weather today') is None
+    assert learned.resolve('set volume to fifty') is None
+    assert learned.resolve('do not show my calendar') is None
+    assert learned.resolve('whats not the tea') is None
+    assert learned.resolve('whats the tea 2') is None
+
+
+def test_corrupt_fuzzy_fingerprints_fail_closed():
+    learned = PhraseAdaptations()
+    assert learned.add_many(['whats the tea', 'whats the tee'], 'what time is it')
+    saved = learned.public()
+    saved['families'][0]['variants'][0] = ['not-a-hash']
+    restored = PhraseAdaptations(saved)
+    assert not restored.entries and not restored.families
+
+
 def test_corrupt_personal_phrase_map_fails_closed():
     learned = PhraseAdaptations()
     assert learned.add('the whether tomorrow', "what's the weather tomorrow")

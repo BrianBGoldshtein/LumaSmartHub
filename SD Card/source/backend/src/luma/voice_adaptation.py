@@ -23,6 +23,8 @@ LEARNABLE = frozenset({
     'when is my next event',
 })
 MAX_ENTRIES = 32
+MAX_FAMILIES = 16
+MAX_FUZZY_GRAMS = 96
 UNSAFE_WORDS = frozenset({
     "don't", 'dont', 'not', 'never', 'brightness', 'volume', 'timer', 'cancel',
     'delete', 'forget', 'privacy', 'screen', 'scene', 'zero', 'one', 'two',
@@ -55,6 +57,7 @@ class PhraseAdaptations:
     def __init__(self, value: object = None):
         self.salt = secrets.token_hex(16)
         self.entries: dict[str, str] = {}
+        self.families: list[dict] = []
         if not isinstance(value, dict) or value.get('version') != 1:
             return
         salt, entries = value.get('salt'), value.get('entries')
@@ -65,17 +68,67 @@ class PhraseAdaptations:
                    and isinstance(canonical, str) and canonical in LEARNABLE
                    for key, canonical in entries.items()):
             return
+        families = value.get('families', [])
+        if (not isinstance(families, list) or len(families) > MAX_FAMILIES
+                or any(not isinstance(family, dict) or set(family) != {'canonical', 'variants'}
+                       or not isinstance(family['canonical'], str)
+                       or family['canonical'] not in LEARNABLE
+                       or not isinstance(family['variants'], list)
+                       or len(family['variants']) != 2
+                       or any(not isinstance(signature, list)
+                              or not 3 <= len(signature) <= MAX_FUZZY_GRAMS
+                              or any(not isinstance(gram, str)
+                                     or re.fullmatch(r'[0-9a-f]{16}', gram) is None
+                                     for gram in signature)
+                              or signature != sorted(set(signature))
+                              for signature in family['variants'])
+                       for family in families)):
+            return
         self.salt, self.entries = salt, entries.copy()
+        self.families = [{'canonical': family['canonical'],
+                          'variants': [list(signature) for signature in family['variants']]}
+                         for family in families]
 
     def _digest(self, heard: str) -> str:
         return hmac.new(bytes.fromhex(self.salt), heard.encode('utf-8'), hashlib.sha256).hexdigest()
+
+    def _signature(self, phrase: str) -> list[str]:
+        grams = {phrase[index:index + 3] for index in range(max(0, len(phrase) - 2))}
+        if not 3 <= len(grams) <= MAX_FUZZY_GRAMS:
+            return []
+        key = bytes.fromhex(self.salt)
+        return sorted({hmac.new(key, gram.encode('utf-8'), hashlib.sha256).hexdigest()[:16]
+                       for gram in grams})
+
+    @staticmethod
+    def _similarity(left: set[str], right: set[str]) -> float:
+        return len(left & right) / len(left | right) if left and right else 0.0
 
     def resolve(self, heard: str) -> str | None:
         phrase = normalized_phrase(heard)
         learned = self.entries.get(self._digest(phrase)) if phrase else None
         # Also protects old saved entries if command parsing grows in a later
         # release. Raw phrases are not retained, so validate at use time.
-        return None if learned and conflicts_with_existing_command(phrase, learned) else learned
+        if learned:
+            return None if conflicts_with_existing_command(phrase, learned) else learned
+        # Approximate matching is limited to two separately confirmed
+        # mishearings of a safe command. A supported command always wins; a
+        # fuzzy correction may never reinterpret an existing valid phrase.
+        if not phrase or parse_local_command(phrase) is not None:
+            return None
+        signature = set(self._signature(phrase))
+        if not signature:
+            return None
+        candidates = []
+        for family in self.families:
+            scores = [self._similarity(signature, set(variant))
+                      for variant in family['variants']]
+            if min(scores) >= .80 and max(scores) >= .90:
+                candidates.append((max(scores), family['canonical']))
+        candidates.sort(reverse=True)
+        if not candidates or (len(candidates) > 1 and candidates[0][0] - candidates[1][0] < .08):
+            return None
+        return candidates[0][1]
 
     def add(self, heard: str, canonical: str) -> bool:
         return self.add_many([heard], canonical)
@@ -95,8 +148,17 @@ class PhraseAdaptations:
         if len(self.entries) + len(digests - self.entries.keys()) > MAX_ENTRIES:
             return False
         self.entries.update({digest: canonical for digest in digests})
+        if len(phrases) == 2 and phrases[0] != phrases[1] and len(self.families) < MAX_FAMILIES:
+            signatures = [self._signature(phrase) for phrase in phrases]
+            if all(signatures) and not any(
+                    family['canonical'] == canonical and family['variants'] == signatures
+                    for family in self.families):
+                self.families.append({'canonical': canonical, 'variants': signatures})
         return True
 
     def public(self) -> dict:
         """Local voice agent needs this matcher; no phrase text is included."""
-        return {'version': 1, 'salt': self.salt, 'entries': self.entries.copy()}
+        return {'version': 1, 'salt': self.salt, 'entries': self.entries.copy(),
+                'families': [{'canonical': family['canonical'],
+                              'variants': [list(signature) for signature in family['variants']]}
+                             for family in self.families]}

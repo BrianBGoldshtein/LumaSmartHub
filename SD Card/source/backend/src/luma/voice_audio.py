@@ -111,9 +111,13 @@ class PulseCapture:
         except queue.Full:
             if data is None or isinstance(data, AudioCaptureError):
                 # Preserve a terminal event so the consumer cannot mistake a
-                # dead capture process for a quiet microphone.
+                # dead capture process for a quiet microphone. Evicting an
+                # audio frame still creates a gap: the consumer must discard
+                # that utterance before it sees the terminal marker.
                 try:
-                    self.chunks.get_nowait()
+                    evicted = self.chunks.get_nowait()
+                    if isinstance(evicted, bytes):
+                        self.dropped_frames += 1
                     self.chunks.put_nowait(data)
                 except (queue.Empty, queue.Full):
                     pass
@@ -138,6 +142,10 @@ class PulseCapture:
                     received_audio = True
                     self.last_frame_at = monotonic()
                     self._enqueue(frame)
+            if pending:
+                # An EOF between whole PCM frames is also an incomplete
+                # utterance, even when earlier frames reached the queue.
+                self.dropped_frames += 1
             if not received_audio and self.process.poll() not in (None, 0):
                 terminal_error = AudioCaptureError("capture_source_unavailable")
             elif received_audio or self.process.poll() not in (None, 0):

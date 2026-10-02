@@ -74,7 +74,7 @@ def test_pulse_reader_produces_exact_frames_and_discards_partial_tail():
         return process
 
     chunks: queue.Queue[bytes | AudioCaptureError | None] = queue.Queue(maxsize=4)
-    with PulseCapture(chunks, source="luma_mic", popen=popen, environment={}):
+    with PulseCapture(chunks, source="luma_mic", popen=popen, environment={}) as capture:
         first = chunks.get(timeout=2)
         second = chunks.get(timeout=2)
         ended = chunks.get(timeout=2)
@@ -82,6 +82,7 @@ def test_pulse_reader_produces_exact_frames_and_discards_partial_tail():
     assert first == second == frame
     assert isinstance(ended, AudioCaptureError)
     assert ended.code == "capture_stream_stopped"
+    assert capture.dropped_frames == 1  # The trailing partial PCM frame is a gap.
     assert process.terminated is False
     command, options = calls[0]
     assert command[0] == "parec" and command[2] == "--device=luma_mic"
@@ -136,6 +137,27 @@ def test_capture_counts_but_never_buffers_overflowing_audio():
     capture._enqueue(b"second")
     assert capture.dropped_frames == 1
     assert chunks.get_nowait() == b"first"
+
+
+def test_terminal_marker_eviction_also_marks_audio_as_gapped():
+    class Process:
+        stdout = BytesIO()
+        def poll(self):
+            return 0
+
+    chunks = queue.Queue(maxsize=1)
+    capture = PulseCapture(chunks, source="luma_mic", popen=lambda *_a, **_k: Process(),
+                           environment={})
+    capture._enqueue(b"old utterance")
+    failure = AudioCaptureError("capture_stream_stopped")
+    capture._enqueue(failure)
+    assert capture.dropped_frames == 1
+    assert chunks.get_nowait() is failure
+
+    chunks.put(b"another utterance")
+    capture._enqueue(None)
+    assert capture.dropped_frames == 2
+    assert chunks.get_nowait() is None
 
 
 def test_capture_stall_is_distinct_from_silent_pcm_frames():

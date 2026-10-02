@@ -82,11 +82,13 @@ def speaker_route_warning(route: str | None) -> str | None:
     """Best-effort check of the sink that accepted speech, not acoustic proof.
 
     Pulse/PipeWire can accept and drain PCM even when that sink is muted or
-    nearly silent. Keep this advisory separate from playback success and never
-    infer a physical connection from a virtual sink's volume alone.
+    nearly silent. A direct physical-sink playback also bypasses the virtual
+    echo-cancel sink's reference signal. Keep both advisories separate from
+    playback success; neither proves what was actually audible in the room.
     """
     if route not in {"system_speaker", "luma_speaker"}:
         return None
+    bypass = "echo_reference_bypassed" if route == "system_speaker" else None
     try:
         env = pulse_playback_environment()
         listed = subprocess.run(["pactl", "--format=json", "list", "sinks"],
@@ -94,7 +96,7 @@ def speaker_route_warning(route: str | None) -> str | None:
                                 timeout=6, env=env)
         sinks = json.loads(listed.stdout)
         if not isinstance(sinks, list):
-            return None
+            return bypass
         if route == "luma_speaker":
             name = SPEAKER_SINK
         else:
@@ -103,11 +105,11 @@ def speaker_route_warning(route: str | None) -> str | None:
                                      env=env)
             name = default.stdout.strip()
             if not name.startswith("alsa_output."):
-                return None
+                return bypass
         sink = next((item for item in sinks if isinstance(item, dict)
                      and item.get("name") == name), None)
         if sink is None:
-            return None
+            return bypass
         if sink.get("mute") is True:
             return "muted"
         channels = sink.get("volume")
@@ -118,7 +120,9 @@ def speaker_route_warning(route: str | None) -> str | None:
                 return "very_low"
     except (OSError, ValueError, subprocess.SubprocessError, VoicePlaybackError):
         pass
-    return None
+    # A successful direct physical route cannot supply the luma_speaker
+    # reference, even when pactl cannot report its mute/volume state.
+    return bypass
 
 
 def _play_pcm(pcm: bytes, env: dict[str, str], *, rate: int = 22050) -> str:

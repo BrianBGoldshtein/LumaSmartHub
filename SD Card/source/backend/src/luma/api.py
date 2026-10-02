@@ -167,7 +167,7 @@ class VoiceOutputReport(BaseModel):
     model_config = {"extra": "forbid"}
     engine: Literal["piper", "fallback", "silent"]
     route: Literal["luma_speaker", "system_speaker"] | None = None
-    sink_warning: Literal["muted", "very_low"] | None = None
+    sink_warning: Literal["muted", "very_low", "echo_reference_bypassed"] | None = None
     error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable",
         "speaker_playback_failed", "piper_start_failed", "piper_start_timeout",
@@ -187,7 +187,7 @@ class VoicePreviewResult(BaseModel):
     model_config = {"extra": "forbid"}
     request_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     route: Literal["luma_speaker", "system_speaker"] | None = None
-    sink_warning: Literal["muted", "very_low"] | None = None
+    sink_warning: Literal["muted", "very_low", "echo_reference_bypassed"] | None = None
     error: Literal[
         "audio_session_unavailable", "speaker_route_unavailable", "speaker_playback_failed",
         "piper_start_failed", "piper_start_timeout", "piper_runtime_missing",

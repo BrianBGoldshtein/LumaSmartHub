@@ -210,8 +210,9 @@ def test_tone_never_falls_back_to_bluetooth_default(monkeypatch):
 @pytest.mark.parametrize(('route', 'muted', 'volume', 'expected'), [
     ('system_speaker', True, 65536, 'muted'),
     ('system_speaker', False, 2000, 'very_low'),
-    ('system_speaker', False, 65536, None),
+    ('system_speaker', False, 65536, 'echo_reference_bypassed'),
     ('luma_speaker', True, 65536, 'muted'),
+    ('luma_speaker', False, 65536, None),
 ])
 def test_speaker_route_warning_is_advisory_and_sanitized(monkeypatch, route, muted, volume, expected):
     import luma.voice_speech as speech
@@ -228,11 +229,11 @@ def test_speaker_route_warning_is_advisory_and_sanitized(monkeypatch, route, mut
     assert speaker_route_warning(route) == expected
 
 
-def test_speaker_route_warning_does_not_guess_when_volume_probe_fails(monkeypatch):
+def test_speaker_route_warning_still_reports_direct_route_when_volume_probe_fails(monkeypatch):
     import luma.voice_speech as speech
     monkeypatch.setattr(speech, 'pulse_playback_environment', lambda: {})
     monkeypatch.setattr(speech.subprocess, 'run', lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError()))
-    assert speaker_route_warning('system_speaker') is None
+    assert speaker_route_warning('system_speaker') == 'echo_reference_bypassed'
     assert speaker_route_warning(None) is None
 
 
@@ -523,6 +524,12 @@ def test_reply_engine_is_reported_without_speech_text(tmp_path):
         }).status_code == 200
         assert client.get('/api/v1/voice/asset').json()['last_reply_route'] == 'system_speaker'
         assert client.get('/api/v1/voice/asset').json()['last_reply_sink_warning'] == 'muted'
+        assert client.post('/api/v1/voice/output-report', json={
+            'engine': 'piper', 'route': 'system_speaker', 'error': None,
+            'sink_warning': 'echo_reference_bypassed',
+        }).status_code == 200
+        assert (client.get('/api/v1/voice/asset').json()['last_reply_sink_warning']
+                == 'echo_reference_bypassed')
         assert client.post('/api/v1/voice/output-report', json={
             'engine': 'piper', 'error': None, 'text': 'private speech',
         }).status_code == 422

@@ -1,6 +1,8 @@
 # 0.2.6 beta backlog
 
-Development branch: `codex/luma-026-development`. None of this is included in the signed 0.2.5 beta release. Do not publish a 0.2.6 release until the owner has reported hardware results and approved the final candidate.
+Development branch: `codex/luma-026-development`. None of this is included in the signed 0.2.5 beta release. The owner has requested a GitHub push once the 0.2.6 details are finalized. A signed **beta candidate** may be needed to perform the Pi tests; do not call 0.2.6 hardware-accepted or an official v1 until the owner reports the physical results and approves it.
+
+The concise owner-facing [0.2.6 voice Pi qualification guide](V026_VOICE_PI_QUALIFICATION.md) lists the physical checks and non-private results needed after a signed beta is installed. It separates speaker audibility, microphone capture, wake detection, word transcription, intent selection and owner-specific false-wake testing.
 
 ## New hardware-feedback requirements
 

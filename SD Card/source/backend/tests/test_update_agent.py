@@ -22,7 +22,7 @@ from luma.update_agent import (
     UpdateError, SystemdController, _canonical, apply_bundle, dependency_fingerprint, verify_bundle,
 )
 from luma.github_updates import GitHubUpdateError, RELEASES_API, latest_release
-from luma.update_broker import UpdateBroker
+from luma.update_broker import ProgressStore, UpdateBroker, refresh_connect_broker_after_027_upgrade
 
 
 def make_bundle(tmp_path: Path, *, version: str = "0.3.0", corrupt: bool = False,
@@ -351,6 +351,81 @@ def test_systemd_updater_leaves_kiosk_running_while_api_is_switched():
     controller.stop();controller.start()
     assert not any('luma-kiosk.service' in command for command in calls)
     assert any('luma-api.service' in command for command in calls)
+    assert ['systemctl', 'stop', 'luma-pi-connect-setup.socket'] in calls
+    assert ['systemctl', 'stop', 'luma-pi-connect-setup.service'] in calls
+    assert ['systemctl', 'start', 'luma-pi-connect-setup.socket'] in calls
+    assert ['systemctl', 'start', 'luma-pi-connect-setup.service'] in calls
+    assert calls.index(['systemctl', 'start', 'luma-pi-connect-setup.socket']) < calls.index(
+        ['systemctl', 'start', 'luma-pi-connect-setup.service'])
+
+
+def test_first_027_broker_handoff_refreshes_connect_helper_once(tmp_path):
+    if sys.platform == 'win32':
+        pytest.skip('atomic symlink switch and directory fsync require POSIX')
+    releases = tmp_path / 'releases'
+    current = releases / '0.2.7'
+    current.mkdir(parents=True)
+    (current / '.luma-release.json').write_text('{"version":"0.2.7"}')
+    app = tmp_path / 'luma'
+    app.symlink_to(current, target_is_directory=True)
+    progress = releases / '.luma-update-status.json'
+    ProgressStore(progress).write({'state': 'installed', 'phase': 'complete',
+                                   'target_version': '0.2.7', 'started_epoch': 1,
+                                   'message': 'Installed'})
+    calls = []
+    def runner(command, **kwargs):
+        calls.append(command)
+    refresh = lambda: refresh_connect_broker_after_027_upgrade(
+        status_path=progress, app_root=app, releases_root=releases, runner=runner)
+    assert refresh() is True
+    assert calls == [['/usr/bin/systemctl', '--no-block', 'try-restart',
+                      'luma-pi-connect-setup.service']]
+    assert refresh() is False
+    assert len(calls) == 1
+
+
+def test_027_connect_handoff_ignores_failed_and_other_releases(tmp_path):
+    if sys.platform == 'win32':
+        pytest.skip('atomic symlink switch requires POSIX')
+    releases = tmp_path / 'releases'
+    current = releases / '0.2.7'
+    current.mkdir(parents=True)
+    (current / '.luma-release.json').write_text('{"version":"0.2.7"}')
+    app = tmp_path / 'luma'
+    app.symlink_to(current, target_is_directory=True)
+    progress = releases / '.luma-update-status.json'
+    calls = []
+    def runner(command, **kwargs):
+        calls.append(command)
+    for state, target in [('failed', '0.2.7'), ('installed', '0.2.6')]:
+        ProgressStore(progress).write({'state': state, 'phase': 'failed' if state == 'failed' else 'complete',
+                                       'target_version': target, 'started_epoch': 1, 'message': 'Test'})
+        assert not refresh_connect_broker_after_027_upgrade(
+            status_path=progress, app_root=app, releases_root=releases, runner=runner)
+    assert calls == []
+
+
+def test_027_connect_handoff_retries_if_restart_command_fails(tmp_path):
+    if sys.platform == 'win32':
+        pytest.skip('atomic symlink switch requires POSIX')
+    releases = tmp_path / 'releases'
+    current = releases / '0.2.7'
+    current.mkdir(parents=True)
+    (current / '.luma-release.json').write_text('{"version":"0.2.7"}')
+    app = tmp_path / 'luma'
+    app.symlink_to(current, target_is_directory=True)
+    progress = releases / '.luma-update-status.json'
+    ProgressStore(progress).write({'state': 'installed', 'phase': 'complete',
+                                   'target_version': '0.2.7', 'started_epoch': 1,
+                                   'message': 'Installed'})
+    def fail(command, **kwargs):
+        raise subprocess.CalledProcessError(1, command)
+    assert not refresh_connect_broker_after_027_upgrade(
+        status_path=progress, app_root=app, releases_root=releases, runner=fail)
+    assert not (releases / '.luma-connect-refreshed-0.2.7').exists()
+    assert refresh_connect_broker_after_027_upgrade(
+        status_path=progress, app_root=app, releases_root=releases,
+        runner=lambda command, **kwargs: None)
 
 
 def test_systemd_restart_attempts_api_even_when_backup_socket_fails():

@@ -14,7 +14,7 @@ import subprocess
 import time
 from contextlib import suppress
 
-from .update_agent import MAX_BUNDLE_BYTES, PUBLIC_KEY, RELEASES_ROOT, UpdateError, apply_bundle, staged_bundle, verify_bundle
+from .update_agent import APP_ROOT, MAX_BUNDLE_BYTES, PUBLIC_KEY, RELEASES_ROOT, UpdateError, apply_bundle, staged_bundle, verify_bundle
 
 
 SOCKET = "/run/luma-update.sock"
@@ -233,7 +233,60 @@ async def serve():
             or os.environ.get("LISTEN_FDS") != "1"):
         raise RuntimeError("Start through luma-update.socket")
     listener = socket.socket(fileno=3)
+    refresh_connect_broker_after_027_upgrade()
     await _serve_listener(listener, UpdateBroker(refresh_service=_restart_service,status_path=STATUS_PATH))
+
+
+def refresh_connect_broker_after_027_upgrade(*, status_path: Path = STATUS_PATH,
+                                             app_root: Path = APP_ROOT,
+                                             releases_root: Path = RELEASES_ROOT,
+                                             runner=subprocess.run) -> bool:
+    """Activate the new Connect helper after the first update from old updater code.
+
+    The 0.2.6 updater cannot know about the newly added service allowlist.
+    It *does* restart this root broker after a successful switch; that next
+    broker process can refresh the still-running 0.2.6 Connect helper once.
+    Ordinary launches and failed/rolled-back updates never do so.
+    """
+    saved = ProgressStore(status_path).read()
+    if not saved or saved['state'] != 'installed' or saved['target_version'] != '0.2.7':
+        return False
+    try:
+        if releases_root.is_symlink() or not releases_root.is_dir() or not app_root.is_symlink():
+            return False
+        release_root = releases_root.resolve(strict=True)
+        current = app_root.resolve(strict=True)
+        if not current.is_relative_to(release_root):
+            return False
+        installed = json.loads((current / '.luma-release.json').read_text(encoding='utf-8'))
+        if not isinstance(installed, dict) or installed.get('version') != '0.2.7':
+            return False
+        marker = release_root / '.luma-connect-refreshed-0.2.7'
+        if marker.is_symlink() or marker.is_file():
+            return False
+        runner(['/usr/bin/systemctl', '--no-block', 'try-restart',
+                'luma-pi-connect-setup.service'], check=True, timeout=8,
+               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        temporary = release_root / f'.luma-connect-refreshed-{secrets.token_hex(8)}.tmp'
+        try:
+            descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY |
+                                 getattr(os, 'O_NOFOLLOW', 0), 0o600)
+            with os.fdopen(descriptor, 'wb') as stream:
+                stream.write(b'Connect helper refreshed after 0.2.7 upgrade\n')
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, marker)
+            directory = os.open(release_root, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return True
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        log.exception('Could not refresh Pi Connect helper after 0.2.7 switch')
+        return False
 
 
 def _restart_service():

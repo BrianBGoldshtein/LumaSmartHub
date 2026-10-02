@@ -142,7 +142,11 @@ def test_dual_decoder_never_guesses_conflicting_actions_or_negations():
     assert choose_command("set brightness to fifty", "hey luma do not set brightness to fifty", "hey luma") == (
         None, "negated")
     assert choose_command("what is the weather today", "hey luma what's the weather tomorrow", "hey luma") == (
-        "what's the weather tomorrow", "free_query")
+        None, "conflict")
+    assert choose_command("what is the weather today", "hey luma what's the forecast today", "hey luma") == (
+        "what's the forecast today", "agree")
+    assert choose_command("what time is it", "hey luma what's the date", "hey luma") == (
+        None, "conflict")
 
 
 def test_live_phrase_learning_resolves_only_a_confirmed_nonnegated_post_wake_phrase():

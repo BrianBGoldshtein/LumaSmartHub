@@ -17,7 +17,6 @@ from statistics import median
 import httpx
 
 from .voice import WakeGate, command_grammar, parse_local_command
-from .models import CommandName
 from .leds import StatusLeds
 from .voice_audio import AudioCaptureError, PulseCapture
 from .voice_speech import (OfflineSpeaker, VoicePlaybackError, play_test_tone,
@@ -128,7 +127,7 @@ def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> 
 
     The grammar often recognizes a supported command more reliably, while the
     unrestricted decoder is needed for varied phrasing. Neither decoder may
-    silently change a numeric slot or a command with side effects.
+    silently change a numeric slot, time horizon, or command with side effects.
     """
     varied = _free_command(free_transcript, wake_phrase)
     if not varied or varied == wake_phrase:
@@ -140,8 +139,6 @@ def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> 
     if constrained_command and varied_command:
         if (constrained_command.name, constrained_command.value) == (varied_command.name, varied_command.value):
             return varied, "agree"
-        if constrained_command.name == varied_command.name == CommandName.LOCAL_QUERY:
-            return varied, "free_query"
         return None, "conflict"
     if constrained_command:
         return constrained, "constrained"

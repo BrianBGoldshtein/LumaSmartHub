@@ -141,3 +141,16 @@ def test_owner_local_call_trial_blocks_commands_and_keeps_no_saved_results(tmp_p
         assert remote.post('/api/v1/voice/call-trial/start').status_code == 403
     with TestClient(create_app(data_dir=tmp_path)) as restarted:
         assert restarted.get('/api/v1/voice/call-trial').json()['session'] == ''
+
+
+def test_call_trial_freezes_mic_tuning_and_microphone_off_ends_trial(tmp_path, monkeypatch):
+    import luma.api as api
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply',
+                        lambda _gain: pytest.fail('gain changed during trial'))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        client.post('/api/v1/voice/heartbeat', json={})
+        assert client.post('/api/v1/voice/call-trial/start').status_code == 200
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 40}).status_code == 409
+        assert client.post('/api/v1/voice/audio-profile/reset', json={}).status_code == 409
+        assert client.patch('/api/v1/settings', json={'voice_enabled': False}).status_code == 200
+        assert client.get('/api/v1/voice/call-trial').json()['active'] is False

@@ -41,6 +41,8 @@ def test_owner_local_speaker_trial_consent_and_command_suppression(tmp_path, mon
         assert started.status_code == 200
         session = started.json()['session']
         assert started.json()['role'] == 'enrollment'
+        assert client.post('/api/v1/voice/hardware/gain', json={'gain': 40}).status_code == 409
+        assert client.post('/api/v1/voice/audio-profile/reset', json={}).status_code == 409
         assert client.post('/api/v1/voice/calibration/start').status_code == 409
         assert client.post('/api/v1/voice/call-trial/start').status_code == 409
         blocked = client.post('/api/v1/voice/command', json={'text': 'good morning'})

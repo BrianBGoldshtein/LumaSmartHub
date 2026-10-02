@@ -933,21 +933,22 @@ def create_app(
 
     @app.post('/api/v1/voice/speaker-trial/start', dependencies=[Depends(local_only)])
     async def start_speaker_trial(_consent: SpeakerTrialConsent) -> dict:
-        if not service.settings.voice_enabled:
-            raise HTTPException(409, 'Enable local voice first.')
-        if not speaker_model_ready(speaker_model_root):
-            raise HTTPException(409, 'Prepare the optional speaker model first.')
-        if calibration.status()['active'] or call_trial.status()['active']:
-            raise HTTPException(409, 'Finish the current voice check before starting.')
-        if (voice_agent_status['last_seen'] <= 0 or
-                monotonic() - voice_agent_status['last_seen'] > 15 or
-                voice_agent_status['diagnostic'] is not None):
-            raise HTTPException(409, 'The local voice service must be live for this trial.')
-        try:
-            speaker_trial.start()
-        except SpeakerVectorError as exc:
-            raise HTTPException(409, str(exc)) from exc
-        return speaker_trial_payload()
+        async with mic_gain_lock:
+            if not service.settings.voice_enabled:
+                raise HTTPException(409, 'Enable local voice first.')
+            if not speaker_model_ready(speaker_model_root):
+                raise HTTPException(409, 'Prepare the optional speaker model first.')
+            if calibration.status()['active'] or call_trial.status()['active']:
+                raise HTTPException(409, 'Finish the current voice check before starting.')
+            if (voice_agent_status['last_seen'] <= 0 or
+                    monotonic() - voice_agent_status['last_seen'] > 15 or
+                    voice_agent_status['diagnostic'] is not None):
+                raise HTTPException(409, 'The local voice service must be live for this trial.')
+            try:
+                speaker_trial.start()
+            except SpeakerVectorError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            return speaker_trial_payload()
 
     @app.post('/api/v1/voice/speaker-trial/begin', dependencies=[Depends(local_only)])
     async def begin_speaker_sample(payload: SpeakerTrialSession) -> dict:
@@ -991,20 +992,21 @@ def create_app(
 
     @app.post('/api/v1/voice/call-trial/start', dependencies=[Depends(local_only)])
     async def start_voice_call_trial() -> dict:
-        if not service.settings.voice_enabled:
-            raise HTTPException(409, 'Enable local voice first.')
-        if calibration.status()['active']:
-            raise HTTPException(409, 'Finish or cancel the guided voice check first.')
-        if speaker_trial.status()['active']:
-            raise HTTPException(409, 'Finish or cancel the owner-voice trial first.')
-        if (voice_agent_status['last_seen'] <= 0 or
-                monotonic() - voice_agent_status['last_seen'] > 15 or
-                voice_agent_status['diagnostic'] is not None):
-            raise HTTPException(409, 'The local voice service must be live before a call test.')
-        try:
-            return call_trial.start()
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from exc
+        async with mic_gain_lock:
+            if not service.settings.voice_enabled:
+                raise HTTPException(409, 'Enable local voice first.')
+            if calibration.status()['active']:
+                raise HTTPException(409, 'Finish or cancel the guided voice check first.')
+            if speaker_trial.status()['active']:
+                raise HTTPException(409, 'Finish or cancel the owner-voice trial first.')
+            if (voice_agent_status['last_seen'] <= 0 or
+                    monotonic() - voice_agent_status['last_seen'] > 15 or
+                    voice_agent_status['diagnostic'] is not None):
+                raise HTTPException(409, 'The local voice service must be live before a call test.')
+            try:
+                return call_trial.start()
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
 
     @app.get('/api/v1/voice/call-trial', dependencies=[Depends(local_only)])
     async def voice_call_trial_status() -> dict:
@@ -1070,6 +1072,8 @@ def create_app(
     @app.post("/api/v1/voice/hardware/gain", dependencies=[Depends(local_only)])
     async def mic_hardware_gain(payload: MicGainRequest) -> dict:
         async with mic_gain_lock:
+            if call_trial.status()['active'] or speaker_trial.status()['active']:
+                raise HTTPException(409, 'Finish the active voice trial before changing microphone gain.')
             try:
                 before = await asyncio.to_thread(mic_hardware.status)
                 after = await asyncio.to_thread(mic_hardware.save_and_apply, payload.gain)
@@ -1094,6 +1098,9 @@ def create_app(
     @app.post('/api/v1/voice/audio-profile/reset', dependencies=[Depends(local_only)])
     async def reset_voice_audio_profile() -> dict:
         """Owner-local escape hatch if a room or microphone change degrades recognition."""
+        if (calibration.status()['active'] or call_trial.status()['active']
+                or speaker_trial.status()['active']):
+            raise HTTPException(409, 'Finish the active voice check before changing audio processing.')
         profile = AudioProfile().public()
         storage.set_cache('voice', 'audio_profile', profile)
         return {'audio_profile': profile}
@@ -1590,6 +1597,8 @@ def create_app(
             raise HTTPException(422, str(exc)) from exc
         if updates.get("voice_enabled") is False:
             calibration.cancel()
+            if call_trial.status()['active']:
+                call_trial.stop()
             if speaker_trial.status()['active']:
                 speaker_trial.cancel()
             voice_agent_status.update(last_seen=0.0, phase="idle", diagnostic=None,

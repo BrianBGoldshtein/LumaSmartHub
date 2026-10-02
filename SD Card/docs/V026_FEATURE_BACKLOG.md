@@ -106,6 +106,8 @@ Software tests use synthetic PCM, corrupt profile inputs, noisy/quiet/clipped ex
 
 The guided check also distinguishes an **all-zero capture stream** from a merely quiet but nonzero microphone after the prompted phrase has waited twelve seconds. It advises checking the selected source or mute state rather than repeatedly increasing hardware gain. This is only a diagnostic conditional on the owner actually speaking; software cannot infer an utterance from digital silence.
 
+The call and owner-voice trials now freeze capture gain and audio-profile resets so one result cannot silently mix processing conditions. Turning the microphone off ends the call trial and discards an active owner-voice trial. Guided calibration may still change gain, but each change restarts its room baseline and discards earlier acoustic measurements. These are source-tested invariants, not yet Pi-tested audio behavior.
+
 ### Remaining audio hypotheses to discriminate on hardware
 
 | Stage | Possible cause | Evidence needed |

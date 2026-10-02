@@ -57,6 +57,9 @@ def test_negative_evidence_requires_full_speech_bearing_trial_without_dual_wake(
                      constrained_near_start=False, free_wake=False,
                      free_near_start=False, now=192 + index)
     assert not trial.status(280)['negative_ready']
+    assert not trial.status(281)['negative_ready']  # Speech alone is not uninterrupted listening.
+    for instant in range(201, 280, 10):
+        trial.heartbeat(instant)
     assert trial.status(281)['negative_ready']
     session = trial.start(282)['session']
     trial.record(session, partial_wake=True, constrained_wake=True,
@@ -73,6 +76,24 @@ def test_negative_evidence_requires_full_speech_bearing_trial_without_dual_wake(
                      constrained_near_start=False, free_wake=False,
                      free_near_start=False, now=374 + index)
     assert not trial.stop()['negative_ready']
+
+
+def test_call_trial_rejects_a_lost_capture_service_even_if_it_returns():
+    trial = VoiceCallTrial()
+    session = trial.start(100)['session']
+    for index in range(5):
+        trial.record(session, partial_wake=False, constrained_wake=False,
+                     constrained_near_start=False, free_wake=False,
+                     free_near_start=False, now=101 + index)
+    for instant in (105, 110, 115, 120, 125):
+        trial.heartbeat(instant)
+    trial.heartbeat(150)
+    for instant in (155, 160, 165, 170, 175, 180, 185):
+        trial.heartbeat(instant)
+    assert trial.status(190)['interrupted']
+    assert not trial.status(190)['negative_ready']
+    trial.heartbeat(191)  # A post-trial heartbeat cannot repair missing coverage.
+    assert not trial.status(191)['negative_ready']
 
 
 class FakeRecognizer:
@@ -148,13 +169,21 @@ def test_raw_only_wake_is_counted_separately_and_no_tuning_skips_replay():
     assert trial.record(session, **without_tuning, now=102)['raw_compared_utterances'] == 1
 
 
-def test_owner_local_call_trial_blocks_commands_and_keeps_no_saved_results(tmp_path):
+def test_owner_local_call_trial_blocks_commands_and_keeps_no_saved_results(tmp_path, monkeypatch):
+    observed_heartbeats = []
+    original_heartbeat = VoiceCallTrial.heartbeat
+    def recording_heartbeat(self, now=None):
+        observed_heartbeats.append(now)
+        return original_heartbeat(self, now)
+    monkeypatch.setattr(VoiceCallTrial, 'heartbeat', recording_heartbeat)
     with TestClient(create_app(data_dir=tmp_path)) as client:
         assert client.post('/api/v1/voice/call-trial/start').status_code == 409
         assert client.post('/api/v1/voice/heartbeat', json={}).json()['accepted']
         started = client.post('/api/v1/voice/call-trial/start')
         assert started.status_code == 200
         session = started.json()['session']
+        assert client.post('/api/v1/voice/heartbeat', json={}).status_code == 200
+        assert observed_heartbeats and observed_heartbeats[-1] is not None
         assert client.post('/api/v1/voice/calibration/start').status_code == 409
         blocked = client.post('/api/v1/voice/command', json={'text': 'good morning'})
         assert blocked.status_code == 200 and blocked.json()['accepted'] is False

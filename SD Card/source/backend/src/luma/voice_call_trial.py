@@ -13,11 +13,14 @@ import uuid
 
 class VoiceCallTrial:
     DURATION_SECONDS = 90
+    MAX_HEARTBEAT_GAP_SECONDS = 15
 
     def __init__(self) -> None:
         self.session = ""
         self.started_at = 0.0
         self.until = 0.0
+        self.last_heartbeat_at = 0.0
+        self.interrupted = False
         self.utterances = 0
         self.partial_wakes = 0
         self.constrained_wakes = 0
@@ -37,6 +40,8 @@ class VoiceCallTrial:
         self.session = uuid.uuid4().hex
         self.started_at = now
         self.until = now + self.DURATION_SECONDS
+        self.last_heartbeat_at = now
+        self.interrupted = False
         self.utterances = self.partial_wakes = self.constrained_wakes = 0
         self.dual_wakes = self.quoted_wakes = 0
         self.raw_compared_utterances = self.raw_constrained_wakes = self.raw_dual_wakes = 0
@@ -47,6 +52,15 @@ class VoiceCallTrial:
     def stop(self) -> dict:
         self.until = 0.0
         return self.status()
+
+    def heartbeat(self, now: float | None = None) -> None:
+        """A running capture service must cover the entire negative trial."""
+        now = time.monotonic() if now is None else now
+        if not self.session or not self.started_at < now < self.until:
+            return
+        if now - self.last_heartbeat_at > self.MAX_HEARTBEAT_GAP_SECONDS:
+            self.interrupted = True
+        self.last_heartbeat_at = now
 
     def status(self, now: float | None = None) -> dict:
         now = time.monotonic() if now is None else now
@@ -60,7 +74,10 @@ class VoiceCallTrial:
             # A stopped/empty trial or one with confirmed wakes cannot.
             "negative_ready": bool(self.session and self.until > self.started_at
                                    and now >= self.until and self.utterances >= 5
-                                   and self.dual_wakes == 0),
+                                   and self.dual_wakes == 0 and not self.interrupted
+                                   and self.last_heartbeat_at >=
+                                   self.until - self.MAX_HEARTBEAT_GAP_SECONDS),
+            "interrupted": self.interrupted,
             "utterances": self.utterances,
             "partial_wakes": self.partial_wakes,
             "constrained_wakes": self.constrained_wakes,

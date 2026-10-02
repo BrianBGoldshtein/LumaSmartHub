@@ -578,6 +578,53 @@ def test_wake_only_api_requires_later_negative_trial_and_never_passes_calibratio
         assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 200
 
 
+def test_changing_mic_path_invalidates_finished_wake_evidence(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    original_trial_status = api.VoiceCallTrial.status
+    monkeypatch.setattr(api.VoiceCallTrial, 'status', lambda self, now=None: {
+        **original_trial_status(self, now), 'negative_ready': True,
+    })
+    hardware = {'gain': 39}
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': hardware['gain'], 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    def apply_gain(value):
+        hardware['gain'] = value
+        return api.mic_hardware.status()
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', apply_gain)
+    app = create_app(data_dir=tmp_path)
+    def finish_wake_only(client):
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(4):
+            sampled = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': PHRASES[0],
+                'free_text': 'hey luma set volume to fifty',
+                'selected_text': None, 'selection': 'conflict',
+                'rms': .05, 'peak': .4,
+            })
+            assert sampled.status_code == 200
+        assert client.post('/api/v1/voice/calibration/finish-wake-only', json={
+            'session': session,
+        }).json()['strict_wake_ready']
+
+    with TestClient(app) as client:
+        finish_wake_only(client)
+        changed = client.post('/api/v1/voice/hardware/gain', json={'gain': 40})
+        assert changed.status_code == 200 and changed.json()['audio_profile_cleared']
+        assert not client.get('/api/v1/voice/calibration').json()['strict_wake_ready']
+        assert client.post('/api/v1/voice/wake-confirmation', json={
+            'mode': 'dual_decoder',
+        }).status_code == 409
+
+        finish_wake_only(client)
+        assert client.post('/api/v1/voice/audio-profile/reset', json={}).status_code == 200
+        assert not client.get('/api/v1/voice/calibration').json()['strict_wake_ready']
+
+
 def test_confirmed_phrase_correction_persists_without_raw_words_and_can_reset(tmp_path, monkeypatch):
     import luma.api as api
     original_start = api.VoiceCalibration.start

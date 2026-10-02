@@ -850,7 +850,9 @@ def create_app(
     async def voice_heartbeat(payload: VoiceHeartbeat | None = None) -> dict[str, bool]:
         if not service.settings.voice_enabled:
             return {"accepted": False}
-        voice_agent_status["last_seen"] = monotonic()
+        now = monotonic()
+        voice_agent_status["last_seen"] = now
+        call_trial.heartbeat(now)
         if payload is not None:
             voice_agent_status["dropped_frames"] = payload.dropped_frames
         return {"accepted": True}
@@ -1099,8 +1101,9 @@ def create_app(
                     observed = {}
                 if path_changed(observed):
                     storage.set_cache('voice', 'audio_profile', AudioProfile().public())
-                    if calibration.status()['active']:
-                        calibration.cancel()
+                    # Even a finished wake check belongs to the old capture
+                    # path; it cannot authorize a new strict-wake choice.
+                    calibration.cancel()
                     raise HTTPException(409, 'Capture gain could not be saved. The microphone path may have changed; old audio tuning was cleared. Recheck hardware and start a new voice check.') from exc
                 raise HTTPException(409, str(exc) if isinstance(exc, mic_hardware.MicHardwareError)
                                     else 'Capture gain could not be saved.') from exc
@@ -1117,6 +1120,8 @@ def create_app(
                         calibration.record_gain(int(after['gain']))
                     else:
                         calibration.cancel()
+                else:
+                    calibration.cancel()
             return {**after, 'audio_profile_cleared': changed}
 
     @app.post("/api/v1/voice/calibration/start", dependencies=[Depends(local_only)])
@@ -1138,6 +1143,9 @@ def create_app(
             raise HTTPException(409, 'Finish the active voice check before changing audio processing.')
         profile = AudioProfile().public()
         storage.set_cache('voice', 'audio_profile', profile)
+        # Past wake/call evidence was collected through a different PCM path.
+        # A completed calibration must not silently qualify a new path.
+        calibration.cancel()
         return {'audio_profile': profile}
 
     @app.post('/api/v1/voice/calibration/save-audio', dependencies=[Depends(local_only)])

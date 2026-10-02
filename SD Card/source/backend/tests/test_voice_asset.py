@@ -316,6 +316,21 @@ def test_original_voice_comparison_uses_own_route_and_history(monkeypatch, tmp_p
                            json={'variant': 'fallback'}).status_code == 403
 
 
+def test_speaker_checks_cannot_interrupt_active_microphone_calibration(monkeypatch, tmp_path):
+    import luma.api as api
+    monkeypatch.setattr(api, 'play_fallback_preview',
+                        lambda _root: pytest.fail('sample played during mic check'))
+    monkeypatch.setattr(api, 'play_test_tone',
+                        lambda: pytest.fail('tone played during mic check'))
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        started = client.post('/api/v1/voice/calibration/start')
+        assert started.status_code == 200
+        assert client.post('/api/v1/voice/asset/preview',
+                           json={'variant': 'fallback'}).status_code == 409
+        assert client.post('/api/v1/voice/asset/tone').status_code == 409
+        assert client.post('/api/v1/voice/calibration/cancel').status_code == 200
+
+
 def test_original_voice_failure_does_not_erase_kristin_error(monkeypatch, tmp_path):
     import luma.api as api
     monkeypatch.setattr(api, 'voice_asset_ready', lambda _root: True)
@@ -350,6 +365,8 @@ def test_preview_reuses_live_voice_worker_without_starting_second_model(monkeypa
                 break
             time.sleep(.01)
         assert pending
+        assert client.post('/api/v1/voice/calibration/start').status_code == 409
+        assert client.post('/api/v1/voice/call-trial/start').status_code == 409
         assert client.post('/api/v1/voice/asset/preview/result', json={
             'request_id': pending, 'route': 'luma_speaker', 'error': None,
             'sink_warning': 'muted',

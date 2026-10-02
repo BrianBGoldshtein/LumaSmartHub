@@ -951,6 +951,8 @@ def create_app(
         async with mic_gain_lock:
             if not service.settings.voice_enabled:
                 raise HTTPException(409, 'Enable local voice first.')
+            if voice_preview_lock.locked():
+                raise HTTPException(409, 'Finish the speaker sample or tone before starting an owner-voice trial.')
             if not speaker_model_ready(speaker_model_root):
                 raise HTTPException(409, 'Prepare the optional speaker model first.')
             if calibration.status()['active'] or call_trial.status()['active']:
@@ -1010,6 +1012,8 @@ def create_app(
         async with mic_gain_lock:
             if not service.settings.voice_enabled:
                 raise HTTPException(409, 'Enable local voice first.')
+            if voice_preview_lock.locked():
+                raise HTTPException(409, 'Finish the speaker sample or tone before starting a call test.')
             if calibration.status()['active']:
                 raise HTTPException(409, 'Finish or cancel the guided voice check first.')
             if speaker_trial.status()['active']:
@@ -1140,6 +1144,8 @@ def create_app(
     async def calibration_start() -> dict:
         if not service.settings.voice_enabled:
             raise HTTPException(409, "Enable local voice first")
+        if voice_preview_lock.locked():
+            raise HTTPException(409, 'Finish the speaker sample or tone before starting a voice check.')
         if call_trial.status()['active']:
             raise HTTPException(409, "Finish or stop the call false-wake test first.")
         if speaker_trial.status()['active']:
@@ -1289,6 +1295,9 @@ def create_app(
     @app.post('/api/v1/voice/asset/preview', dependencies=[Depends(local_only)])
     async def preview_offline_voice_asset(payload: VoicePreviewRequest | None = None) -> dict:
         variant = payload.variant if payload else 'piper'
+        if (calibration.status()['active'] or call_trial.status()['active']
+                or speaker_trial.status()['active']):
+            raise HTTPException(409, 'Finish the active microphone check before playing a voice sample.')
         if variant == 'piper' and not voice_asset_ready(voice_asset_root):
             raise HTTPException(409, 'Install the offline voice before previewing it.')
         if voice_preview_lock.locked():
@@ -1381,6 +1390,9 @@ def create_app(
     @app.post('/api/v1/voice/asset/tone', dependencies=[Depends(local_only)])
     async def test_voice_speaker_route() -> dict:
         """Test the same live audio path used by spoken replies, without Piper."""
+        if (calibration.status()['active'] or call_trial.status()['active']
+                or speaker_trial.status()['active']):
+            raise HTTPException(409, 'Finish the active microphone check before playing a speaker tone.')
         if voice_preview_lock.locked():
             raise HTTPException(409, 'Another speaker test is already running.')
         async with voice_preview_lock:

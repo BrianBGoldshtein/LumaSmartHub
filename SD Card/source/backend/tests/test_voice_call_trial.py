@@ -11,6 +11,7 @@ from luma.voice_call_trial import VoiceCallTrial
 def test_call_trial_counts_only_bounded_boolean_observations_and_expires():
     trial = VoiceCallTrial()
     session = trial.start(100)['session']
+    trial.arm(session, 100)
     assert trial.status(100)['remaining_seconds'] == 90
     trial.record(session, partial_wake=False, constrained_wake=False, constrained_near_start=False,
                  free_wake=False, free_near_start=False, now=101)
@@ -40,6 +41,28 @@ def test_call_trial_counts_only_bounded_boolean_observations_and_expires():
     assert trial.start(191)['utterances'] == 0
 
 
+def test_call_trial_clock_starts_only_after_agent_arm_and_cannot_be_restarted():
+    trial = VoiceCallTrial()
+    session = trial.start(100)['session']
+    assert trial.status(100)['active'] and not trial.status(100)['armed']
+    assert trial.status(100)['remaining_seconds'] == 0
+    with pytest.raises(ValueError, match='not active'):
+        trial.record(session, partial_wake=False, constrained_wake=False,
+                     constrained_near_start=False, free_wake=False,
+                     free_near_start=False, now=101)
+    with pytest.raises(ValueError, match='could not be armed'):
+        trial.arm('wrong-session', 101)
+    assert trial.arm(session, 102)['remaining_seconds'] == 90
+    assert trial.arm(session, 110)['remaining_seconds'] == 82
+    assert trial.status(191)['active']
+    assert not trial.status(192)['active']
+    unarmed = VoiceCallTrial()
+    expired = unarmed.start(200)['session']
+    assert not unarmed.status(215)['active']
+    with pytest.raises(ValueError, match='could not be armed'):
+        unarmed.arm(expired, 215)
+
+
 def test_negative_evidence_requires_full_speech_bearing_trial_without_dual_wake():
     def observe(trial, session, count, *, wake=False):
         for index in range(count):
@@ -49,9 +72,11 @@ def test_negative_evidence_requires_full_speech_bearing_trial_without_dual_wake(
 
     trial = VoiceCallTrial()
     session = trial.start(100)['session']
+    trial.arm(session, 100)
     observe(trial, session, 4)
     assert not trial.status(190)['negative_ready']
     session = trial.start(191)['session']
+    trial.arm(session, 191)
     for index in range(5):
         trial.record(session, partial_wake=False, constrained_wake=False,
                      constrained_near_start=False, free_wake=False,
@@ -62,6 +87,7 @@ def test_negative_evidence_requires_full_speech_bearing_trial_without_dual_wake(
         trial.heartbeat(instant)
     assert trial.status(281)['negative_ready']
     session = trial.start(282)['session']
+    trial.arm(session, 282)
     trial.record(session, partial_wake=True, constrained_wake=True,
                  constrained_near_start=True, free_wake=True,
                  free_near_start=True, now=283)
@@ -71,6 +97,7 @@ def test_negative_evidence_requires_full_speech_bearing_trial_without_dual_wake(
                      free_near_start=False, now=284 + index)
     assert not trial.status(372)['negative_ready']
     session = trial.start(373)['session']
+    trial.arm(session, 373)
     for index in range(5):
         trial.record(session, partial_wake=False, constrained_wake=False,
                      constrained_near_start=False, free_wake=False,
@@ -81,6 +108,7 @@ def test_negative_evidence_requires_full_speech_bearing_trial_without_dual_wake(
 def test_call_trial_rejects_a_lost_capture_service_even_if_it_returns():
     trial = VoiceCallTrial()
     session = trial.start(100)['session']
+    trial.arm(session, 100)
     for index in range(5):
         trial.record(session, partial_wake=False, constrained_wake=False,
                      constrained_near_start=False, free_wake=False,
@@ -140,6 +168,7 @@ def test_same_call_audio_reports_whether_tuning_created_a_dual_false_wake():
     assert 'text' not in observation and 'audio' not in observation
     trial = VoiceCallTrial()
     session = trial.start(100)['session']
+    trial.arm(session, 100)
     status = trial.record(session, **observation, now=101)
     assert status['raw_compared_utterances'] == 1
     assert status['processed_dual_compared'] == 1
@@ -159,6 +188,7 @@ def test_raw_only_wake_is_counted_separately_and_no_tuning_skips_replay():
         raw_spoken=[b'untouched'], constrained=raw_constrained)
     trial = VoiceCallTrial()
     session = trial.start(100)['session']
+    trial.arm(session, 100)
     status = trial.record(session, **observation, now=101)
     assert status['raw_dual_wakes'] == status['raw_only_dual_wakes'] == 1
     assert status['processed_dual_compared'] == 0
@@ -182,6 +212,15 @@ def test_owner_local_call_trial_blocks_commands_and_keeps_no_saved_results(tmp_p
         started = client.post('/api/v1/voice/call-trial/start')
         assert started.status_code == 200
         session = started.json()['session']
+        assert not started.json()['armed']
+        assert client.post('/api/v1/voice/call-trial/observation', json={
+            'session': session, 'partial_wake': False, 'constrained_wake': False,
+            'constrained_near_start': False, 'free_wake': False,
+            'free_near_start': False,
+        }).status_code == 409
+        assert client.post('/api/v1/voice/call-trial/armed', json={
+            'session': session,
+        }).json()['armed']
         assert client.post('/api/v1/voice/heartbeat', json={}).status_code == 200
         assert observed_heartbeats and observed_heartbeats[-1] is not None
         assert client.post('/api/v1/voice/calibration/start').status_code == 409

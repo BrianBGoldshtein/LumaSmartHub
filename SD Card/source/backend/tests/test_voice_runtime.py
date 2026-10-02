@@ -3,12 +3,14 @@ import json
 import queue
 import struct
 
+import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from luma.api import create_app
 from luma.models import CalendarEvent
 from luma.voice import WakeGate, parse_local_command
-from luma.voice_agent import (_discard_pending_audio, _reset_gapped_decoding,
+from luma.voice_agent import (_arm_call_trial, _discard_pending_audio, _reset_gapped_decoding,
                               _reset_voice_transition,
                               calibration_decoding_payload,
                               choose_command, partial_has_wake, select_command)
@@ -134,6 +136,25 @@ def test_voice_session_boundary_discards_both_decoder_histories_and_old_audio():
     assert not utterance and not raw_utterance
     assert not segmenter.preroll and segmenter.loud_frames == 0
     assert chunks.get_nowait() is failure and chunks.empty()
+
+
+def test_agent_accepts_only_matching_armed_call_trial_acknowledgment():
+    session = 'a' * 32
+    def handler(request):
+        assert request.url.path == '/api/v1/voice/call-trial/armed'
+        assert json.loads(request.content) == {'session': session}
+        return httpx.Response(200, json={
+            'session': session, 'active': True, 'armed': True,
+        })
+    with httpx.Client(transport=httpx.MockTransport(handler), base_url='http://127.0.0.1') as client:
+        assert _arm_call_trial(client, {'session': session})['armed']
+    def wrong_session(_request):
+        return httpx.Response(200, json={
+            'session': 'b' * 32, 'active': True, 'armed': True,
+        })
+    with httpx.Client(transport=httpx.MockTransport(wrong_session), base_url='http://127.0.0.1') as client:
+        with pytest.raises(ValueError, match='not armed'):
+            _arm_call_trial(client, {'session': session})
 
 
 def test_wake_gate_requires_phrase_and_expires():

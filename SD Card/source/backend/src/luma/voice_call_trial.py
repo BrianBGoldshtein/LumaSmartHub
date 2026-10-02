@@ -13,10 +13,13 @@ import uuid
 
 class VoiceCallTrial:
     DURATION_SECONDS = 90
+    ARM_TIMEOUT_SECONDS = 15
     MAX_HEARTBEAT_GAP_SECONDS = 15
 
     def __init__(self) -> None:
         self.session = ""
+        self.requested_at = 0.0
+        self.armed_at = 0.0
         self.started_at = 0.0
         self.until = 0.0
         self.last_heartbeat_at = 0.0
@@ -38,15 +41,26 @@ class VoiceCallTrial:
         if self.status(now)["active"]:
             raise ValueError("A call test is already running.")
         self.session = uuid.uuid4().hex
-        self.started_at = now
-        self.until = now + self.DURATION_SECONDS
-        self.last_heartbeat_at = now
+        self.requested_at = now
+        self.armed_at = self.started_at = self.last_heartbeat_at = 0.0
+        self.until = now + self.ARM_TIMEOUT_SECONDS
         self.interrupted = False
         self.utterances = self.partial_wakes = self.constrained_wakes = 0
         self.dual_wakes = self.quoted_wakes = 0
         self.raw_compared_utterances = self.raw_constrained_wakes = self.raw_dual_wakes = 0
         self.processed_dual_compared = 0
         self.tuned_only_dual_wakes = self.raw_only_dual_wakes = 0
+        return self.status(now)
+
+    def arm(self, session: str, now: float | None = None) -> dict:
+        """Begin the measured window only after the agent cleared old audio."""
+        now = time.monotonic() if now is None else now
+        if session != self.session or not self.status(now)['active']:
+            raise ValueError('The call test could not be armed.')
+        if self.armed_at:
+            return self.status(now)  # An HTTP retry must not restart the clock.
+        self.armed_at = self.started_at = self.last_heartbeat_at = now
+        self.until = now + self.DURATION_SECONDS
         return self.status(now)
 
     def stop(self) -> dict:
@@ -56,7 +70,7 @@ class VoiceCallTrial:
     def heartbeat(self, now: float | None = None) -> None:
         """A running capture service must cover the entire negative trial."""
         now = time.monotonic() if now is None else now
-        if not self.session or not self.started_at < now < self.until:
+        if not self.session or not self.armed_at or not self.started_at < now < self.until:
             return
         if now - self.last_heartbeat_at > self.MAX_HEARTBEAT_GAP_SECONDS:
             self.interrupted = True
@@ -68,11 +82,13 @@ class VoiceCallTrial:
         return {
             "session": self.session,
             "active": active,
-            "remaining_seconds": max(0, math.ceil(self.until - now)) if active else 0,
+            "armed": bool(self.armed_at),
+            "remaining_seconds": max(0, math.ceil(self.until - now)) if active and self.armed_at else 0,
             # Only a full-length, speech-bearing owner-started trial can
             # supply the negative evidence for an early wake-only check.
             # A stopped/empty trial or one with confirmed wakes cannot.
-            "negative_ready": bool(self.session and self.until > self.started_at
+            "negative_ready": bool(self.session and self.armed_at
+                                   and self.until > self.started_at
                                    and now >= self.until and self.utterances >= 5
                                    and self.dual_wakes == 0 and not self.interrupted
                                    and self.last_heartbeat_at >=
@@ -100,7 +116,7 @@ class VoiceCallTrial:
                raw_free_near_start: bool | None = None,
                now: float | None = None) -> dict:
         now = time.monotonic() if now is None else now
-        if session != self.session or not self.status(now)["active"]:
+        if session != self.session or not self.armed_at or not self.status(now)["active"]:
             raise ValueError("The call test is not active.")
         if any(type(value) is not bool for value in (
                 partial_wake, constrained_wake, constrained_near_start,

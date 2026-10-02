@@ -251,6 +251,11 @@ class CallTrialObservation(BaseModel):
     raw_free_near_start: bool | None = Field(default=None, strict=True)
 
 
+class CallTrialArm(BaseModel):
+    model_config = {"extra": "forbid"}
+    session: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
 class SpeakerTrialSession(BaseModel):
     model_config = {'extra': 'forbid'}
     session: str = Field(pattern=r'^[0-9a-f]{32}$')
@@ -1021,6 +1026,13 @@ def create_app(
     @app.get('/api/v1/voice/call-trial', dependencies=[Depends(local_only)])
     async def voice_call_trial_status() -> dict:
         return call_trial.status()
+
+    @app.post('/api/v1/voice/call-trial/armed', dependencies=[Depends(local_only)])
+    async def voice_call_trial_armed(payload: CallTrialArm) -> dict:
+        try:
+            return call_trial.arm(payload.session)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post('/api/v1/voice/call-trial/stop', dependencies=[Depends(local_only)])
     async def stop_voice_call_trial() -> dict:

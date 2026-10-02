@@ -253,6 +253,19 @@ def _reset_voice_transition(chunks: queue.Queue, constrained, unrestricted,
     raw_utterance.clear()
 
 
+def _arm_call_trial(client: httpx.Client, trial: dict) -> dict:
+    """Accept only an acknowledgment of the current cleared-audio session."""
+    response = client.post('/api/v1/voice/call-trial/armed', json={
+        'session': trial['session'],
+    }, timeout=3)
+    response.raise_for_status()
+    armed = response.json()
+    if (not isinstance(armed, dict) or armed.get('session') != trial['session']
+            or armed.get('armed') is not True or armed.get('active') is not True):
+        raise ValueError('The call test was not armed.')
+    return armed
+
+
 def main() -> None:
     def stop(signum, frame):
         raise SystemExit(0)
@@ -460,6 +473,14 @@ def main() -> None:
                                 early_wake = False
                                 trial_partial_wake = False
                                 phase('idle')
+                            if new_trial.get('active') and not new_trial.get('armed'):
+                                # The API does not start the 90-second negative
+                                # window until this worker has crossed the
+                                # reset boundary and acknowledges its session.
+                                try:
+                                    fresh['call_trial'] = _arm_call_trial(client, new_trial)
+                                except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                                    pass  # Retry on the next status poll.
                             old_speaker_trial = calibration.get('speaker_trial') or {}
                             new_speaker_trial = fresh.get('speaker_trial') or {}
                             if ((old_speaker_trial.get('active'), old_speaker_trial.get('session')) !=

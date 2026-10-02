@@ -15,6 +15,11 @@ import sys
 RATE = 16_000
 HIGH_PASS_HZ = 75
 HIGH_PASS_ALPHA = math.exp(-2 * math.pi * HIGH_PASS_HZ / RATE)
+# Setup-only detection can admit a clean faint phrase before Vosk can decode
+# it. The ambient-relative gates below still reject ordinary room noise; this
+# floor never authorizes a wake or a command outside calibration.
+CALIBRATION_MIN_RMS = .0005
+CALIBRATION_MIN_PEAK = .0025
 
 
 @dataclass(frozen=True)
@@ -124,8 +129,8 @@ def speech_measurements(frames: list[bytes], *, noise_rms: float) -> dict[str, f
         raise ValueError("Invalid acoustic calibration segment")
     levels = [pcm_measurements(frame) for frame in frames]
     voiced = [level for level in levels
-              if level["rms"] >= max(.0006, noise_rms * 2.5)
-              and level["peak"] >= max(.005, noise_rms * 4)]
+              if level["rms"] >= max(CALIBRATION_MIN_RMS, noise_rms * 2.5)
+              and level["peak"] >= max(CALIBRATION_MIN_PEAK, noise_rms * 4)]
     chosen = voiced or levels
     return {"rms": math.sqrt(sum(level["rms"] ** 2 for level in chosen) / len(chosen)),
             "peak": max(level["peak"] for level in levels),
@@ -152,7 +157,8 @@ def derive_profile(room_floors: list[float], speech_samples: list[dict],
     # Acoustic evidence must not depend on Vosk hearing words or the command
     # parser accepting an intent: the point is to help those earlier stages.
     valid = [item for item in speech_samples if item.get("acoustic_speech", True) and
-             .0005 <= item.get("rms", 0) <= 1 and .005 < item.get("peak", 0) <= 1]
+             CALIBRATION_MIN_RMS <= item.get("rms", 0) <= 1 and
+             CALIBRATION_MIN_PEAK <= item.get("peak", 0) <= 1]
     floors = [value for value in room_floors if math.isfinite(value) and 0 < value <= 1]
     if len(valid) < 3 or len(floors) < 3:
         return AudioProfile(quality="bypass")
@@ -266,8 +272,8 @@ class CalibrationSegmenter:
         if not 0 <= noise_rms <= 1:
             raise ValueError("Invalid room-noise level")
         level = pcm_measurements(raw)
-        loud = (level["rms"] >= max(.0006, noise_rms * 2.5)
-                and level["peak"] >= max(.005, noise_rms * 4))
+        loud = (level["rms"] >= max(CALIBRATION_MIN_RMS, noise_rms * 2.5)
+                and level["peak"] >= max(CALIBRATION_MIN_PEAK, noise_rms * 4))
         pair = (raw, processed)
         if not self.frames:
             self.preroll.append(pair)

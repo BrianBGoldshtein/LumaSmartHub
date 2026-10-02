@@ -8,7 +8,8 @@ import re
 from statistics import median
 
 from .voice import WakeGate, parse_local_command
-from .voice_signal import AudioProfile, derive_profile, room_noise_level
+from .voice_signal import (AudioProfile, CALIBRATION_MIN_PEAK, CALIBRATION_MIN_RMS,
+                           derive_profile, room_noise_level)
 from .voice_wake import command_after_wake, wake_near_start
 from .voice_adaptation import LEARNABLE, conflicts_with_existing_command, normalized_phrase
 
@@ -333,7 +334,7 @@ class VoiceCalibration:
             return 0
         if peak >= .995 or clipped_fraction > .002:
             return -4
-        if .005 <= peak < .5 and rms < .002:
+        if CALIBRATION_MIN_PEAK <= peak < .5 and rms < .002:
             if self.room_floors:
                 floor = sorted(self.room_floors)[len(self.room_floors) // 2]
                 if floor >= rms / 3:
@@ -443,8 +444,8 @@ class VoiceCalibration:
                              (raw_wake is not None) == expects_wake and
                              (raw_command.name, raw_command.value) == (expected.name, expected.value))
         noise = room_noise_level(self.room_floors) or 0.0
-        acoustic_speech = (rms >= max(.0005, noise * 2.5)
-                           and peak >= max(.005, noise * 4))
+        acoustic_speech = (rms >= max(CALIBRATION_MIN_RMS, noise * 2.5)
+                           and peak >= max(CALIBRATION_MIN_PEAK, noise * 4))
         level_ok = .002 <= rms and peak < .995 and clipped_fraction <= .002
         self.attempts += 1
         self.phrase_prompt_at = now

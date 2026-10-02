@@ -584,6 +584,26 @@ def test_hardware_gain_does_not_amplify_a_low_signal_to_noise_room():
     assert calibration.gain_step(.001, .05) == 0
     calibration.room_floors[:] = [.0001, .0002, .0002]
     assert calibration.gain_step(.001, .05) == 4
+    # The formerly unreachable very-quiet segment is eligible only when it
+    # rises clearly above the measured room floor; silence is never boosted.
+    assert calibration.gain_step(.001, .003) == 4
+    assert calibration.gain_step(.0001, .0001) == 0
+    calibration.room_floors[:] = [.0008, .0009, .001]
+    assert calibration.gain_step(.001, .003) == 0
+
+
+def test_faint_clean_audio_can_offer_pre_asr_trial_without_passing_words():
+    calibration = VoiceCalibration()
+    session = calibration.start(100, ambient_seconds=4)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .00015, .001, now,
+                                 floor_rms=.00015)
+    for now in (106, 107, 108):
+        result = calibration.submit(session, '', .0015, .003, now)
+    assert result['completed'] == 0 and result['attempts'] == 3
+    assert result['audio_candidate']['quality'] == 'quiet'
+    assert result['audio_candidate']['gain'] > 1
+    assert not result['passed']
 
 
 def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):

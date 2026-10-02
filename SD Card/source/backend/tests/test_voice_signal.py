@@ -66,6 +66,26 @@ def test_profile_amplifies_only_clean_quiet_speech():
     assert derive_profile(mixed_room, sample_rows()).quality == 'noisy'
 
 
+def test_clean_faint_speech_reaches_setup_trial_without_counting_room_noise():
+    faint = sample_rows(rms=.0015, peak=.003)
+    profile = derive_profile([.00015] * 4, faint)
+    assert profile.quality == 'quiet' and profile.gain > 1
+    assert derive_profile([.001] * 4, faint).quality == 'noisy'
+    segmenter = CalibrationSegmenter()
+    room = pcm(*([2] * 4000))
+    weak_voice = pcm(*([100, -100] * 2000))
+    assert segmenter.feed(room, room, noise_rms=.00015) is None
+    assert segmenter.feed(weak_voice, weak_voice, noise_rms=.00015) is None
+    assert segmenter.feed(weak_voice, weak_voice, noise_rms=.00015) is None
+    assert segmenter.feed(room, room, noise_rms=.00015) is None
+    assert segmenter.feed(room, room, noise_rms=.00015) is None
+    captured = segmenter.feed(room, room, noise_rms=.00015)
+    assert captured is not None
+    measured = speech_measurements(captured[0], noise_rms=.00015)
+    assert measured['peak'] >= .003 and measured['rms'] > .002
+    assert CalibrationSegmenter().feed(room, room, noise_rms=.00015) is None
+
+
 def test_unstable_room_floor_never_becomes_an_amplifying_profile():
     profile = derive_profile([.001, .0012, .0011, .006], sample_rows())
     assert profile.quality == 'unstable'

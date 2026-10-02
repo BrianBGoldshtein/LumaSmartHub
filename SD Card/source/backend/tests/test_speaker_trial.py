@@ -30,13 +30,18 @@ def test_trial_requires_explicit_independent_samples_and_keeps_only_scores():
         trial.armed(started['session'], armed['token'])
         done = trial.submit(started['session'], armed['token'],
                             vector=vector(index, other=index >= 5),
-                            spk_frames=100, input_seconds=6)
+                            spk_frames=100, input_seconds=6,
+                            model_load_ms=42 if index == 0 else 0,
+                            decode_ms=10 + index, rss_kib=500_000 + index * 1000)
         assert done['completed'] == index + 1
         if index == len(STEPS) - 1:
             assert all(not value for value in trial._samples.values())
     assert done['phase'] == 'complete' and not done['active']
     assert done['report']['observed_separation'] is True
     assert done['report']['candidate_threshold'] is not None
+    assert done['report']['model_load_ms'] == 42
+    assert done['report']['median_decode_ms'] == 14
+    assert done['report']['voice_process_peak_rss_mb'] == round(507_000 / 1024, 1)
     assert 'vector' not in str(done) and 'audio' not in str(done)
     assert all(not samples for samples in trial._samples.values())
 
@@ -70,6 +75,9 @@ def test_trial_rejects_duplicate_vectors_invalid_values_and_stale_tokens():
         with pytest.raises(SpeakerVectorError):
             trial.submit(session, first['token'], vector=bad, spk_frames=100,
                          input_seconds=6)
+    with pytest.raises(SpeakerVectorError, match='performance'):
+        trial.submit(session, first['token'], vector=vector(0), spk_frames=100,
+                     input_seconds=6, decode_ms=float('nan'))
     trial.submit(session, first['token'], vector=vector(0), spk_frames=100,
                  input_seconds=6)
     second = trial.begin(session)

@@ -11,6 +11,7 @@ import atexit
 import signal
 import math
 import re
+import sys
 from statistics import median
 
 import httpx
@@ -208,6 +209,18 @@ def speaker_trial_result(recognizer, frames: list[bytes], *, noise_rms: float) -
             'input_seconds': sample.input_seconds}
 
 
+def voice_process_peak_rss_kib() -> int | None:
+    """Linux getrusage reports process peak RSS in KiB; never infer Pi free RAM."""
+    if sys.platform != 'linux':
+        return None
+    try:
+        import resource
+        value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    except (ImportError, OSError, ValueError):
+        return None
+    return value if 0 < value <= 8_388_608 else None
+
+
 def _reset_gapped_decoding(chunks: queue.Queue, constrained, unrestricted,
                            preprocessor: AudioPreprocessor, gate: WakeGate) -> None:
     """Reject a late capture gap before any decoded words cause an action."""
@@ -300,6 +313,7 @@ def main() -> None:
                                "call_trial": {"active": False, "session": ""},
                                "speaker_trial": {"active": False, "session": ""}}
                 speaker_model = None
+                speaker_model_load_ms = 0.0
                 handled_speaker_token = None
                 wake_mode = 'standard'
                 adaptations = PhraseAdaptations()
@@ -438,6 +452,7 @@ def main() -> None:
                                 phase('idle')
                             if not new_speaker_trial.get('active'):
                                 speaker_model = None
+                                speaker_model_load_ms = 0.0
                             next_wake_mode = read_wake_mode(fresh.get('wake_confirmation'))
                             if next_wake_mode != wake_mode:
                                 wake_mode = next_wake_mode
@@ -480,9 +495,11 @@ def main() -> None:
                             model_failed = False
                             try:
                                 if speaker_model is None:
+                                    load_started = time.monotonic()
                                     from vosk import SpkModel
                                     data_root = Path(os.environ.get('LUMA_DATA_DIR', '/var/lib/luma'))
                                     speaker_model = SpkModel(str(data_root / 'speaker-model' / 'vosk-model-spk-0.4'))
+                                    speaker_model_load_ms = (time.monotonic() - load_started) * 1000
                                 trial_recognizer = KaldiRecognizer(model, 16000)
                                 trial_recognizer.SetSpkModel(speaker_model)
                             except Exception:
@@ -503,11 +520,15 @@ def main() -> None:
                                     result = {'error': capture_error}
                                 else:
                                     room_level = float((calibration.get('audio_profile') or {}).get('noise_rms') or 0)
+                                    decode_started = time.monotonic()
                                     try:
                                         result = speaker_trial_result(trial_recognizer, frames,
                                                                       noise_rms=room_level)
                                     except Exception:
                                         result = {'error': 'decode_failed'}
+                                    result.update(model_load_ms=round(speaker_model_load_ms, 1),
+                                                  decode_ms=round((time.monotonic() - decode_started) * 1000, 1),
+                                                  rss_kib=voice_process_peak_rss_kib())
                                 frames.clear()
                                 del frames
                                 trial_recognizer = None

@@ -264,6 +264,9 @@ class SpeakerTrialObservation(SpeakerTrialSample):
     vector: list[float] | None = Field(default=None, max_length=512)
     spk_frames: int | None = Field(default=None, strict=True, ge=1, le=3000)
     input_seconds: float | None = Field(default=None, ge=4, le=8, allow_inf_nan=False)
+    model_load_ms: float | None = Field(default=None, ge=0, le=60_000, allow_inf_nan=False)
+    decode_ms: float | None = Field(default=None, ge=0, le=60_000, allow_inf_nan=False)
+    rss_kib: int | None = Field(default=None, strict=True, ge=1, le=8_388_608)
     error: Literal['capture_gap', 'capture_stopped', 'model_unavailable',
                    'speech_too_short', 'too_quiet', 'clipped', 'decode_failed'] | None = None
 
@@ -966,7 +969,10 @@ def create_app(
         try:
             speaker_trial.submit(payload.session, payload.token, vector=payload.vector,
                                  spk_frames=payload.spk_frames,
-                                 input_seconds=payload.input_seconds, error=payload.error)
+                                 input_seconds=payload.input_seconds,
+                                 model_load_ms=payload.model_load_ms,
+                                 decode_ms=payload.decode_ms, rss_kib=payload.rss_kib,
+                                 error=payload.error)
         except SpeakerVectorError as exc:
             raise HTTPException(409, str(exc)) from exc
         return speaker_trial_payload()

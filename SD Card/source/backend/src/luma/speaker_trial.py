@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import time
 import uuid
+from statistics import median
 
 from .voice_speaker import (SpeakerObservation, SpeakerVectorError,
                             assess_speaker_trial, speaker_similarity)
@@ -44,9 +45,17 @@ class SpeakerTrial:
         self.report: dict | None = None
         self._samples: dict[str, list[SpeakerObservation]] = {
             'enrollment': [], 'owner_holdout': [], 'nonowner_holdout': []}
+        self._decode_ms: list[float] = []
+        self._model_load_ms: float | None = None
+        self._peak_rss_kib: int | None = None
 
     def _drop_samples(self) -> None:
         self._samples = {'enrollment': [], 'owner_holdout': [], 'nonowner_holdout': []}
+
+    def _drop_metrics(self) -> None:
+        self._decode_ms.clear()
+        self._model_load_ms = None
+        self._peak_rss_kib = None
 
     def _expire(self, now: float) -> None:
         if self.phase in {'ready', 'arming', 'recording'} and now >= self.until:
@@ -82,6 +91,7 @@ class SpeakerTrial:
         self.last_error = None
         self.report = None
         self._drop_samples()
+        self._drop_metrics()
         return self.status(now)
 
     def begin(self, session: str, now: float | None = None) -> dict:
@@ -106,6 +116,8 @@ class SpeakerTrial:
 
     def submit(self, session: str, token: str, *, vector: list[float] | None = None,
                spk_frames: int | None = None, input_seconds: float | None = None,
+               model_load_ms: float | None = None, decode_ms: float | None = None,
+               rss_kib: int | None = None,
                error: str | None = None, now: float | None = None) -> dict:
         now = time.monotonic() if now is None else now
         self._expire(now)
@@ -116,6 +128,15 @@ class SpeakerTrial:
                 raise SpeakerVectorError('Invalid speaker sample result.')
             self.phase, self.token, self.last_error = 'ready', '', error
             return self.status(now)
+        if ((model_load_ms is not None and
+             (type(model_load_ms) not in (int, float) or not math.isfinite(model_load_ms)
+              or not 0 <= model_load_ms <= 60_000))
+                or (decode_ms is not None and
+                    (type(decode_ms) not in (int, float) or not math.isfinite(decode_ms)
+                     or not 0 <= decode_ms <= 60_000))
+                or (rss_kib is not None and
+                    (type(rss_kib) is not int or not 0 < rss_kib <= 8_388_608))):
+            raise SpeakerVectorError('Invalid speaker performance measurements.')
         if (not isinstance(vector, list) or not 64 <= len(vector) <= 512
                 or type(spk_frames) is not int or not 1 <= spk_frames <= 3000
                 or type(input_seconds) not in (int, float)
@@ -134,6 +155,12 @@ class SpeakerTrial:
             raise SpeakerVectorError('Speaker samples must be independent and compatible.')
         role, _prompt = STEPS[self.index]
         self._samples[role].append(observation)
+        if decode_ms is not None:
+            self._decode_ms.append(float(decode_ms))
+        if self._model_load_ms is None and model_load_ms is not None and model_load_ms > 0:
+            self._model_load_ms = float(model_load_ms)
+        if rss_kib is not None:
+            self._peak_rss_kib = max(self._peak_rss_kib or 0, rss_kib)
         self.index += 1
         self.token = ''
         self.last_error = None
@@ -147,6 +174,7 @@ class SpeakerTrial:
         except SpeakerVectorError:
             self.phase = 'failed'
             self.last_error = 'assessment_failed'
+            self._drop_metrics()
             raise
         finally:
             self._drop_samples()
@@ -156,7 +184,12 @@ class SpeakerTrial:
                        'owner_holdout_floor': round(result.owner_holdout_floor, 3),
                        'nonowner_holdout_ceiling': round(result.nonowner_holdout_ceiling, 3),
                        'candidate_threshold': (round(result.candidate_threshold, 3)
-                                               if result.candidate_threshold is not None else None)}
+                                               if result.candidate_threshold is not None else None),
+                       'model_load_ms': (round(self._model_load_ms) if self._model_load_ms is not None else None),
+                       'median_decode_ms': (round(median(self._decode_ms)) if self._decode_ms else None),
+                       'voice_process_peak_rss_mb': (round(self._peak_rss_kib / 1024, 1)
+                                                     if self._peak_rss_kib is not None else None)}
+        self._drop_metrics()
         return self.status(now)
 
     def cancel(self, *, expired: bool = False) -> dict:
@@ -166,4 +199,5 @@ class SpeakerTrial:
         self.last_error = None
         self.report = None
         self._drop_samples()
+        self._drop_metrics()
         return self.status()

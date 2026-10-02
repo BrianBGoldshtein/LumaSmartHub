@@ -1216,19 +1216,40 @@ def create_app(
                     if result["active"] and not result["ambient_remaining"]
                     and result["attempts"] > 0 else 0)
             if step:
-                hardware = await asyncio.to_thread(mic_hardware.status)
+                try:
+                    hardware = await asyncio.to_thread(mic_hardware.status)
+                except (mic_hardware.MicHardwareError, OSError):
+                    hardware = {'available': False}
                 if (hardware["available"] and payload.session == calibration.session
                         and calibration.status()["active"]):
                     current = int(hardware["gain"])
                     adjusted = min(63, max(0, current + step))
                     if adjusted != current:
                         try:
-                            await asyncio.to_thread(mic_hardware.save_and_apply, adjusted)
-                        except mic_hardware.MicHardwareError:
-                            pass  # A failed mixer change never fakes a passed phrase.
+                            after = await asyncio.to_thread(mic_hardware.save_and_apply, adjusted)
+                        except (mic_hardware.MicHardwareError, OSError):
+                            # Saving the gain file can fail *after* the HAT
+                            # mixer changed. Re-read it before trusting any
+                            # earlier room baseline or phrase result.
+                            try:
+                                observed = await asyncio.to_thread(mic_hardware.status)
+                            except (mic_hardware.MicHardwareError, OSError):
+                                observed = {}
+                            if (not observed.get('available') or
+                                    any(observed.get(key) != hardware.get(key)
+                                        for key in ('gain', 'capture_on', 'route_ready'))):
+                                storage.set_cache('voice', 'audio_profile', AudioProfile().public())
+                                calibration.abort_uncertain_gain()
+                            else:
+                                calibration.gain_write_failed()
                         else:
                             storage.set_cache('voice', 'audio_profile', AudioProfile().public())
-                            calibration.record_gain(adjusted)
+                            if (not isinstance(after, dict) or not after.get('available')
+                                    or after.get('gain') != adjusted
+                                    or not after.get('capture_on') or not after.get('route_ready')):
+                                calibration.abort_uncertain_gain()
+                            else:
+                                calibration.record_gain(adjusted)
             if result["passed"]:
                 storage.set_cache("voice", "calibration", {"checked_at": datetime.now(UTC).isoformat(), "results": result["results"]})
                 storage.set_cache("voice", "audio_profile", result["audio_profile"] or AudioProfile().public())

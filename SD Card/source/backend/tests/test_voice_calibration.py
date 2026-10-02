@@ -747,7 +747,10 @@ def test_auto_gain_only_for_clear_level_faults(monkeypatch, tmp_path):
         'available': True, 'gain': 39 + 4 * len(applied), 'max_gain': 63,
         'capture_on': True, 'route_ready': True,
     })
-    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', lambda gain: applied.append(gain))
+    def save_and_apply(gain):
+        applied.append(gain)
+        return api.mic_hardware.status()
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', save_and_apply)
     app = create_app(data_dir=tmp_path)
     app.state.luma.storage.set_cache('voice', 'audio_profile', {
         'version': 1, 'gain': 2.0, 'high_pass': False,
@@ -1015,6 +1018,91 @@ def test_partially_failed_gain_write_discards_profile_and_active_check(tmp_path,
         assert client.post('/api/v1/voice/calibration/sample', json={
             'session': session, 'text': PHRASES[0], 'rms': .03, 'peak': .3,
         }).status_code == 409
+
+
+def test_partially_failed_automatic_gain_write_aborts_old_audio_evidence(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    gain = {'value': 39}
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': gain['value'], 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    def partial_failure(value):
+        gain['value'] = value
+        raise OSError('private gain-file path')
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', partial_failure)
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.storage.set_cache('voice', 'audio_profile', {
+        'version': 1, 'gain': 2.0, 'high_pass': False,
+        'noise_rms': .001, 'speech_rms': .025, 'snr_db': 28.0,
+        'quality': 'quiet',
+    })
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        sampled = client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': '', 'rms': .001, 'peak': .05,
+        })
+        assert sampled.status_code == 200
+        assert not sampled.json()['active']
+        assert 'may have changed' in sampled.json()['message']
+        assert gain['value'] == 43
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
+        assert client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': '', 'rms': .001, 'peak': .05,
+        }).status_code == 409
+
+
+def test_failed_automatic_gain_without_mixer_change_does_not_retry(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': 39, 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    attempted = []
+    def failed_save(value):
+        attempted.append(value)
+        raise OSError('gain file not writable')
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', failed_save)
+    with TestClient(create_app(data_dir=tmp_path)) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        for _ in range(2):
+            sampled = client.post('/api/v1/voice/calibration/sample', json={
+                'session': session, 'text': '', 'rms': .001, 'peak': .05,
+            })
+            assert sampled.status_code == 200 and sampled.json()['active']
+        assert attempted == [43]
+        assert sampled.json()['auto_gain_failed']
+
+
+def test_automatic_gain_refuses_unreadable_success_result(tmp_path, monkeypatch):
+    import luma.api as api
+    original_start = api.VoiceCalibration.start
+    monkeypatch.setattr(api.VoiceCalibration, 'start',
+                        lambda self, *args, **_kwargs: original_start(self, *args))
+    monkeypatch.setattr(api.mic_hardware, 'status', lambda: {
+        'available': True, 'gain': 39, 'max_gain': 63,
+        'capture_on': True, 'route_ready': True,
+    })
+    monkeypatch.setattr(api.mic_hardware, 'save_and_apply', lambda value: {
+        'available': False, 'gain': value, 'max_gain': 63,
+        'capture_on': False, 'route_ready': False,
+    })
+    app = create_app(data_dir=tmp_path)
+    with TestClient(app) as client:
+        session = client.post('/api/v1/voice/calibration/start').json()['session']
+        sampled = client.post('/api/v1/voice/calibration/sample', json={
+            'session': session, 'text': '', 'rms': .001, 'peak': .05,
+        })
+        assert sampled.status_code == 200
+        assert not sampled.json()['active']
+        assert 'recheck hardware' in sampled.json()['message']
+        assert app.state.luma.storage.get_cache('voice', 'audio_profile')['gain'] == 1
 
 
 def test_repaired_capture_route_invalidates_old_profile_without_gain_difference(tmp_path, monkeypatch):

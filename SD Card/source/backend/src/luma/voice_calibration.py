@@ -94,6 +94,8 @@ class VoiceCalibration:
         self.last_correction_count = 0
         self.applied_gain: int | None = None
         self.gain_adjustments = 0
+        self.auto_gain_failed = False
+        self.failure_message: str | None = None
         self.room_floors: list[float] = []
         self.room_low_fractions: list[float] = []
         self.audio_profile: dict | None = None
@@ -189,6 +191,8 @@ class VoiceCalibration:
         self.ambient_pending = ambient_seconds > 0
         self.phrase_prompt_at = 0.0 if self.ambient_pending else now
         self.index = self.attempts = 0
+        self.auto_gain_failed = False
+        self.failure_message = None
         self.wake_only_finished = False
         self.results = []
         self.signal_rms = self.signal_peak = self.signal_at = 0.0
@@ -286,6 +290,7 @@ class VoiceCalibration:
             "message": (("Stay quiet while Luma measures room sound."
                          if ambient_remaining else message)
                         if active or self.index == len(PHRASES) or self.wake_only_finished
+                        or self.failure_message
                         else "Start a new check when you are ready."),
             "signal_available": active and self.signal_at > 0 and now - self.signal_at <= 3,
             "signal_rms": self.signal_rms, "signal_peak": self.signal_peak,
@@ -301,6 +306,7 @@ class VoiceCalibration:
             "last_selection": self.last_selection if recent else "",
             "applied_gain": self.applied_gain,
             "gain_adjustments": self.gain_adjustments,
+            "auto_gain_failed": self.auto_gain_failed,
             "room_noise_rms": round(noise, 5) if noise is not None else None,
             "room_low_frequency_fraction": (round(median(self.room_low_fractions), 2)
                                             if len(self.room_low_fractions) >= 3 else None),
@@ -366,7 +372,7 @@ class VoiceCalibration:
         A near-zero peak usually means an absent capture route, not low gain.
         Limit the entire session to three reversible four-step hardware moves.
         """
-        if self.gain_adjustments >= 3:
+        if self.gain_adjustments >= 3 or self.auto_gain_failed:
             return 0
         if peak >= .995 or clipped_fraction > .002:
             return -4
@@ -381,6 +387,7 @@ class VoiceCalibration:
     def record_gain(self, gain: int) -> None:
         self.applied_gain = gain
         self.gain_adjustments += 1
+        self.auto_gain_failed = False
         self.capture_revision += 1
         # Raw noise and speech measurements from different hardware gains are
         # not comparable. Start a fresh room baseline and phrase check while
@@ -410,6 +417,19 @@ class VoiceCalibration:
         self.message = (f"Capture gain adjusted to {gain} of 63. Stay quiet for a new room baseline, "
                         "then repeat the phrase check." if self.ambient_pending else
                         f"Capture gain adjusted to {gain} of 63; repeat the phrase check.")
+
+    def gain_write_failed(self) -> None:
+        """Keep the measured check, but do not retry a failed disk/mixer write."""
+        self.auto_gain_failed = True
+        self.message = ('Automatic capture-gain adjustment failed; the microphone path appears unchanged. '
+                        'Use the manual gain control or continue this check at the current gain.')
+
+    def abort_uncertain_gain(self) -> None:
+        """A partial write makes all previous room/phrase evidence unreliable."""
+        self.cancel()
+        self.failure_message = ('Automatic capture-gain adjustment may have changed the microphone path. '
+                                'Old mic tuning was cleared; recheck hardware and start a new voice check.')
+        self.message = self.failure_message
 
     def report_level(self, session: str, rms: float, peak: float, now: float | None = None,
                      *, floor_rms: float | None = None,
@@ -586,6 +606,8 @@ class VoiceCalibration:
 
     def cancel(self) -> None:
         self.until = 0
+        self.auto_gain_failed = False
+        self.failure_message = None
         self.wake_only_finished = False
         self.index = self.attempts = 0
         self.results.clear()

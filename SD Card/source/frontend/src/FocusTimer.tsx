@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {Timer,Pause,Play,X} from 'lucide-react';
 import {TouchField,TouchInputProvider} from './TouchField';
-import {idleTimer,previewTimerCommand,timerRemaining,timerText,type TimerState} from './timerState';
+import {idleTimer,previewTimerCommand,timerDurationSeconds,timerRemaining,timerText,type TimerStartRequest,type TimerState} from './timerState';
 import type {Snapshot} from './types';
 import './features.css';
 
@@ -17,8 +17,8 @@ export function TimerBadge({timer,onOpen}:{timer:TimerState;onOpen:()=>void}){
 }
 export function TimerPanel({snapshot,demo,onUpdate,onClose}:{snapshot:Snapshot;demo:boolean;onUpdate:(snapshot:Snapshot)=>void;onClose:()=>void}){
   const timer=snapshot.timer || idleTimer,remaining=useRemaining(timer);
-  const [minutes,setMinutes]=useState('25'),[label,setLabel]=useState('');
-  const [pending,setPending]=useState<{minutes:number;label:string;replace_id:string}|null>(null);
+  const [amount,setAmount]=useState('25'),[unit,setUnit]=useState<'seconds'|'minutes'|'hours'>('minutes'),[label,setLabel]=useState('');
+  const [pending,setPending]=useState<(TimerStartRequest & {replace_id:string})|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   const panel=useRef<HTMLElement>(null);
   useEffect(()=>{const previous=document.activeElement as HTMLElement|null;panel.current?.querySelector<HTMLButtonElement>('button')?.focus();return()=>previous?.focus();},[]);
@@ -40,15 +40,18 @@ export function TimerPanel({snapshot,demo,onUpdate,onClose}:{snapshot:Snapshot;d
       setLabel('');
     }catch(e){setError(e instanceof Error?e.message:'Timer unavailable.');}finally{setBusy(false);}
   }
-  function start(amount:number,title:string){
-    if(!Number.isInteger(amount) || amount<1 || amount>240){setError('Choose 1–240 whole minutes.');return;}
-    const value={minutes:amount,label:title.trim() || 'Timer'};
+  function start(value:TimerStartRequest){
+    try{timerDurationSeconds(value);}catch(e){setError(e instanceof Error?e.message:'Choose a timer from 1 second to 4 hours.');return;}
     if(active && timer.id)setPending({...value,replace_id:timer.id});else void run('start_timer',value);
+  }
+  function startCustom(){
+    const count=Number(amount),multiplier=unit==='hours'?3600:unit==='minutes'?60:1;
+    start({seconds:count*multiplier,label:label.trim() || 'Timer'});
   }
   return <TouchInputProvider><div className="feature-shade" onClick={event=>event.stopPropagation()}><section ref={panel} className="feature-panel device-setup" role="dialog" aria-modal="true" aria-label="Timer controls" onKeyDown={event=>{
     if(event.key==='Escape' && !busy){event.preventDefault();onClose();}
     if(event.key==='Tab'){
-      const fields=[...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),summary,[tabindex="0"]')].filter(item=>item.getClientRects().length);
+      const fields=[...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),summary,[tabindex="0"]')].filter(item=>item.getClientRects().length);
       const first=fields[0],last=fields[fields.length-1];
       if(event.shiftKey && document.activeElement===first){event.preventDefault();last?.focus();}
       else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}
@@ -60,9 +63,9 @@ export function TimerPanel({snapshot,demo,onUpdate,onClose}:{snapshot:Snapshot;d
     {error && <p role="alert" className="feature-error">{error}</p>}
     {active && <div className="feature-actions">{timer.status==='paused'?<button disabled={busy} onClick={()=>void run('resume_timer')}><Play/>Resume</button>:<button disabled={busy} onClick={()=>void run('pause_timer')}><Pause/>Pause</button>}<button disabled={busy} onClick={()=>void run('cancel_timer')}>Cancel timer</button></div>}
     {timer.status==='complete' && <button disabled={busy} onClick={()=>void run('dismiss_timer')}>Dismiss</button>}
-    <div className="timer-presets"><button disabled={busy} onClick={()=>start(snapshot.settings.timer_focus_minutes ?? 25,'Focus')}>Focus <strong>{snapshot.settings.timer_focus_minutes ?? 25}<small> min</small></strong></button><button disabled={busy} onClick={()=>start(snapshot.settings.timer_break_minutes ?? 5,'Break')}>Break <strong>{snapshot.settings.timer_break_minutes ?? 5}<small> min</small></strong></button></div>
-    <details><summary>Custom timer</summary><form onSubmit={event=>{event.preventDefault();start(Number(minutes),label);}}><TouchField label="Minutes · 1 to 240" value={minutes} onChange={setMinutes} mode="digits" maxLength={3} required disabled={busy}/><TouchField label="Label · optional, hidden in private standby" value={label} onChange={setLabel} maxLength={40} disabled={busy}/><button disabled={busy}>Start timer</button></form></details>
-    {pending && <div className="feature-confirm" role="alert"><strong>Replace the current timer?</strong><p>Start {pending.minutes} minutes instead. The current countdown will be lost.</p><button disabled={busy} onClick={()=>void run('start_timer',pending)}>Replace timer</button><button disabled={busy} onClick={()=>setPending(null)}>Keep current timer</button></div>}
+    <div className="timer-presets"><button disabled={busy} onClick={()=>start({minutes:snapshot.settings.timer_focus_minutes ?? 25,label:'Focus'})}>Focus <strong>{snapshot.settings.timer_focus_minutes ?? 25}<small> min</small></strong></button><button disabled={busy} onClick={()=>start({minutes:snapshot.settings.timer_break_minutes ?? 5,label:'Break'})}>Break <strong>{snapshot.settings.timer_break_minutes ?? 5}<small> min</small></strong></button></div>
+    <details><summary>Custom timer</summary><form onSubmit={event=>{event.preventDefault();startCustom();}}><TouchField label="Duration" value={amount} onChange={setAmount} mode="digits" maxLength={5} required disabled={busy}/><label className="timer-unit">Unit<select value={unit} disabled={busy} onChange={event=>setUnit(event.target.value as typeof unit)}><option value="seconds">Seconds</option><option value="minutes">Minutes</option><option value="hours">Hours</option></select></label><TouchField label="Label · optional, hidden in private standby" value={label} onChange={setLabel} maxLength={40} disabled={busy}/><button disabled={busy}>Start timer</button></form></details>
+    {pending && <div className="feature-confirm" role="alert"><strong>Replace the current timer?</strong><p>Start {timerText(timerDurationSeconds(pending))} instead. The current countdown will be lost.</p><button disabled={busy} onClick={()=>void run('start_timer',pending)}>Replace timer</button><button disabled={busy} onClick={()=>setPending(null)}>Keep current timer</button></div>}
     {demo && <p className="feature-note">Preview timer only · no device changes or chime.</p>}
   </section></div></TouchInputProvider>;
 }

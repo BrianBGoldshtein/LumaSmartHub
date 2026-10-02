@@ -13,9 +13,6 @@ NUMBER_WORDS = {
     "one hundred": 100,
 }
 
-TIMER_MINUTES = {'five':5, 'ten':10, 'fifteen':15, 'twenty':20, 'twenty five':25,
-                 'thirty':30, 'forty five':45, 'sixty':60}
-
 SMALL_NUMBERS = {'one':1,'two':2,'three':3,'four':4,'five':5,'six':6,'seven':7,
                  'eight':8,'nine':9,'ten':10,'eleven':11,'twelve':12,
                  'thirteen':13,'fourteen':14,'fifteen':15,'sixteen':16,
@@ -26,10 +23,13 @@ TENS = {'twenty':20,'thirty':30,'forty':40,'fifty':50,'sixty':60,
 
 def _spoken_number(value: str) -> int | None:
     value=value.strip().replace('-',' ')
+    if value in {'a','an'}:return 1
     if value.isascii() and value.isdigit():return int(value)
     if value in SMALL_NUMBERS:return SMALL_NUMBERS[value]
     if value in TENS:return TENS[value]
     words=value.split()
+    if len(words)>2 and words[1]=='hundred' and words[2]=='and':
+        words=words[:2]+words[3:]
     if len(words)==2 and words[0] in TENS and words[1] in SMALL_NUMBERS and SMALL_NUMBERS[words[1]]<10:
         return TENS[words[0]]+SMALL_NUMBERS[words[1]]
     if words and words[0] in {'a','one','two'} and len(words)>1 and words[1]=='hundred':
@@ -37,6 +37,18 @@ def _spoken_number(value: str) -> int | None:
         remainder=_spoken_number(' '.join(words[2:])) if len(words)>2 else 0
         return base+remainder if remainder is not None else None
     return None
+
+
+def _timer_number_words(number: int) -> str:
+    """Canonical grammar wording; the unrestricted decoder handles variants."""
+    if 1 <= number <= 19:
+        return next(word for word,value in SMALL_NUMBERS.items() if value==number)
+    if number < 100:
+        tens,ones=divmod(number,10)
+        word=next(word for word,value in TENS.items() if value==tens*10)
+        return word+(f' {_timer_number_words(ones)}' if ones else '')
+    hundreds,remainder=divmod(number,100)
+    return f'{_timer_number_words(hundreds)} hundred'+(f' {_timer_number_words(remainder)}' if remainder else '')
 
 
 def _timer_command(text: str) -> Command | None:
@@ -74,10 +86,11 @@ def command_grammar(wake_phrase: str = "hey luma") -> list[str]:
         "run morning scene", "run night scene", "run arrival scene", "run away scene", "cancel scene",
     ]
     commands += [f"set {control} to {number}" for control in ("brightness", "volume") for number in NUMBER_WORDS]
-    commands += [f"start a {number} minute timer" for number in TIMER_MINUTES]
-    commands += [f"start a {number} second timer" for number in TIMER_MINUTES]
-    commands += [f"start a {number} hour timer" for number in ('one', 'two', 'three', 'four')]
-    commands += [f"start a timer for {number} minutes" for number in TIMER_MINUTES]
+    for unit,maximum in [('second',120),('minute',240),('hour',4)]:
+        for amount in range(1,maximum+1):
+            words=_timer_number_words(amount)
+            suffix=unit if amount==1 else unit+'s'
+            commands += [f'start a {words} {unit} timer',f'start a timer for {words} {suffix}']
     commands += [phrase for phrases in QUERY_PHRASES.values() for phrase in phrases]
     return ["[unk]", wake_phrase, *commands, *(f"{wake_phrase} {command}" for command in commands)]
 

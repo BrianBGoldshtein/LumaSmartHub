@@ -162,10 +162,28 @@ def test_voice_and_shortcut_timer_language():
     assert parse_local_command('start a timer for two hours titled Laundry').value=={'seconds':7200,'label':'laundry'}
     assert parse_local_command('set timer for five mins called tea').value=={'seconds':300,'label':'tea'}
     assert parse_local_command('start a timer for one minute named bread').value=={'seconds':60,'label':'bread'}
+    assert parse_local_command('start a timer for seven seconds titled stretch').value=={'seconds':7,'label':'stretch'}
+    assert parse_local_command('start a timer for one hundred and twenty minutes').value==120
+    assert parse_local_command('start a timer for an hour').value==60
     assert parse_local_command('start focus timer').value=='focus'
     assert parse_local_command('pause timer').name.value=='pause_timer'
     assert 'hey luma start a fifteen minute timer' in command_grammar()
+    grammar=command_grammar()
+    assert 'hey luma start a timer for seven seconds' in grammar
+    assert 'start a one hundred twenty minute timer' in grammar
+    assert 'start a timer for four hours' in grammar
     assert parse_command(b'{"name":"start_timer","value":30}').source=='siri'
+
+
+def test_every_offline_timer_grammar_phrase_parses_to_a_bounded_duration():
+    phrases=[phrase for phrase in command_grammar() if phrase.startswith('start a ') and 'timer' in phrase]
+    assert len(phrases)==2*(120+240+4)
+    for phrase in phrases:
+        command=parse_local_command(phrase)
+        assert command is not None, phrase
+        assert command.name.value=='start_timer', phrase
+        seconds=command.value*60 if type(command.value) is int else command.value['seconds']
+        assert 1<=seconds<=14400, phrase
 
 
 def test_voice_named_seconds_timer_persists_and_cannot_replace_existing(timer):

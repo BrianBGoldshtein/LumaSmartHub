@@ -39,6 +39,10 @@ from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
 from .voice_call_trial import VoiceCallTrial
+from .speaker_trial import SpeakerTrial
+from .voice_speaker import SpeakerVectorError
+from .speaker_asset import (SpeakerAssetError, install as install_speaker_model,
+                            ready as speaker_model_ready)
 from .voice_asset import (fetch_and_install as fetch_voice_asset,
                           ready as voice_asset_ready, recover_interrupted_repair,
                           voice_status)
@@ -242,6 +246,28 @@ class CallTrialObservation(BaseModel):
     free_near_start: bool = Field(strict=True)
 
 
+class SpeakerTrialSession(BaseModel):
+    model_config = {'extra': 'forbid'}
+    session: str = Field(pattern=r'^[0-9a-f]{32}$')
+
+
+class SpeakerTrialConsent(BaseModel):
+    model_config = {'extra': 'forbid'}
+    confirmed: Literal[True]
+
+
+class SpeakerTrialSample(SpeakerTrialSession):
+    token: str = Field(pattern=r'^[0-9a-f]{32}$')
+
+
+class SpeakerTrialObservation(SpeakerTrialSample):
+    vector: list[float] | None = Field(default=None, max_length=512)
+    spk_frames: int | None = Field(default=None, strict=True, ge=1, le=3000)
+    input_seconds: float | None = Field(default=None, ge=4, le=8, allow_inf_nan=False)
+    error: Literal['capture_gap', 'capture_stopped', 'model_unavailable',
+                   'speech_too_short', 'too_quiet', 'clipped', 'decode_failed'] | None = None
+
+
 class MicGainRequest(BaseModel):
     model_config = {"extra": "forbid"}
     gain: int = Field(strict=True, ge=0, le=63)
@@ -319,6 +345,10 @@ def create_app(
     bluetooth = BluetoothRuntime(service)
     calibration = VoiceCalibration()
     call_trial = VoiceCallTrial()
+    speaker_trial = SpeakerTrial()
+    speaker_model_root = data_root / 'speaker-model'
+    speaker_model_job: dict[str, str | None] = {'phase': 'idle', 'error': None}
+    speaker_model_task: asyncio.Task | None = None
     phrase_adaptations = PhraseAdaptations(storage.get_cache('voice', 'phrase_adaptations'))
     voice_asset_root = data_root / "voice-assets"
     voice_asset_retry = asyncio.Event()
@@ -464,6 +494,10 @@ def create_app(
             for worker in workers:
                 with suppress(asyncio.CancelledError):
                     await worker
+            if speaker_model_task is not None:
+                speaker_model_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await speaker_model_task
             weather_client.client.close()
             app.state.transit_runtime.close()
             await app.state.room_runtime.close()
@@ -843,6 +877,7 @@ def create_app(
         wake_mode = read_wake_mode(storage.get_cache('voice', 'wake_confirmation'))
         return {**result, "audio_profile": active_profile.public(),
                 "call_trial": call_trial.status(),
+                "speaker_trial": speaker_trial.status(),
                 "wake_confirmation": {'version': 1, 'mode': wake_mode},
                 "phrase_adaptations": phrase_adaptations.public(),
                 "learned_phrase_count": len(phrase_adaptations.entries),
@@ -855,12 +890,102 @@ def create_app(
     async def calibration_status() -> dict:
         return calibration_payload()
 
+    def speaker_trial_payload() -> dict:
+        return {**speaker_trial.status(),
+                'model_ready': speaker_model_ready(speaker_model_root),
+                'model_phase': speaker_model_job['phase'],
+                'model_error': speaker_model_job['error']}
+
+    @app.get('/api/v1/voice/speaker-trial', dependencies=[Depends(local_only)])
+    async def speaker_trial_status() -> dict:
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/model/install', dependencies=[Depends(local_only)])
+    async def speaker_model_install(_consent: SpeakerTrialConsent) -> dict:
+        nonlocal speaker_model_task
+        if speaker_model_ready(speaker_model_root):
+            speaker_model_job.update(phase='ready', error=None)
+            return speaker_trial_payload()
+        if speaker_model_task is not None and not speaker_model_task.done():
+            raise HTTPException(409, 'The optional speaker model is already being prepared.')
+
+        async def prepare_model() -> None:
+            speaker_model_job.update(phase='installing', error=None)
+            try:
+                await asyncio.to_thread(install_speaker_model, speaker_model_root)
+            except SpeakerAssetError as exc:
+                speaker_model_job.update(phase='failed', error=str(exc))
+            except Exception:
+                speaker_model_job.update(phase='failed', error='The optional speaker model could not be prepared.')
+            else:
+                speaker_model_job.update(phase='ready', error=None)
+
+        speaker_model_task = asyncio.create_task(prepare_model())
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/start', dependencies=[Depends(local_only)])
+    async def start_speaker_trial(_consent: SpeakerTrialConsent) -> dict:
+        if not service.settings.voice_enabled:
+            raise HTTPException(409, 'Enable local voice first.')
+        if not speaker_model_ready(speaker_model_root):
+            raise HTTPException(409, 'Prepare the optional speaker model first.')
+        if calibration.status()['active'] or call_trial.status()['active']:
+            raise HTTPException(409, 'Finish the current voice check before starting.')
+        if (voice_agent_status['last_seen'] <= 0 or
+                monotonic() - voice_agent_status['last_seen'] > 15 or
+                voice_agent_status['diagnostic'] is not None):
+            raise HTTPException(409, 'The local voice service must be live for this trial.')
+        try:
+            speaker_trial.start()
+        except SpeakerVectorError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/begin', dependencies=[Depends(local_only)])
+    async def begin_speaker_sample(payload: SpeakerTrialSession) -> dict:
+        if not service.settings.voice_enabled or (voice_agent_status['last_seen'] <= 0 or
+                monotonic() - voice_agent_status['last_seen'] > 15 or
+                voice_agent_status['diagnostic'] is not None):
+            raise HTTPException(409, 'The local microphone service is unavailable.')
+        try:
+            speaker_trial.begin(payload.session)
+        except SpeakerVectorError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/armed', dependencies=[Depends(local_only)])
+    async def armed_speaker_sample(payload: SpeakerTrialSample) -> dict:
+        try:
+            speaker_trial.armed(payload.session, payload.token)
+        except SpeakerVectorError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/observation', dependencies=[Depends(local_only)])
+    async def speaker_sample_observation(payload: SpeakerTrialObservation) -> dict:
+        try:
+            speaker_trial.submit(payload.session, payload.token, vector=payload.vector,
+                                 spk_frames=payload.spk_frames,
+                                 input_seconds=payload.input_seconds, error=payload.error)
+        except SpeakerVectorError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return speaker_trial_payload()
+
+    @app.post('/api/v1/voice/speaker-trial/cancel', dependencies=[Depends(local_only)])
+    async def cancel_speaker_trial(payload: SpeakerTrialSession) -> dict:
+        if payload.session != speaker_trial.session or not speaker_trial.status()['active']:
+            raise HTTPException(409, 'No matching owner-voice trial is active.')
+        speaker_trial.cancel()
+        return speaker_trial_payload()
+
     @app.post('/api/v1/voice/call-trial/start', dependencies=[Depends(local_only)])
     async def start_voice_call_trial() -> dict:
         if not service.settings.voice_enabled:
             raise HTTPException(409, 'Enable local voice first.')
         if calibration.status()['active']:
             raise HTTPException(409, 'Finish or cancel the guided voice check first.')
+        if speaker_trial.status()['active']:
+            raise HTTPException(409, 'Finish or cancel the owner-voice trial first.')
         if (voice_agent_status['last_seen'] <= 0 or
                 monotonic() - voice_agent_status['last_seen'] > 15 or
                 voice_agent_status['diagnostic'] is not None):
@@ -945,6 +1070,8 @@ def create_app(
             raise HTTPException(409, "Enable local voice first")
         if call_trial.status()['active']:
             raise HTTPException(409, "Finish or stop the call false-wake test first.")
+        if speaker_trial.status()['active']:
+            raise HTTPException(409, 'Finish or cancel the owner-voice trial first.')
         calibration.start(ambient_seconds=4)
         return calibration_payload()
 
@@ -1232,6 +1359,8 @@ def create_app(
             return {"accepted": False, "message": "Voice check in progress; no commands were applied."}
         if call_trial.status()['active']:
             return {"accepted": False, "message": "Call false-wake test in progress; no commands were applied."}
+        if speaker_trial.status()['active']:
+            return {"accepted": False, "message": "Owner-voice trial in progress; no commands were applied."}
         parsed = parse_local_command(payload.text)
         if parsed is None:
             return {"accepted": False, "message": "That phrase is not in my local library. Say, Hey Luma, what can I say?"}
@@ -1445,6 +1574,8 @@ def create_app(
             raise HTTPException(422, str(exc)) from exc
         if updates.get("voice_enabled") is False:
             calibration.cancel()
+            if speaker_trial.status()['active']:
+                speaker_trial.cancel()
             voice_agent_status.update(last_seen=0.0, phase="idle", diagnostic=None,
                                       dropped_frames=0)
             service.state.assistant_phase = AssistantPhase.IDLE

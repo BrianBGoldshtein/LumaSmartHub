@@ -26,6 +26,7 @@ from .voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter
 from .voice_wake import (command_after_wake, has_wake, read_wake_mode,
                          wake_confirmed, wake_near_start)
 from .voice_adaptation import PhraseAdaptations
+from .voice_speaker import SpeakerVectorError, decode_speaker_observation
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -164,6 +165,49 @@ def _discard_pending_audio(chunks: queue.Queue) -> None:
             break
 
 
+def collect_speaker_trial_frames(chunks: queue.Queue, capture,
+                                 *, frames: int = 24) -> tuple[list[bytes], str | None]:
+    """Record six seconds after explicit arm; reject gaps, EOF and malformed PCM.
+
+    This never writes a recording, runs ASR, or dispatches a command. The
+    caller discards buffered pre-arm audio before invoking it.
+    """
+    if frames != 24:
+        raise ValueError('Speaker trials require a six-second sample.')
+    started_drops = capture.dropped_frames
+    deadline = time.monotonic() + 10
+    recorded: list[bytes] = []
+    while len(recorded) < frames:
+        if time.monotonic() >= deadline:
+            return [], 'capture_stopped'
+        try:
+            chunk = chunks.get(timeout=min(.5, max(.01, deadline - time.monotonic())))
+        except queue.Empty:
+            if capture.stalled():
+                return [], 'capture_stopped'
+            continue
+        if isinstance(chunk, AudioCaptureError) or chunk is None:
+            return [], 'capture_stopped'
+        if capture.dropped_frames != started_drops or len(chunk) != 8000:
+            return [], 'capture_gap'
+        recorded.append(chunk)
+    return (recorded, None) if capture.dropped_frames == started_drops else ([], 'capture_gap')
+
+
+def speaker_trial_result(recognizer, frames: list[bytes], *, noise_rms: float) -> dict:
+    """Return only a bounded speaker vector or fixed error, never transcript/PCM."""
+    try:
+        sample = decode_speaker_observation(recognizer, frames, noise_rms=noise_rms)
+    except SpeakerVectorError as exc:
+        detail = str(exc).casefold()
+        code = ('clipped' if 'clipped' in detail else
+                'too_quiet' if 'too little speech' in detail else
+                'speech_too_short' if 'four to eight' in detail else 'decode_failed')
+        return {'error': code}
+    return {'vector': list(sample.vector), 'spk_frames': sample.spk_frames,
+            'input_seconds': sample.input_seconds}
+
+
 def _reset_gapped_decoding(chunks: queue.Queue, constrained, unrestricted,
                            preprocessor: AudioPreprocessor, gate: WakeGate) -> None:
     """Reject a late capture gap before any decoded words cause an action."""
@@ -253,7 +297,10 @@ def main() -> None:
             with PulseCapture(chunks) as capture:
                 phase("idle")
                 calibration = {"active": False, "session": "",
-                               "call_trial": {"active": False, "session": ""}}
+                               "call_trial": {"active": False, "session": ""},
+                               "speaker_trial": {"active": False, "session": ""}}
+                speaker_model = None
+                handled_speaker_token = None
                 wake_mode = 'standard'
                 adaptations = PhraseAdaptations()
                 next_check = 0.0
@@ -374,6 +421,23 @@ def main() -> None:
                                 trial_partial_wake = False
                                 gate.until = 0
                                 phase('idle')
+                            old_speaker_trial = calibration.get('speaker_trial') or {}
+                            new_speaker_trial = fresh.get('speaker_trial') or {}
+                            if ((old_speaker_trial.get('active'), old_speaker_trial.get('session')) !=
+                                    (new_speaker_trial.get('active'), new_speaker_trial.get('session'))):
+                                # Nothing heard before explicit owner consent
+                                # can enter a speaker sample or execute later.
+                                recognizer.Reset()
+                                free_recognizer.Reset()
+                                utterance.clear()
+                                calibration_segmenter.reset()
+                                early_wake = trial_partial_wake = False
+                                gate.until = 0
+                                _discard_pending_audio(chunks)
+                                seen_drops = capture.dropped_frames
+                                phase('idle')
+                            if not new_speaker_trial.get('active'):
+                                speaker_model = None
                             next_wake_mode = read_wake_mode(fresh.get('wake_confirmation'))
                             if next_wake_mode != wake_mode:
                                 wake_mode = next_wake_mode
@@ -400,6 +464,80 @@ def main() -> None:
                         except httpx.HTTPError:
                             # Preserve calibration suppression if the API becomes unreachable.
                             pass
+                    speaker_state = calibration.get('speaker_trial') or {}
+                    if speaker_state.get('active'):
+                        token = speaker_state.get('token')
+                        if speaker_state.get('phase') == 'arming' and token and token != handled_speaker_token:
+                            handled_speaker_token = token
+                            _discard_pending_audio(chunks)
+                            seen_drops = capture.dropped_frames
+                            recognizer.Reset()
+                            free_recognizer.Reset()
+                            utterance.clear()
+                            gate.until = 0
+                            early_wake = trial_partial_wake = False
+                            preprocessor.reset()
+                            model_failed = False
+                            try:
+                                if speaker_model is None:
+                                    from vosk import SpkModel
+                                    data_root = Path(os.environ.get('LUMA_DATA_DIR', '/var/lib/luma'))
+                                    speaker_model = SpkModel(str(data_root / 'speaker-model' / 'vosk-model-spk-0.4'))
+                                trial_recognizer = KaldiRecognizer(model, 16000)
+                                trial_recognizer.SetSpkModel(speaker_model)
+                            except Exception:
+                                model_failed = True
+                                speaker_model = None
+                            try:
+                                client.post('/api/v1/voice/speaker-trial/armed', json={
+                                    'session': speaker_state['session'], 'token': token}, timeout=3).raise_for_status()
+                            except httpx.HTTPError:
+                                next_check = 0.0
+                                continue
+                            phase('listening')
+                            if model_failed:
+                                result = {'error': 'model_unavailable'}
+                            else:
+                                frames, capture_error = collect_speaker_trial_frames(chunks, capture)
+                                if capture_error:
+                                    result = {'error': capture_error}
+                                else:
+                                    room_level = float((calibration.get('audio_profile') or {}).get('noise_rms') or 0)
+                                    try:
+                                        result = speaker_trial_result(trial_recognizer, frames,
+                                                                      noise_rms=room_level)
+                                    except Exception:
+                                        result = {'error': 'decode_failed'}
+                                frames.clear()
+                                del frames
+                                trial_recognizer = None
+                            try:
+                                client.post('/api/v1/voice/speaker-trial/observation', json={
+                                    'session': speaker_state['session'], 'token': token, **result},
+                                    timeout=3).raise_for_status()
+                            except httpx.HTTPError:
+                                pass
+                            _discard_pending_audio(chunks)
+                            seen_drops = capture.dropped_frames
+                            recognizer.Reset()
+                            free_recognizer.Reset()
+                            preprocessor.reset()
+                            phase('idle')
+                            next_check = 0.0
+                            continue
+                        # Between explicit six-second samples, absorb the mic
+                        # stream without running wake or command recognition.
+                        try:
+                            pending = chunks.get(timeout=.5)
+                        except queue.Empty:
+                            if capture.stalled():
+                                raise AudioCaptureError('capture_stream_stalled')
+                            continue
+                        if isinstance(pending, AudioCaptureError):
+                            raise pending
+                        if pending is None:
+                            raise AudioCaptureError('capture_stream_stopped')
+                        continue
                     if gate.until and now >= gate.until:
                         gate.until = 0
                         phase("idle")

@@ -151,13 +151,21 @@ class VoiceCalibration:
                             measured.low_frequency_noise_fraction)
 
     def paired_audio_evidence(self) -> tuple[int, int]:
-        """Distinct prompted phrases actually decoded as both raw and tuned PCM."""
+        """Distinct paired utterances with pre-intent words and wake evidence.
+
+        A post-ASR personal correction may make an intent match even though
+        the underlying words were poorly heard. It cannot validate PCM tuning.
+        """
         positive = {row['phrase_index'] for row in self.results
                     if row.get('raw_compared') and row.get('matched') and row.get('level_ok')
+                    and row.get('lexical_evidence') and row.get('free_wake')
+                    and row.get('constrained_wake_near_start')
                     and row.get('raw_constrained_wake') is not None
                     and row['phrase_index'] < len(PHRASES) - 2}
         negative = {row['phrase_index'] for row in self.results
                     if row.get('raw_compared') and row.get('matched') and row.get('level_ok')
+                    and row.get('lexical_evidence') and not row.get('free_wake')
+                    and not row.get('constrained_wake_near_start')
                     and row.get('raw_constrained_wake') is not None
                     and row['phrase_index'] >= len(PHRASES) - 2}
         return len(positive), len(negative)
@@ -452,6 +460,8 @@ class VoiceCalibration:
         self.last_selection = selection
         self.last_free_wake_detected = wake_near_start(free_text)
         self.last_word_match = word_match_fraction(PHRASES[self.index], free_text)
+        lexical_evidence = (selection != 'learned' and self.last_word_match is not None
+                            and self.last_word_match >= .75)
         raw_word_match = (word_match_fraction(PHRASES[self.index], raw_free_text)
                           if raw_compared else None)
         self.last_free_text = free_text[:160]
@@ -469,6 +479,7 @@ class VoiceCalibration:
                              "free_wake": self.last_free_wake_detected,
                              "constrained_wake_near_start": wake_near_start(text),
                              "word_match": self.last_word_match,
+                             "lexical_evidence": lexical_evidence,
                              "raw_word_match": raw_word_match,
                              "raw_compared": raw_compared, "raw_match": raw_match,
                              "raw_constrained_wake": raw_constrained_wake,

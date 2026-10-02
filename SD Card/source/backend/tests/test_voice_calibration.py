@@ -221,6 +221,32 @@ def test_full_phrase_pass_does_not_auto_save_unpaired_processing():
     assert 'Processing was not saved' in result['message']
 
 
+def test_learned_intent_cannot_count_as_pre_intent_audio_validation():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for phrase in PHRASES[:3]:
+        calibration.submit(session, phrase, .025, .25, 105, free_text=phrase)
+    assert calibration.status(106)['audio_candidate']['gain'] > 1
+    for phrase, misheard in zip(PHRASES[3:5],
+                               ('hey luma what date is it', 'hey luma good mourning')):
+        result = calibration.submit(
+            session, phrase, .025, .25, 107,
+            free_text=misheard, raw_free_text=misheard,
+            raw_compared=True, raw_constrained_wake=True,
+            selected_text=phrase.removeprefix('hey luma '), selection='learned')
+        assert result['results'][-1]['matched']
+        assert result['results'][-1]['word_match'] >= .75
+        assert not result['results'][-1]['lexical_evidence']
+    assert result['paired_positive_checks'] == 0
+    genuine = PHRASES[5]
+    result = calibration.submit(session, genuine, .025, .25, 108,
+                                free_text=genuine, raw_free_text=genuine,
+                                raw_compared=True, raw_constrained_wake=True)
+    assert result['paired_positive_checks'] == 1
+
+
 def test_contraction_spelling_does_not_falsely_veto_tuned_audio():
     calibration = VoiceCalibration()
     session = calibration.start(100)['session']

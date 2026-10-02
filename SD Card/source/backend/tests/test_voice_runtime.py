@@ -72,8 +72,8 @@ def test_calibration_decodes_tuned_audio_before_raw_comparison_or_intent():
         Recorder(lambda _frame: 'hey luma whats the tea'),
         [raw], [raw], wake_phrase='hey luma', noise_rms=.001,
         profile=AudioProfile(), now=102, adaptations=learned)
-    assert result['selected_text'] == 'what time is it'
-    assert result['selection'] == 'learned'
+    assert result['selected_text'] is None
+    assert result['selection'] == 'conflict'
 
 
 def test_calibration_discards_stale_capture_without_hiding_terminal_failure():
@@ -212,6 +212,10 @@ def test_live_phrase_learning_resolves_only_a_confirmed_nonnegated_post_wake_phr
     learned = PhraseAdaptations()
     assert learned.add('whats the tea', 'what time is it')
     assert select_command('good morning', 'hey luma whats the tea', 'hey luma', learned) == (
+        None, 'conflict')
+    assert select_command('what time is it', 'hey luma whats the tea', 'hey luma', learned) == (
+        'what time is it', 'learned')
+    assert select_command('unrecognized phrase', 'hey luma whats the tea', 'hey luma', learned) == (
         'what time is it', 'learned')
     assert select_command('good morning', 'hey luma do not whats the tea', 'hey luma', learned) == (
         None, 'negated')

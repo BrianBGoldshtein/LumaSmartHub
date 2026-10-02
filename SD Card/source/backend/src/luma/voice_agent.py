@@ -153,8 +153,18 @@ def select_command(constrained: str, free_transcript: str, wake_phrase: str,
     learned = (adaptations.resolve(command_after_wake(free_transcript, wake_phrase) or '')
                if adaptations is not None and has_wake(free_transcript, wake_phrase)
                else None)
-    return (learned, 'learned') if learned is not None else choose_command(
-        constrained, free_transcript, wake_phrase)
+    if learned is not None:
+        # A personal correction is evidence, not authority to overturn a
+        # different valid command from the constrained decoder. Its grammar
+        # can be wrong too, so ask for a repeat instead of guessing.
+        constrained_command = parse_local_command(constrained)
+        learned_command = parse_local_command(learned)
+        if (constrained_command and learned_command and
+                (constrained_command.name, constrained_command.value) !=
+                (learned_command.name, learned_command.value)):
+            return None, 'conflict'
+        return learned, 'learned'
+    return choose_command(constrained, free_transcript, wake_phrase)
 
 
 def _discard_pending_audio(chunks: queue.Queue) -> None:

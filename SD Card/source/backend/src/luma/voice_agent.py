@@ -85,17 +85,31 @@ def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[byt
 
 def call_trial_decoding_payload(constrained_text: str, unrestricted,
                                 spoken: list[bytes], wake_phrase: str,
-                                *, partial_wake: bool = False) -> dict:
-    """Only four booleans leave the audio process during a call trial."""
+                                *, partial_wake: bool = False,
+                                raw_spoken: list[bytes] | None = None,
+                                constrained=None) -> dict:
+    """Compare call false wakes before/after tuning without emitting words."""
     proposed = has_wake(constrained_text, wake_phrase)
     free_text = (_unrestricted_transcript(unrestricted, spoken) if proposed else '')
-    return {
+    result = {
         'partial_wake': partial_wake,
         'constrained_wake': proposed,
         'constrained_near_start': wake_near_start(constrained_text, wake_phrase),
         'free_wake': has_wake(free_text, wake_phrase),
         'free_near_start': wake_near_start(free_text, wake_phrase),
     }
+    if raw_spoken is not None:
+        if constrained is None:
+            raise ValueError('Raw call comparison needs the constrained decoder.')
+        raw_text = _unrestricted_transcript(constrained, raw_spoken)
+        raw_proposed = has_wake(raw_text, wake_phrase)
+        raw_free = (_unrestricted_transcript(unrestricted, raw_spoken)
+                    if raw_proposed else '')
+        result.update(raw_compared=True, raw_constrained_wake=raw_proposed,
+                      raw_constrained_near_start=wake_near_start(raw_text, wake_phrase),
+                      raw_free_wake=has_wake(raw_free, wake_phrase),
+                      raw_free_near_start=wake_near_start(raw_free, wake_phrase))
+    return result
 
 
 def partial_has_wake(partial_result: str, wake_phrase: str) -> bool:
@@ -327,6 +341,7 @@ def main() -> None:
                 meter_floors: list[float] = []
                 meter_low_fractions: list[float] = []
                 utterance: list[bytes] = []
+                raw_utterance: list[bytes] = []  # Only populated during a call A/B trial.
                 seen_drops = recognition_drops = 0
                 early_wake = False
                 trial_partial_wake = False
@@ -367,6 +382,7 @@ def main() -> None:
                             recognizer.Reset()
                             free_recognizer.Reset()
                             utterance.clear()
+                            raw_utterance.clear()
                             calibration_segmenter.reset()
                             early_wake = False
                             trial_partial_wake = False
@@ -397,6 +413,7 @@ def main() -> None:
                             recognizer.Reset()
                             free_recognizer.Reset()
                             utterance.clear()
+                            raw_utterance.clear()
                             calibration_segmenter.reset()
                             early_wake = False
                             trial_partial_wake = False
@@ -412,6 +429,7 @@ def main() -> None:
                             if (fresh["active"], fresh["session"]) != (calibration["active"], calibration["session"]):
                                 recognizer.Reset()
                                 utterance.clear()
+                                raw_utterance.clear()
                                 calibration_segmenter.reset()
                                 early_wake = False
                                 trial_partial_wake = False
@@ -431,6 +449,7 @@ def main() -> None:
                                 recognizer.Reset()
                                 free_recognizer.Reset()
                                 utterance.clear()
+                                raw_utterance.clear()
                                 early_wake = False
                                 trial_partial_wake = False
                                 gate.until = 0
@@ -444,6 +463,7 @@ def main() -> None:
                                 recognizer.Reset()
                                 free_recognizer.Reset()
                                 utterance.clear()
+                                raw_utterance.clear()
                                 calibration_segmenter.reset()
                                 early_wake = trial_partial_wake = False
                                 gate.until = 0
@@ -459,6 +479,7 @@ def main() -> None:
                                 recognizer.Reset()
                                 free_recognizer.Reset()
                                 utterance.clear()
+                                raw_utterance.clear()
                                 early_wake = False
                                 trial_partial_wake = False
                                 gate.until = 0
@@ -470,6 +491,7 @@ def main() -> None:
                                 recognizer.Reset()
                                 free_recognizer.Reset()
                                 utterance.clear()
+                                raw_utterance.clear()
                                 calibration_segmenter.reset()
                                 early_wake = False
                                 trial_partial_wake = False
@@ -489,6 +511,7 @@ def main() -> None:
                             recognizer.Reset()
                             free_recognizer.Reset()
                             utterance.clear()
+                            raw_utterance.clear()
                             gate.until = 0
                             early_wake = trial_partial_wake = False
                             preprocessor.reset()
@@ -579,6 +602,7 @@ def main() -> None:
                         free_recognizer.Reset()
                         gate.until = 0
                         utterance.clear()
+                        raw_utterance.clear()
                         calibration_segmenter.reset()
                         early_wake = False
                         trial_partial_wake = False
@@ -657,6 +681,10 @@ def main() -> None:
                     utterance.append(chunk)
                     if len(utterance)>36:
                         utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
+                    if calibration.get('call_trial', {}).get('active'):
+                        raw_utterance.append(raw_chunk)
+                        if len(raw_utterance) > 36:
+                            raw_utterance.pop(0)
                     if not recognizer.AcceptWaveform(chunk):
                         if calibration.get('call_trial', {}).get('active') and not trial_partial_wake:
                             trial_partial_wake = partial_has_wake(
@@ -680,6 +708,7 @@ def main() -> None:
                         _reset_gapped_decoding(chunks, recognizer, free_recognizer,
                                                preprocessor, gate)
                         utterance.clear()
+                        raw_utterance.clear()
                         early_wake = trial_partial_wake = False
                         phase('idle')
                         continue
@@ -689,9 +718,16 @@ def main() -> None:
                     utterance=[]
                     trial = calibration.get('call_trial') or {}
                     if trial.get('active'):
+                        raw_spoken = raw_utterance
+                        raw_utterance = []
                         observation = call_trial_decoding_payload(
                             text, free_recognizer, spoken, gate.phrase,
-                            partial_wake=trial_partial_wake)
+                            partial_wake=trial_partial_wake,
+                            raw_spoken=(raw_spoken if (preprocessor.profile.gain > 1
+                                                        or preprocessor.profile.high_pass) else None),
+                            constrained=recognizer)
+                        raw_spoken.clear()
+                        spoken.clear()
                         trial_partial_wake = False
                         if capture.dropped_frames != seen_drops:
                             recognition_drops += capture.dropped_frames - seen_drops

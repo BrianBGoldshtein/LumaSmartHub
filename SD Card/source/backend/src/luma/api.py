@@ -244,6 +244,11 @@ class CallTrialObservation(BaseModel):
     constrained_near_start: bool = Field(strict=True)
     free_wake: bool = Field(strict=True)
     free_near_start: bool = Field(strict=True)
+    raw_compared: bool = Field(default=False, strict=True)
+    raw_constrained_wake: bool | None = Field(default=None, strict=True)
+    raw_constrained_near_start: bool | None = Field(default=None, strict=True)
+    raw_free_wake: bool | None = Field(default=None, strict=True)
+    raw_free_near_start: bool | None = Field(default=None, strict=True)
 
 
 class SpeakerTrialSession(BaseModel):
@@ -1017,7 +1022,12 @@ def create_app(
                 constrained_wake=payload.constrained_wake,
                 constrained_near_start=payload.constrained_near_start,
                 free_wake=payload.free_wake,
-                free_near_start=payload.free_near_start)
+                free_near_start=payload.free_near_start,
+                raw_compared=payload.raw_compared,
+                raw_constrained_wake=payload.raw_constrained_wake,
+                raw_constrained_near_start=payload.raw_constrained_near_start,
+                raw_free_wake=payload.raw_free_wake,
+                raw_free_near_start=payload.raw_free_near_start)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 

@@ -71,6 +71,48 @@ def test_call_trial_decoder_sends_no_words_and_skips_unneeded_replay():
     assert 'text' not in quoted and 'audio' not in quoted
 
 
+def test_same_call_audio_reports_whether_tuning_created_a_dual_false_wake():
+    processed_free = FakeRecognizer('hey luma what time is it')
+    untouched_constrained = FakeRecognizer('ordinary call speech')
+    observation = call_trial_decoding_payload(
+        'hey luma what time is it', processed_free, [b'processed'], 'hey luma',
+        raw_spoken=[b'untouched'], constrained=untouched_constrained)
+    assert observation['raw_compared'] is True
+    assert observation['constrained_near_start'] and observation['free_near_start']
+    assert observation['raw_constrained_wake'] is False
+    assert observation['raw_free_wake'] is False
+    assert 'text' not in observation and 'audio' not in observation
+    trial = VoiceCallTrial()
+    session = trial.start(100)['session']
+    status = trial.record(session, **observation, now=101)
+    assert status['raw_compared_utterances'] == 1
+    assert status['processed_dual_compared'] == 1
+    assert status['tuned_only_dual_wakes'] == 1
+    assert status['raw_only_dual_wakes'] == 0
+    assert status['raw_dual_wakes'] == 0
+    with pytest.raises(ValueError, match='raw'):
+        trial.record(session, **{**observation, 'raw_free_wake': True}, now=102)
+    assert trial.status(102)['utterances'] == 1
+
+
+def test_raw_only_wake_is_counted_separately_and_no_tuning_skips_replay():
+    free = FakeRecognizer('hey luma what time is it')
+    raw_constrained = FakeRecognizer('hey luma what time is it')
+    observation = call_trial_decoding_payload(
+        'ordinary call speech', free, [b'processed'], 'hey luma',
+        raw_spoken=[b'untouched'], constrained=raw_constrained)
+    trial = VoiceCallTrial()
+    session = trial.start(100)['session']
+    status = trial.record(session, **observation, now=101)
+    assert status['raw_dual_wakes'] == status['raw_only_dual_wakes'] == 1
+    assert status['processed_dual_compared'] == 0
+    assert status['tuned_only_dual_wakes'] == 0
+    without_tuning = call_trial_decoding_payload('ordinary call speech', free,
+                                                  [b'processed'], 'hey luma')
+    assert 'raw_compared' not in without_tuning
+    assert trial.record(session, **without_tuning, now=102)['raw_compared_utterances'] == 1
+
+
 def test_owner_local_call_trial_blocks_commands_and_keeps_no_saved_results(tmp_path):
     with TestClient(create_app(data_dir=tmp_path)) as client:
         assert client.post('/api/v1/voice/call-trial/start').status_code == 409
@@ -87,6 +129,12 @@ def test_owner_local_call_trial_blocks_commands_and_keeps_no_saved_results(tmp_p
         assert client.post('/api/v1/voice/call-trial/observation', json=observation).status_code == 200
         assert client.get('/api/v1/voice/call-trial').json()['constrained_wakes'] == 1
         assert client.get('/api/v1/voice/call-trial').json()['partial_wakes'] == 1
+        compared = {**observation, 'raw_compared': True,
+                    'raw_constrained_wake': False,
+                    'raw_constrained_near_start': False,
+                    'raw_free_wake': False, 'raw_free_near_start': False}
+        assert client.post('/api/v1/voice/call-trial/observation', json=compared).status_code == 200
+        assert client.get('/api/v1/voice/call-trial').json()['raw_compared_utterances'] == 1
         assert client.post('/api/v1/voice/call-trial/stop').json()['active'] is False
         assert client.post('/api/v1/voice/call-trial/observation', json=observation).status_code == 409
         remote = TestClient(client.app, client=('192.168.1.7', 5000))

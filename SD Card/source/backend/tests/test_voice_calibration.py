@@ -120,11 +120,15 @@ def test_ambient_clock_begins_with_real_capture_and_profile_precedes_intents():
         calibration.report_level(session, .002, .02, now, floor_rms=.001)
     assert calibration.status(108)['ambient_remaining'] == 1
     assert calibration.submit(session, PHRASES[0], .025, .25, 108)['completed'] == 0
-    for phrase in PHRASES:
-        result = calibration.submit(session, phrase, .025, .25, 110)
+    for index, phrase in enumerate(PHRASES):
+        compared = {'free_text': phrase, 'raw_free_text': phrase,
+                    'raw_compared': True,
+                    'raw_constrained_wake': phrase.startswith('hey luma ')} if index >= 3 else {}
+        result = calibration.submit(session, phrase, .025, .25, 110, **compared)
     assert result['passed']
     assert result['audio_profile']['quality'] == 'quiet'
     assert result['audio_profile']['gain'] > 1
+    assert result['audio_trial_ready']
     assert 'text' not in json.dumps(result['audio_profile'])
 
 
@@ -134,8 +138,11 @@ def test_room_rumble_is_measured_before_words_and_reset_after_gain_change():
     for now in (101, 102, 103, 104):
         calibration.report_level(session, .002, .01, now, floor_rms=.002,
                                  floor_low_frequency_fraction=.65)
-    for phrase in PHRASES:
-        result = calibration.submit(session, phrase, .07, .4, 106)
+    for index, phrase in enumerate(PHRASES):
+        compared = {'free_text': phrase, 'raw_free_text': phrase,
+                    'raw_compared': True,
+                    'raw_constrained_wake': phrase.startswith('hey luma ')} if index >= 3 else {}
+        result = calibration.submit(session, phrase, .07, .4, 106, **compared)
     assert result['passed']
     assert result['room_low_frequency_fraction'] == .65
     assert result['audio_profile']['high_pass']
@@ -193,6 +200,27 @@ def test_audio_trial_keeps_one_profile_until_unsafe_or_hardware_gain_changes():
     assert calibration.status(112)['audio_candidate'] is None
 
 
+def test_full_phrase_pass_does_not_auto_save_unpaired_processing():
+    calibration = VoiceCalibration()
+    session = calibration.start(100)['session']
+    for now in (101, 102, 103, 104):
+        calibration.report_level(session, .001, .01, now, floor_rms=.001)
+    for index, phrase in enumerate(PHRASES):
+        # The positive checks compared both paths, but the no-wake controls
+        # arrived before a tuned/raw replay was available. A complete phrase
+        # list alone must not bless the untested false-wake behavior.
+        compared = {'free_text': phrase, 'raw_free_text': phrase,
+                    'raw_compared': True, 'raw_constrained_wake': True} if 3 <= index < 8 else {}
+        result = calibration.submit(session, phrase, .025, .25, 105 + index, **compared)
+    assert result['passed']
+    assert result['paired_positive_checks'] == 5
+    assert result['paired_negative_checks'] == 0
+    assert not result['audio_trial_ready']
+    assert result['audio_profile']['gain'] == 1
+    assert result['audio_profile']['quality'] == 'bypass'
+    assert 'Processing was not saved' in result['message']
+
+
 def test_contraction_spelling_does_not_falsely_veto_tuned_audio():
     calibration = VoiceCalibration()
     session = calibration.start(100)['session']
@@ -237,6 +265,7 @@ def test_raw_recognition_wins_twice_and_disables_harmful_trial():
         finished = calibration.submit(session, phrase, .025, .25, 110)
     assert finished['passed']
     assert finished['audio_profile']['quality'] == 'bypass'
+    assert 'Untouched audio recognized words or wakes better' in finished['message']
 
 
 def test_raw_wake_wins_twice_even_when_word_scores_are_equal():
@@ -626,9 +655,13 @@ def test_profile_persists_as_numeric_data_and_can_be_reset(tmp_path, monkeypatch
             client.post('/api/v1/voice/calibration/level', json={
                 'session': session, 'rms': .001, 'peak': .01, 'floor_rms': .001,
             })
-        for phrase in PHRASES:
+        for index, phrase in enumerate(PHRASES):
+            compared = {'free_text': phrase, 'raw_free_text': phrase,
+                        'raw_compared': True,
+                        'raw_constrained_wake': phrase.startswith('hey luma ')} if index >= 3 else {}
             result = client.post('/api/v1/voice/calibration/sample', json={
                 'session': session, 'text': phrase, 'rms': .025, 'peak': .25,
+                **compared,
             })
         assert result.json()['passed']
         saved = app.state.luma.storage.get_cache('voice', 'audio_profile')

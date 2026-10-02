@@ -150,6 +150,18 @@ class VoiceCalibration:
                             measured.speech_rms, measured.snr_db, trial.quality,
                             measured.low_frequency_noise_fraction)
 
+    def paired_audio_evidence(self) -> tuple[int, int]:
+        """Distinct prompted phrases actually decoded as both raw and tuned PCM."""
+        positive = {row['phrase_index'] for row in self.results
+                    if row.get('raw_compared') and row.get('matched') and row.get('level_ok')
+                    and row.get('raw_constrained_wake') is not None
+                    and row['phrase_index'] < len(PHRASES) - 2}
+        negative = {row['phrase_index'] for row in self.results
+                    if row.get('raw_compared') and row.get('matched') and row.get('level_ok')
+                    and row.get('raw_constrained_wake') is not None
+                    and row['phrase_index'] >= len(PHRASES) - 2}
+        return len(positive), len(negative)
+
     def start(self, now: float | None = None, *, ambient_seconds: float = 0) -> dict:
         now = time.monotonic() if now is None else now
         if not 0 <= ambient_seconds <= 10:
@@ -208,6 +220,7 @@ class VoiceCalibration:
         negative_checks = sum(bool(row['phrase_index'] >= len(PHRASES) - 2
                                    and row.get('acoustic_speech')
                                    and not row.get('free_wake')) for row in self.results)
+        paired_positive, paired_negative = self.paired_audio_evidence()
         heard_command = command_after_wake(self.last_free_text)
         correction_available = bool(
             active and recent and self.results
@@ -274,6 +287,9 @@ class VoiceCalibration:
             "audio_profile": self.audio_profile,
             "audio_candidate": candidate,
             "processing_regressed": regressed,
+            "paired_positive_checks": paired_positive,
+            "paired_negative_checks": paired_negative,
+            "audio_trial_ready": paired_positive >= 2 and paired_negative >= 1,
             "independent_wakes": len(independent_positive),
             "negative_wake_checks": negative_checks,
             "strict_wake_ready": len(independent_positive) >= 4 and negative_checks >= 1,
@@ -472,15 +488,30 @@ class VoiceCalibration:
             self.message = "All voice checks passed. Try again if the room or microphone placement changes." if self.index == len(PHRASES) else "That worked. Say the next phrase."
             if self.index == len(PHRASES):
                 self.last_heard = ""
-                self.audio_profile = self.measured_profile().public()
+                proposed = self.measured_profile()
+                positive_checks, negative_checks = self.paired_audio_evidence()
+                auto_tune_unverified = ((proposed.gain > 1 or proposed.high_pass)
+                                        and (positive_checks < 2 or negative_checks < 1))
+                if auto_tune_unverified:
+                    # Passing the phrases on mostly untouched PCM does not
+                    # prove that the trial filter is safe to auto-save. The
+                    # owner can still make a separate, explicit early save.
+                    proposed = AudioProfile(1, False, proposed.noise_rms,
+                                            proposed.speech_rms, proposed.snr_db,
+                                            'bypass', proposed.low_frequency_noise_fraction)
+                    self.message = ("Phrase checks passed, but trial audio lacked two paired command phrases "
+                                    "and one paired no-wake phrase. Processing was not saved; the mic stays untouched.")
+                self.audio_profile = proposed.public()
                 if self.audio_profile['quality'] == 'noisy':
                     self.message += " Room noise is high; Luma left the audio untouched. Recheck placement before relying on voice."
                 elif self.audio_profile['quality'] == 'clipped':
                     self.message += " Some speech clipped; lower ReSpeaker capture gain and repeat."
                 elif self.audio_profile['quality'] == 'unstable':
                     self.message += " Room sound changed sharply during measurement; audio remains untouched. Repeat the quiet-room check."
-                elif self.audio_profile['quality'] == 'bypass':
-                    self.message += " Room sound was not measured well enough to tune processing; audio remains untouched."
+                elif self.audio_profile['quality'] == 'bypass' and not auto_tune_unverified:
+                    self.message += (" Untouched audio recognized words or wakes better, so processing stays off."
+                                     if self.processing_regressed() else
+                                     " Room sound was not measured well enough to tune processing; audio remains untouched.")
         elif self.processing_regressed():
             self.message = "Untouched audio handled words or wake detection better; trial processing is off. Repeat the displayed phrase."
         elif peak >= .995 or clipped_fraction > .002:

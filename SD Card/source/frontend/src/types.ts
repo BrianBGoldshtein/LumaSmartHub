@@ -74,6 +74,7 @@ export interface Settings {
 }
 
 export interface Snapshot {
+  voice_notice?: {id:number;remaining_ms:number};
   agenda?: {date:string;start:string;end:string;wake:string|null;sleep:string|null;stale:boolean;events:CalendarEvent[]}|null;
   countdowns?: import('./countdownState').CountdownView[];
   transit?: import('./transitState').TransitView[];

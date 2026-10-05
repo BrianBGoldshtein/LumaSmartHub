@@ -8,7 +8,10 @@ Usage:
     --notes-file /path/to/release-notes.md [--key /offline/path/key.pem] \
     [--output /path/to/luma-update-X.Y.Z.lup] \
     [--voice-assets-dir /path/to/pinned-voice-files] \
-    [--voice-output /path/to/luma-voice-kristin-X.Y.Z.lva] [--publish]
+    [--voice-output /path/to/luma-voice-kristin-X.Y.Z.lva] \
+    [--keyword-assets-dir /path/to/pinned-keyword-files] \
+    [--keyword-output /path/to/luma-keyword-X.Y.Z.lka] \
+    [--keyword-arm64-root /path/to/isolated-arm64-root] [--publish]
 
 Without --publish this builds signed local assets without uploading them. Publishing additionally
 requires the exact main commit to be clean, current, and green in GitHub Actions,
@@ -27,6 +30,9 @@ NOTES_FILE=""
 OUTPUT=""
 VOICE_ASSETS_DIR=""
 VOICE_OUTPUT=""
+KEYWORD_ASSETS_DIR=""
+KEYWORD_OUTPUT=""
+KEYWORD_ARM64_ROOT=""
 PUBLISH=0
 
 while (($#)); do
@@ -36,6 +42,9 @@ while (($#)); do
     --output) (($# >= 2)) || { usage >&2; exit 2; }; OUTPUT="$2"; shift 2 ;;
     --voice-assets-dir) (($# >= 2)) || { usage >&2; exit 2; }; VOICE_ASSETS_DIR="$2"; shift 2 ;;
     --voice-output) (($# >= 2)) || { usage >&2; exit 2; }; VOICE_OUTPUT="$2"; shift 2 ;;
+    --keyword-assets-dir) (($# >= 2)) || { usage >&2; exit 2; }; KEYWORD_ASSETS_DIR="$2"; shift 2 ;;
+    --keyword-output) (($# >= 2)) || { usage >&2; exit 2; }; KEYWORD_OUTPUT="$2"; shift 2 ;;
+    --keyword-arm64-root) (($# >= 2)) || { usage >&2; exit 2; }; KEYWORD_ARM64_ROOT="$2"; shift 2 ;;
     --publish) PUBLISH=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
@@ -77,6 +86,8 @@ elif [[ "${VERSION}" == "0.2.7" ]]; then
   QUALIFY_FROM="0.2.6"
 elif [[ "${VERSION}" == "0.2.8" ]]; then
   QUALIFY_FROM="0.2.7"
+elif [[ "${VERSION}" == "0.2.9" ]]; then
+  QUALIFY_FROM="0.2.8"
 fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"
@@ -89,6 +100,24 @@ case "${OUTPUT}" in "${REPO_ROOT}"|"${REPO_ROOT}"/*) die "keep signed archives o
 [[ ! -e "${OUTPUT}" && ! -L "${OUTPUT}" ]] || die "output already exists; choose a new path"
 if [[ "${VERSION}" == "0.2.4" && -z "${VOICE_ASSETS_DIR}" ]]; then
   die "0.2.4 requires its separately signed offline voice asset"
+fi
+if [[ "${VERSION}" == "0.2.9" && -z "${KEYWORD_ASSETS_DIR}" ]]; then
+  die "0.2.9 requires its separately signed acoustic wake asset"
+fi
+if [[ -n "${KEYWORD_ASSETS_DIR}" ]]; then
+  [[ -d "${KEYWORD_ASSETS_DIR}" && ! -L "${KEYWORD_ASSETS_DIR}" ]] || die "keyword source directory is missing or linked"
+  [[ -d "${KEYWORD_ARM64_ROOT}" && ! -L "${KEYWORD_ARM64_ROOT}" ]] || die "keyword publishing requires the isolated ARM64 qualification root"
+  KEYWORD_ASSETS_DIR="$(realpath -- "${KEYWORD_ASSETS_DIR}")"
+  KEYWORD_ARM64_ROOT="$(realpath -- "${KEYWORD_ARM64_ROOT}")"
+  KEYWORD_VERSION="$(PYTHONPATH="${DELIVERY_ROOT}/source/backend/src" python3 -c 'from luma.keyword_asset import ASSET_VERSION; print(ASSET_VERSION)')"
+  [[ "${KEYWORD_VERSION}" == "${VERSION}" ]] || die "the keyword sidecar must match the source-pinned asset release version"
+  [[ -n "${KEYWORD_OUTPUT}" ]] || KEYWORD_OUTPUT="/home/luma-build/luma-keyword-${VERSION}.lka"
+  [[ "$(basename -- "${KEYWORD_OUTPUT}")" == "luma-keyword-${VERSION}.lka" ]] || die "keyword output filename must match the release version"
+  KEYWORD_OUTPUT="$(realpath -m -- "${KEYWORD_OUTPUT}")"
+  case "${KEYWORD_OUTPUT}" in "${REPO_ROOT}"|"${REPO_ROOT}"/*) die "keep signed keyword archives outside the repository" ;; esac
+  [[ ! -e "${KEYWORD_OUTPUT}" && ! -L "${KEYWORD_OUTPUT}" ]] || die "keyword output already exists; choose a new path"
+elif [[ -n "${KEYWORD_OUTPUT}" || -n "${KEYWORD_ARM64_ROOT}" ]]; then
+  die "keyword output/qualification options require keyword sources"
 fi
 if [[ -n "${VOICE_ASSETS_DIR}" ]]; then
   [[ -d "${VOICE_ASSETS_DIR}" && ! -L "${VOICE_ASSETS_DIR}" ]] || die "voice source directory is missing or linked"
@@ -162,6 +191,24 @@ python3 "${DELIVERY_ROOT}/source/tools/qualify-update-bundle.py" "${OUTPUT}" \
   --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
   --current-version "${QUALIFY_FROM}"
 RELEASE_ASSETS=("${OUTPUT}")
+if [[ -n "${KEYWORD_ASSETS_DIR}" ]]; then
+  python3 "${DELIVERY_ROOT}/source/tools/build-keyword-asset.py" "${DELIVERY_ROOT}" \
+    --model "${KEYWORD_ASSETS_DIR}/model" --wheels "${KEYWORD_ASSETS_DIR}/wheels" \
+    --model-card "${KEYWORD_ASSETS_DIR}/licenses/model-card.txt" \
+    --license "${KEYWORD_ASSETS_DIR}/licenses/Apache-2.0.txt" \
+    --key "${KEY_PATH}" --output "${KEYWORD_OUTPUT}"
+  KEYWORD_LAB_RUN="$(mktemp -d "$(dirname -- "${KEYWORD_OUTPUT}")/luma-keyword-release-check.XXXXXXXX")"
+  printf 'Verifying the exact signed keyword payload and isolated ARM64 install…\n'
+  python3 "${DELIVERY_ROOT}/source/tools/qualify-keyword-asset.py" \
+    --bundle "${KEYWORD_OUTPUT}" --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
+    --output "${KEYWORD_LAB_RUN}/extracted" > "${KEYWORD_LAB_RUN}/payload-report.json"
+  python3 "${DELIVERY_ROOT}/source/tools/qualify-keyword-arm64-install.py" \
+    --bundle "${KEYWORD_OUTPUT}" --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
+    --lab-root "${KEYWORD_ARM64_ROOT}" --output "${KEYWORD_LAB_RUN}/installed" \
+    > "${KEYWORD_LAB_RUN}/arm64-report.json"
+  printf 'Keyword reports retained in %s (not microphone or Pi acceptance).\n' "${KEYWORD_LAB_RUN}"
+  RELEASE_ASSETS+=("${KEYWORD_OUTPUT}")
+fi
 if [[ -n "${VOICE_ASSETS_DIR}" ]]; then
   python3 "${DELIVERY_ROOT}/source/tools/build-voice-asset.py" "${DELIVERY_ROOT}" \
     --assets "${VOICE_ASSETS_DIR}" --key "${KEY_PATH}" --output "${VOICE_OUTPUT}"

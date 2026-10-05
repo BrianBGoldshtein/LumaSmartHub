@@ -1,24 +1,27 @@
 """Independent wake corroboration for the offline recognizers.
 
 The constrained Vosk grammar is useful for commands but can force unrelated
-speech into its small vocabulary. Requiring the unrestricted decoder to hear
-the wake phrase is the default false-activation filter, not voice identity.
+speech into its small vocabulary. The phonetic listener is the new protected
+default. Older decoder choices remain explicit escape hatches, not identity.
 """
 from __future__ import annotations
 
 import re
 
 
-MODES = frozenset({'standard', 'dual_decoder'})
+MODES = frozenset({'standard', 'dual_decoder', 'acoustic'})
 
 
 def read_wake_mode(value: object) -> str:
-    # v1's permissive default was never an affirmative sensitivity choice.
-    # Migrate conservatively; an owner may explicitly choose v2 standard.
-    if (isinstance(value, dict) and value.get('version') == 2
-            and value.get('mode') in MODES):
-        return value['mode']
-    return 'dual_decoder'
+    # v1 standard was a permissive default, not affirmative consent. v2's
+    # protected default is superseded by acoustic protection; preserve an
+    # affirmative v2 more-sensitive choice. All v3 choices are explicit.
+    if isinstance(value, dict) and type(value.get('version')) is int:
+        if value['version'] == 3 and value.get('mode') in MODES:
+            return value['mode']
+        if value['version'] == 2 and value.get('mode') == 'standard':
+            return 'standard'
+    return 'acoustic'  # unavailable/failed assets fail closed, never sensitive
 
 
 class WakeAudioBuffer(list[bytes]):

@@ -5,11 +5,22 @@ from unittest.mock import Mock, call
 import pytest
 from fastapi.testclient import TestClient
 
-from luma.api import create_app
+from luma.api import create_app as create_base_app
 from luma.hardware import AudioController, VoiceController
 from luma.leds import status_frame
 from luma.voice import command_grammar, parse_local_command
 from luma.voice_calibration import PHRASES, VoiceCalibration, word_match_fraction
+
+
+def create_app(**options):
+    """Explicit old-decoder fixture for these calibration regression checks.
+
+    The production default/migration and phonetic path are exercised by
+    test_voice_wake and test_keyword_live, not overwritten in production.
+    """
+    app = create_base_app(**options)
+    app.state.luma.storage.set_cache('voice','wake_confirmation',{'version':3,'mode':'dual_decoder'})
+    return app
 
 
 def test_word_match_is_a_separate_bounded_transcription_measure():
@@ -504,7 +515,7 @@ def test_owner_can_confirm_two_different_accent_transcriptions_of_one_phrase():
                for variant in heard)
 
 
-def test_dual_decoder_is_default_and_explicit_sensitivity_is_local_persistent(tmp_path, monkeypatch):
+def test_dual_decoder_is_explicit_and_sensitivity_is_local_persistent(tmp_path, monkeypatch):
     import luma.api as api
     original_start = api.VoiceCalibration.start
     monkeypatch.setattr(api.VoiceCalibration, 'start',
@@ -513,7 +524,7 @@ def test_dual_decoder_is_default_and_explicit_sensitivity_is_local_persistent(tm
     with TestClient(app) as client:
         endpoint = '/api/v1/voice/wake-confirmation'
         assert client.get('/api/v1/voice/calibration').json()['wake_confirmation'] == {
-            'version': 2, 'mode': 'dual_decoder'}
+            'version': 3, 'mode': 'dual_decoder'}
         assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 200
         session = client.post('/api/v1/voice/calibration/start').json()['session']
         for phrase in PHRASES[:-2]:
@@ -528,16 +539,19 @@ def test_dual_decoder_is_default_and_explicit_sensitivity_is_local_persistent(tm
             'rms': .05, 'peak': .4,
         })
         assert response.json()['strict_wake_ready']
+        assert client.post(endpoint, json={'mode': 'acoustic'}).status_code == 409
         enabled = client.post(endpoint, json={'mode': 'dual_decoder'})
         assert enabled.status_code == 200
         assert enabled.json()['wake_confirmation']['mode'] == 'dual_decoder'
         assert client.get('/api/v1/voice/calibration').json()['wake_confirmation']['mode'] == 'dual_decoder'
         assert app.state.luma.storage.get_cache('voice', 'wake_confirmation') == {
-            'version': 2, 'mode': 'dual_decoder',
+            'version': 3, 'mode': 'dual_decoder',
         }
         assert client.post(endpoint, json={'mode': 'off'}).status_code == 422
         remote = TestClient(app, client=('192.168.1.7', 5000))
         assert remote.post(endpoint, json={'mode': 'standard'}).status_code == 403
+        assert client.post(endpoint, json={'mode': 'standard'}).status_code == 409
+        client.post('/api/v1/voice/calibration/cancel')
         assert client.post(endpoint, json={'mode': 'standard'}).status_code == 200
         assert client.get('/api/v1/voice/calibration').json()['wake_confirmation']['mode'] == 'standard'
 

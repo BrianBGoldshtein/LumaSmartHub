@@ -25,13 +25,18 @@ def test_strict_wake_must_lead_the_utterance_not_appear_in_quoted_call_audio():
     assert not wake_confirmed('the caller said hey luma good morning', '', 'standard')
 
 
-def test_wake_mode_defaults_and_legacy_settings_migrate_to_independent_check():
+def test_wake_mode_defaults_and_legacy_settings_migrate_to_acoustic_protection():
+    assert read_wake_mode({'version': 3, 'mode': 'acoustic'}) == 'acoustic'
     assert read_wake_mode({'version': 2, 'mode': 'standard'}) == 'standard'
-    assert read_wake_mode({'version': 2, 'mode': 'dual_decoder'}) == 'dual_decoder'
+    assert read_wake_mode({'version': 2, 'mode': 'dual_decoder'}) == 'acoustic'
+    for mode in ('standard','dual_decoder','acoustic'):
+        assert read_wake_mode({'version': 3, 'mode': mode}) == mode
     for value in (None, 'dual_decoder', {'version': 4, 'mode': 'dual_decoder'},
                   {'version': 1, 'mode': 'unsafe'}, {'version': 1, 'mode': 'standard'},
                   {'version': 1, 'mode': 'dual_decoder'}):
-        assert read_wake_mode(value) == 'dual_decoder'
+        assert read_wake_mode(value) == 'acoustic'
+    assert read_wake_mode({'version': 2, 'mode': 'acoustic'}) == 'acoustic'
+    assert read_wake_mode({'version': 3.0, 'mode': 'standard'}) == 'acoustic'
 
 
 def test_long_conversation_cannot_be_verified_using_only_its_tail():

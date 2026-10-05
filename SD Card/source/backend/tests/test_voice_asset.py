@@ -323,6 +323,7 @@ def test_speaker_checks_cannot_interrupt_active_microphone_calibration(monkeypat
     monkeypatch.setattr(api, 'play_test_tone',
                         lambda: pytest.fail('tone played during mic check'))
     with TestClient(create_app(data_dir=tmp_path)) as client:
+        client.post('/api/v1/voice/wake-confirmation',json={'mode':'dual_decoder'})
         started = client.post('/api/v1/voice/calibration/start')
         assert started.status_code == 200
         assert client.post('/api/v1/voice/asset/preview',

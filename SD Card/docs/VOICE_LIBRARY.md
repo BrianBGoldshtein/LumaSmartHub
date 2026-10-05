@@ -1,6 +1,8 @@
 # Hey Luma — free local question library
 
-Implemented in source; native scene commands were added September28,2026 and must be included in the next image. No LLM, AI API, token usage, new paid service, or uploaded microphone audio. Vosk recognition, deterministic Python answers and espeak-ng speech run on the Pi. Microphone capture explicitly selects PipeWire/Pulse source `luma_mic`; it does not trust an implicit PortAudio default. This is a supported phrase library, not open-ended conversational AI or Siri.
+Implemented in source. No LLM, AI API, token usage, new paid service, or uploaded microphone audio. Vosk command recognition, the small local neural phrase matcher, deterministic Python answers and the installed Kristin/Piper voice run on the Pi; the original local voice remains a reported playback fallback. Microphone capture explicitly selects PipeWire/Pulse source `luma_mic`; it does not trust an implicit PortAudio default. This is a supported phrase library, not open-ended conversational AI or Siri.
+
+The 0.2.9 candidate adds a separately signed phonetic wake model, independent of Vosk's spelling of “Luma.” Settings → Voice distinguishes selected/installed/running from a successful pronunciation or no-wake call check. Protected defaults migrate to it; an affirmative more-sensitive choice remains unchanged. Missing or failed wake assets do not activate a sensitive fallback. See [0.2.9 candidate notes](V029_RELEASE_NOTES.md) for qualification limits. Unsupported commands show **Unknown command** briefly, without speech or a chime; recognized replies and safety explanations retain their normal behavior.
 
 Start with **Hey Luma**, then one of these questions. You can say the wake phrase and question together, or ask within the existing seven-second wake window.
 

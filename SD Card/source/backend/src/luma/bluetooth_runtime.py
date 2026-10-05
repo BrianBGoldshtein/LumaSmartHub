@@ -53,7 +53,9 @@ async def scan_for_paired_phone(manager, adapter, phone_path: str, *, phone_addr
         try:
             await asyncio.wait_for(adapter.call_set_discovery_filter({
                 **basic_filter, "Pattern": Variant("s", phone_address),
-                "AutoConnect": Variant("b", True),
+                # Do not let BlueZ initiate a second competing request when
+                # this caller owns the explicit, bounded Connect below.
+                "AutoConnect": Variant("b", connect is None),
             }), 5)
         except Exception:
             # Older BlueZ builds may reject AutoConnect. Preserve the LE scan
@@ -76,7 +78,9 @@ async def scan_for_paired_phone(manager, adapter, phone_path: str, *, phone_addr
             # running while it connects, instead of stopping just before it.
             values = plain(device) if device else {}
             if all(values.get(key) is True for key in ('Paired', 'Bonded', 'Trusted')):
-                await asyncio.wait_for(connect(), 15)
+                # Runtime callback bounds the request plus pending-operation
+                # cleanup. Give cleanup room before stopping this scan.
+                await asyncio.wait_for(connect(), 35)
                 return True  # Link request only, NOT presence/authorization.
         return False
     finally:
@@ -108,6 +112,48 @@ async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: floa
         if monotonic() >= deadline:
             raise BluetoothStatusError("iPhone connected; waiting for Bluetooth services")
         await asyncio.sleep(0.5)
+
+
+async def connect_paired_phone(manager, device, phone_path: str, *,
+                               address_is_current=lambda: True, timeout: float = 15) -> None:
+    """One bounded request; cancel BlueZ's pending operation on failure.
+
+    Cancelling a Python D-Bus wait does NOT cancel the radio operation.
+    Device1.Disconnect is BlueZ's documented cancellation mechanism. Re-read
+    the selected bond first so a completed/manual link is left alone, and
+    never remove a bond or grant presence here.
+    """
+    async def current_properties():
+        objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
+        return plain(objects.get(phone_path, {}).get('org.bluez.Device1', {}))
+
+    def selected_bond(props):
+        return address_is_current() and all(props.get(key) is True
+                                           for key in ('Paired', 'Bonded', 'Trusted'))
+
+    before = await current_properties()
+    if not selected_bond(before):
+        raise BluetoothStatusError('Selected iPhone or its bond changed before reconnect')
+    if before.get('Connected') is True:
+        return
+    try:
+        await asyncio.wait_for(device.call_connect(), timeout)
+    except (Exception, asyncio.CancelledError) as exc:
+        # Handle timeout, InProgress and shutdown without abandoning a
+        # selected-phone request inside BlueZ. Avoid logging addresses/errors.
+        fresh = None
+        with suppress(Exception):
+            fresh = await current_properties()
+        if fresh is not None and selected_bond(fresh):
+            if fresh.get('Connected') is True and not isinstance(exc, asyncio.CancelledError):
+                return
+            if fresh.get('Connected') is not True:
+                with suppress(Exception):
+                    await asyncio.wait_for(device.call_disconnect(), 5)
+        if isinstance(exc, asyncio.CancelledError):
+            raise
+        raise BluetoothStatusError(
+            'iPhone reconnect did not finish; Luma will retry automatically') from exc
 
 
 def ancs_characteristics(objects: dict, phone_path: str) -> dict[str,str]:
@@ -285,9 +331,18 @@ class BluetoothRuntime:
                             await prefer_le_bearer(device_props, properties)
                             self.last_reconnect_at = datetime.now(UTC).isoformat()
                             self.reconnect_attempts += 1
-                            await scan_for_paired_phone(manager, adapter, phone_path, phone_address=address,
-                                connect=device.call_connect,
+                            scan_connected = await scan_for_paired_phone(manager, adapter, phone_path, phone_address=address,
+                                connect=lambda: connect_paired_phone(manager, device, phone_path,
+                                    address_is_current=lambda: self.service.settings.phone_address == address),
                                 address_is_current=lambda: self.service.settings.phone_address == address)
+                            objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
+                            properties = plain(objects.get(phone_path, {}).get('org.bluez.Device1', {}))
+                            if scan_connected and not properties.get('Connected'):
+                                raise BluetoothStatusError('iPhone link dropped after reconnect; Luma will retry automatically')
+                        except BluetoothStatusError:
+                            # No duplicate direct request after a failed scan
+                            # Connect. The outer worker applies its retry delay.
+                            raise
                         except Exception:
                             # Some controllers cannot scan while another radio
                             # operation is active. Still attempt the direct bond.
@@ -303,10 +358,8 @@ class BluetoothRuntime:
                 self.status = "Reconnecting to paired iPhone"
                 self.last_reconnect_at = datetime.now(UTC).isoformat()
                 self.reconnect_attempts += 1
-                try:
-                    await asyncio.wait_for(device.call_connect(), 15)
-                except Exception as exc:
-                    raise BluetoothStatusError("iPhone Bluetooth link is disconnected; Luma will retry automatically") from exc
+                await connect_paired_phone(manager, device, phone_path,
+                    address_is_current=lambda: self.service.settings.phone_address == address)
             try:
                 objects = await wait_for_trusted_connection(manager, phone_path)
             except BluetoothStatusError as exc:
@@ -462,15 +515,19 @@ async def recover_stalled_services(manager, device, properties_interface, phone_
         if not address_is_current():
             raise BluetoothStatusError("Selected iPhone changed during service recovery")
         await prefer_le_bearer(properties_interface, fresh)
+        scan_connected = False
         if adapter is not None:
             try:
                 # A fresh LE advertisement helps BlueZ choose the GATT bearer
                 # when an iPhone also has a BR/EDR bond. Discovery is bounded
                 # and belongs only to this D-Bus connection.
-                await scan_for_paired_phone(manager, adapter, phone_path,
+                scan_connected = await scan_for_paired_phone(manager, adapter, phone_path,
                                             phone_address=fresh.get('Address'), pause=pause,
-                                            connect=device.call_connect,
+                                            connect=lambda: connect_paired_phone(manager, device, phone_path,
+                                                address_is_current=address_is_current),
                                             address_is_current=address_is_current)
+            except BluetoothStatusError:
+                raise
             except Exception:
                 pass
         objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
@@ -480,7 +537,10 @@ async def recover_stalled_services(manager, device, properties_interface, phone_
         if not address_is_current():
             raise BluetoothStatusError("Selected iPhone changed during service recovery")
         if not fresh.get("Connected"):
-            await asyncio.wait_for(device.call_connect(), 15)
+            if scan_connected:
+                raise BluetoothStatusError('iPhone link dropped after reconnect; Luma will retry automatically')
+            await connect_paired_phone(manager, device, phone_path,
+                                      address_is_current=address_is_current)
     except BluetoothStatusError:
         raise
     except Exception as exc:

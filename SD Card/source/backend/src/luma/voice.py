@@ -82,6 +82,7 @@ def command_grammar(wake_phrase: str = "hey luma") -> list[str]:
         "show tasks", "show home screen", "show ambient", "show countdowns", "show dates", "show transit", "next page", "previous page",
         "change brightness", "make it brighter", "dim the screen", "change volume", "change theme to glass",
         "change theme to hearth", "change theme to arcade",
+        "switch to the wooden theme", "switch to the cabin theme", "switch to the arcade theme",
         "start focus timer", "start break timer", "pause timer", "resume timer", "cancel timer", "show timer", "dismiss timer",
         "run morning scene", "run night scene", "run arrival scene", "run away scene", "cancel scene",
     ]

@@ -34,7 +34,7 @@ export const setupCopy:Record<SetupStep,{title:string;description:string;label:s
   privacy:{title:"Private by default.",description:"Your calendar stays hidden until your nearby phone or PIN unlocks it.",label:"Privacy"},
   calendar:{title:"Your days. Your colors.",description:"Optional · Connect Google, choose agenda calendars and your Sleep schedule.",label:"Calendar"},
   phone:{title:"Your phone is the key.",description:"Optional · Pair nearby, then approve notification sharing on your iPhone.",label:"Nearby iPhone"},
-  voice:{title:"Say “Hey Luma.”",description:"Optional · Check your microphone and try three calibration phrases.",label:"Local voice"},
+  voice:{title:"Say “Hey Luma.”",description:"Optional · Check your microphone and try the guided calibration phrases.",label:"Local voice"},
   remote:{title:"A private connection.",description:"Optional · Add Siri Shortcut controls. Your calendar still needs nearby-phone or PIN access.",label:"Siri Shortcuts"},
   review:{title:"Ready for your room.",description:"Start with what’s configured. Come back for the rest whenever you like.",label:"Review"},
 };

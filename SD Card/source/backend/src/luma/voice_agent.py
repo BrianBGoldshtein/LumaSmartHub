@@ -27,6 +27,10 @@ from .voice_wake import (WakeAudioBuffer, command_after_wake, has_wake, read_wak
                          wake_confirmed, wake_near_start)
 from .voice_adaptation import PhraseAdaptations
 from .voice_speaker import SpeakerVectorError, decode_speaker_observation
+from .keyword_command import timed_transcript, command_after_keyword
+from .keyword_gate import keyword_near_sound_start
+from .keyword_wake import KeywordWakeError, validate_audio
+from .keyword_live import LiveKeywordRuntime
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -81,10 +85,54 @@ def accept_live_utterance(text: str, frames: WakeAudioBuffer, recognizer,
     return gate.accept(text, now), independent, False
 
 
+def accept_acoustic_utterance(text: str, frames: WakeAudioBuffer, constrained,
+                             unrestricted, gate: WakeGate, now: float, verifier,
+                             *, noise_rms=0.0, report_error=lambda code: None):
+    """Final acoustic wake, no constrained-name proposal prerequisite.
+
+    Return the same acceptance tuple as the legacy gate. Canonicalizing the
+    verified wake prefix happens only AFTER acoustic/onset/timing checks; it
+    lets existing phrase corrections and conflict/negation/timer guards work
+    on the post-wake words, not Vosk's spelling of the unusual name.
+    """
+    try:
+        duration = validate_audio(frames)
+        if verifier is None:
+            raise KeywordWakeError('keyword_model_unavailable')
+        evidence = verifier.verify(frames)
+        if not evidence.detected:
+            if has_wake(text, gate.phrase):
+                gate.until = 0  # a rejected new wake also closes old follow-up
+                return None, None, True
+            return gate.accept(text, now), None, False
+        if not keyword_near_sound_start(evidence, frames, noise_rms=noise_rms):
+            raise KeywordWakeError('keyword_prefix_rejected')
+        free = timed_transcript(unrestricted, frames)
+        free_command = command_after_keyword(free, evidence, duration=duration)
+        fixed = timed_transcript(constrained, frames)
+        # The independent decoder checks the ordinary-speech prefix. The
+        # constrained grammar can invent an allowed word there, so its timing
+        # must validate but cannot substitute a different prefix judgment.
+        fixed_command = command_after_keyword(fixed, evidence, duration=duration, check_prefix=False)
+        if not free_command:
+            gate.until = now + gate.window_seconds
+            # Do not execute a grammar-forced command when independent ASR
+            # hears only the wake. One bounded follow-up remains available.
+            return '', gate.phrase, False
+        gate.until = 0  # one-shot consumes the wake window, even if unmatched
+        return fixed_command, f'{gate.phrase} {free_command}', False
+    except KeywordWakeError as error:
+        gate.until = 0
+        report_error(str(error))
+        return None, None, True
+
+
 def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[bytes],
                                  spoken: list[bytes], *, wake_phrase: str,
                                  noise_rms: float, profile: AudioProfile,
-                                 now: float, adaptations: PhraseAdaptations | None = None) -> dict:
+                                 now: float, adaptations: PhraseAdaptations | None = None,
+                                 mode='dual_decoder', verifier=None,
+                                 constrained_factory=None, unrestricted_factory=None) -> dict:
     """Decode a setup-only segment after audio conditioning, without acting.
 
     The raw comparison reuses the unrestricted decoder only after the tuned
@@ -102,18 +150,44 @@ def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[byt
     candidate = WakeGate(wake_phrase).accept(text, now)
     chosen, selection = (select_command(candidate, free_text, wake_phrase, adaptations)
                          if candidate is not None else (None, ""))
-    return {"text": text, "free_text": free_text, "selected_text": chosen,
+    acoustic = {}
+    if mode == 'acoustic':
+        errors = []
+        candidate, verified_free, _ = accept_acoustic_utterance(text, spoken,
+            constrained_factory, unrestricted_factory, WakeGate(wake_phrase), now, verifier,
+            noise_rms=noise_rms, report_error=errors.append)
+        _raise_acoustic_runtime_error(errors)
+        chosen, selection = (select_command(candidate, verified_free or '', wake_phrase, adaptations)
+                              if candidate is not None else (None, ''))
+        acoustic = {'acoustic_wake': candidate is not None,
+                    'acoustic_free_text': verified_free or ''}
+        if raw_compared:
+            errors = []
+            raw_candidate, _, _ = accept_acoustic_utterance('', raw_spoken,
+                constrained_factory, unrestricted_factory, WakeGate(wake_phrase), now, verifier,
+                noise_rms=noise_rms, report_error=errors.append)
+            _raise_acoustic_runtime_error(errors)
+            raw_constrained_wake = raw_candidate is not None
+    return {"text": text, "free_text": free_text, "selected_text": chosen, **acoustic,
             "raw_free_text": raw_free_text, "raw_compared": raw_compared,
             "raw_constrained_wake": raw_constrained_wake,
             "selection": selection, "rms": signal['rms'], "peak": signal['peak'],
             "dc": signal['dc'], "clipped_fraction": signal['clipped_fraction']}
 
 
+def _raise_acoustic_runtime_error(errors):
+    for code in errors:
+        if code not in {'keyword_prefix_rejected', 'keyword_negation_overlap'}:
+            raise KeywordWakeError(code)
+
+
 def call_trial_decoding_payload(constrained_text: str, unrestricted,
                                 spoken: list[bytes], wake_phrase: str,
                                 *, partial_wake: bool = False,
                                 raw_spoken: list[bytes] | None = None,
-                                constrained=None) -> dict:
+                                constrained=None, mode='dual_decoder', verifier=None,
+                                constrained_factory=None, unrestricted_factory=None,
+                                noise_rms=0.0) -> dict:
     """Compare call false wakes before/after tuning without emitting words."""
     proposed = has_wake(constrained_text, wake_phrase)
     free_text = (_unrestricted_transcript(unrestricted, spoken) if proposed else '')
@@ -135,6 +209,13 @@ def call_trial_decoding_payload(constrained_text: str, unrestricted,
                       raw_constrained_near_start=wake_near_start(raw_text, wake_phrase),
                       raw_free_wake=has_wake(raw_free, wake_phrase),
                       raw_free_near_start=wake_near_start(raw_free, wake_phrase))
+    if mode == 'acoustic':
+        errors = []
+        accepted, _, _ = accept_acoustic_utterance(constrained_text, spoken,
+            constrained_factory, unrestricted_factory, WakeGate(wake_phrase), time.monotonic(),
+            verifier, noise_rms=noise_rms, report_error=errors.append)
+        _raise_acoustic_runtime_error(errors)
+        result['acoustic_wake'] = accepted is not None
     return result
 
 
@@ -340,6 +421,19 @@ def _calibration_boundary_changed(previous: dict, current: dict) -> bool:
              current.get('capture_revision')))
 
 
+def present_voice_response(response: dict, *, say, phase) -> None:
+    """Honor silent feedback without synthesis or a speaking phase.
+
+    Older API responses without this field retain their spoken behavior.
+    Unknown-command text is displayed by the API's ephemeral UI notice.
+    """
+    if response.get("speak") is False:
+        return
+    phase("speaking")
+    if say(response["message"]) == "silent":
+        phase("error")
+
+
 def main() -> None:
     def stop(signum, frame):
         raise SystemExit(0)
@@ -370,6 +464,9 @@ def main() -> None:
                 json.dumps(command_grammar(gate.phrase)),
             )
             free_recognizer = KaldiRecognizer(model, 16000)
+            grammar = json.dumps(command_grammar(gate.phrase))
+            constrained_factory = lambda: KaldiRecognizer(model, 16000, grammar)
+            unrestricted_factory = lambda: KaldiRecognizer(model, 16000)
         except Exception:
             _report_diagnostic(client, "model_unavailable")
             raise SystemExit("The installed local speech model could not be loaded.") from None
@@ -379,6 +476,8 @@ def main() -> None:
         speaker = OfflineSpeaker()
         atexit.register(speaker.close)
         preprocessor = AudioPreprocessor()
+        keyword = LiveKeywordRuntime()
+        atexit.register(keyword.close)
         calibration_segmenter = CalibrationSegmenter()
         def say(reply: str) -> str:
             try:
@@ -404,10 +503,11 @@ def main() -> None:
             except httpx.HTTPError:
                 pass
 
-        def heartbeat(dropped_frames: int):
+        def heartbeat(dropped_frames: int, mode='acoustic'):
             try:
                 client.post("/api/v1/voice/heartbeat", json={
                     "dropped_frames": dropped_frames,
+                    "wake_detector": keyword.public(mode),
                 }).raise_for_status()
             except httpx.HTTPError:
                 pass
@@ -424,7 +524,9 @@ def main() -> None:
                 speaker_model = None
                 speaker_model_load_ms = 0.0
                 handled_speaker_token = None
-                wake_mode = 'dual_decoder'
+                # Until the API confirms an explicit older listener choice,
+                # start with the protected default, never a legacy fallback.
+                wake_mode = read_wake_mode(None)
                 adaptations = PhraseAdaptations()
                 next_check = 0.0
                 next_preview_check = 0.0
@@ -442,7 +544,7 @@ def main() -> None:
                 while True:
                     now = time.monotonic()
                     if now >= next_heartbeat:
-                        heartbeat(recognition_drops)
+                        heartbeat(recognition_drops, wake_mode)
                         next_heartbeat = now + 5
                     if now >= next_preview_check:
                         next_preview_check = now + 1
@@ -455,6 +557,7 @@ def main() -> None:
                             preview_variant = None
                         if request_id and request_id != handled_preview_id:
                             handled_preview_id = request_id
+                            keyword.close()
                             phase('speaking')
                             try:
                                 if preview_variant == 'fallback':
@@ -477,6 +580,7 @@ def main() -> None:
                             seen_drops = capture.dropped_frames
                             trial_partial_wake = False
                             phase('listening' if calibration['active'] else 'idle')
+                            next_check = 0.0
                             continue
                         try:
                             pending_tone = client.get('/api/v1/voice/asset/tone/pending').json()
@@ -485,6 +589,7 @@ def main() -> None:
                             tone_id = None
                         if tone_id and tone_id != handled_tone_id:
                             handled_tone_id = tone_id
+                            keyword.close()
                             phase('speaking')
                             try:
                                 route = play_test_tone()
@@ -503,6 +608,7 @@ def main() -> None:
                             seen_drops = capture.dropped_frames
                             trial_partial_wake = False
                             phase('listening' if calibration['active'] else 'idle')
+                            next_check = 0.0
                             continue
                     if now >= next_check:
                         next_check = now + 2
@@ -582,6 +688,19 @@ def main() -> None:
                         except httpx.HTTPError:
                             # Preserve calibration suppression if the API becomes unreachable.
                             pass
+                        # Warm the native model only at an explicit reset
+                        # boundary. A 45-second startup must never replay its
+                        # capture backlog as a newly spoken command.
+                        if keyword.synchronize(wake_mode,
+                                installing=bool(calibration.get('keyword_job_active')),
+                                suspended=bool(calibration.get('speaker_trial', {}).get('active'))):
+                            if capture.dropped_frames > seen_drops:
+                                recognition_drops += capture.dropped_frames - seen_drops
+                            _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                preprocessor, gate, calibration_segmenter, utterance, raw_utterance)
+                            seen_drops = capture.dropped_frames
+                            trial_partial_wake = False
+                            heartbeat(recognition_drops, wake_mode)
                     speaker_state = calibration.get('speaker_trial') or {}
                     if speaker_state.get('active'):
                         token = speaker_state.get('token')
@@ -723,6 +842,13 @@ def main() -> None:
                         # Do not allow a speech fragment to leak into phrase 1.
                         calibration_segmenter.reset()
                         continue
+                    if wake_mode == 'acoustic' and keyword.phase != 'ready':
+                        # Meter/baseline still work. Missing or failed acoustic
+                        # assets never silently fall back to grammar-only wake.
+                        utterance.clear()
+                        calibration_segmenter.reset()
+                        gate.until = 0
+                        continue
                     if calibration['active']:
                         segment = calibration_segmenter.feed(
                             raw_chunk, chunk,
@@ -733,12 +859,27 @@ def main() -> None:
                         raw_spoken, spoken = segment
                         # Acoustic boundaries make this check useful even if
                         # Vosk would never emit an endpoint or any words.
-                        payload = calibration_decoding_payload(
-                            recognizer, free_recognizer, raw_spoken, spoken,
-                            wake_phrase=gate.phrase,
-                            noise_rms=float(calibration.get('room_noise_rms') or 0),
-                            profile=preprocessor.profile, now=now,
-                            adaptations=adaptations)
+                        try:
+                            payload = calibration_decoding_payload(
+                                recognizer, free_recognizer, raw_spoken, spoken,
+                                wake_phrase=gate.phrase,
+                                noise_rms=float(calibration.get('room_noise_rms') or 0),
+                                profile=preprocessor.profile, now=now,
+                                adaptations=adaptations, mode=wake_mode, verifier=keyword.verifier,
+                                constrained_factory=constrained_factory,
+                                unrestricted_factory=unrestricted_factory)
+                        except KeywordWakeError as error:
+                            keyword.report_error(str(error))
+                            _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                preprocessor, gate, calibration_segmenter, utterance, raw_utterance)
+                            seen_drops = capture.dropped_frames
+                            continue
+                        if capture.dropped_frames != seen_drops:
+                            recognition_drops += capture.dropped_frames - seen_drops
+                            _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                preprocessor, gate, calibration_segmenter, utterance, raw_utterance)
+                            seen_drops = capture.dropped_frames
+                            continue  # Do not count a prompt heard across a gap.
                         try:
                             client.post("/api/v1/voice/calibration/sample", json={
                                 "session": calibration["session"], **payload,
@@ -791,12 +932,22 @@ def main() -> None:
                     if trial.get('active'):
                         raw_spoken = raw_utterance
                         raw_utterance = []
-                        observation = call_trial_decoding_payload(
-                            text, free_recognizer, spoken, gate.phrase,
-                            partial_wake=trial_partial_wake,
-                            raw_spoken=(raw_spoken if (preprocessor.profile.gain > 1
-                                                        or preprocessor.profile.high_pass) else None),
-                            constrained=recognizer)
+                        try:
+                            observation = call_trial_decoding_payload(
+                                text, free_recognizer, spoken, gate.phrase,
+                                partial_wake=trial_partial_wake,
+                                raw_spoken=(raw_spoken if (preprocessor.profile.gain > 1
+                                                            or preprocessor.profile.high_pass) else None),
+                                constrained=recognizer, mode=wake_mode, verifier=keyword.verifier,
+                                constrained_factory=constrained_factory,
+                                unrestricted_factory=unrestricted_factory,
+                                noise_rms=preprocessor.profile.noise_rms)
+                        except KeywordWakeError as error:
+                            keyword.report_error(str(error))
+                            _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                preprocessor, gate, calibration_segmenter, utterance, raw_utterance)
+                            seen_drops = capture.dropped_frames
+                            continue
                         raw_spoken.clear()
                         spoken.clear()
                         trial_partial_wake = False
@@ -818,11 +969,17 @@ def main() -> None:
                         phase('idle')
                         continue  # A call-test utterance can never execute.
                     # The constrained grammar can hallucinate its nearest
-                    # allowed phrase over unrelated speech. By default a
-                    # *new* wake must also be present in the
-                    # unrestricted transcription before opening the window.
-                    accepted, free_text, discard = accept_live_utterance(
-                        text, spoken, free_recognizer, gate, time.monotonic(), wake_mode)
+                    # allowed phrase over unrelated speech. Phonetic mode
+                    # checks actual wake sounds; the older protected mode
+                    # still requires the unrestricted wake spelling.
+                    if wake_mode == 'acoustic':
+                        accepted, free_text, discard = accept_acoustic_utterance(
+                            text, spoken, constrained_factory, unrestricted_factory, gate,
+                            time.monotonic(), keyword.verifier, noise_rms=preprocessor.profile.noise_rms,
+                            report_error=keyword.report_error)
+                    else:
+                        accepted, free_text, discard = accept_live_utterance(
+                            text, spoken, free_recognizer, gate, time.monotonic(), wake_mode)
                     if discard:
                         recognizer.Reset()
                         phase('idle')
@@ -890,10 +1047,7 @@ def main() -> None:
                     try:
                         response = client.post("/api/v1/voice/command", json={"text": accepted}, timeout=8)
                         response.raise_for_status()
-                        reply = response.json()["message"]
-                        phase("speaking")
-                        if say(reply) == 'silent':
-                            phase('error')
+                        present_voice_response(response.json(), say=say, phase=phase)
                     except (httpx.HTTPError, subprocess.SubprocessError, OSError):
                         phase("error")
                     finally:

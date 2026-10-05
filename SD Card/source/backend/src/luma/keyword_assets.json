@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "kind": "luma-keyword-source-pins-not-an-installed-asset",
+  "runtime": "cp313-aarch64",
+  "model": "sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20",
+  "model_author_revision": "541d04e28be57efc6fdf46a341da09e043a37b52",
+  "model_license": "Apache-2.0",
+  "model_source": "https://www.modelscope.cn/models/pkufool/icefall-kws-zipformer-zh-en-3M-2025-12-20",
+  "files": {
+    "licenses/model-card.txt": {
+      "size": 1700,
+      "sha256": "34d92bb4dc9fb259efb67f329d2cd68f6e0a6226121a694a3b6b4c748378559c"
+    },
+    "licenses/Apache-2.0.txt": {
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "model/encoder-epoch-13-avg-2-chunk-16-left-64.onnx": {
+      "size": 11976272,
+      "sha256": "540ff509ed89bd22afe04bf7049a54bb1c95c6d8a18742ea9691910cdb5f859e"
+    },
+    "model/decoder-epoch-13-avg-2-chunk-16-left-64.onnx": {
+      "size": 759829,
+      "sha256": "63a22dd60f40fff082ac3e09afa507f6787da36df76ded2fbe145fa233e22c21"
+    },
+    "model/joiner-epoch-13-avg-2-chunk-16-left-64.onnx": {
+      "size": 338154,
+      "sha256": "76f7a24ed0c08633af14b2ee377f747af880d3b65eeba2cd3f31f3380fb73e8d"
+    },
+    "model/tokens.txt": {
+      "size": 1928,
+      "sha256": "2d3f32311f9b692b964da3c90e830258d3e78e013cb0c992dbfb15cd5a1a71b0"
+    },
+    "wheels/numpy-2.5.3-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl": {
+      "size": 15681750,
+      "sha256": "c76d5dde9f445058f83d0c02af00557a4db91de9a9a57c0df87d1535001d654b"
+    },
+    "wheels/sherpa_onnx-1.13.8-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl": {
+      "size": 4177700,
+      "sha256": "916ec38242e779ee3a99f7b161bd1bf3b02a7fad34cb073d091021c0469e0b58"
+    },
+    "wheels/sherpa_onnx_core-1.13.8-py3-none-manylinux2014_aarch64.whl": {
+      "size": 13353426,
+      "sha256": "a51a03d55c376c32e15dd63ea852236042ba91a5cd73e253bbf7cf21f6582ba9"
+    }
+  }
+}

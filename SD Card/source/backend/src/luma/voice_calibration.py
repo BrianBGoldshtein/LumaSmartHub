@@ -467,6 +467,7 @@ class VoiceCalibration:
     def submit(self, session: str, text: str, rms: float, peak: float, now: float | None = None,
                *, free_text: str = "", raw_free_text: str = "", raw_compared: bool = False,
                raw_constrained_wake: bool | None = None,
+               acoustic_wake: bool | None = None, acoustic_free_text: str = '',
                selected_text: str | None = None,
                selection: str = "", dc: float = 0.0,
                clipped_fraction: float = 0.0) -> dict:
@@ -483,7 +484,10 @@ class VoiceCalibration:
         if raw_constrained_wake is not None and (type(raw_constrained_wake) is not bool
                                                  or not raw_compared):
             raise ValueError("Invalid raw wake comparison")
-        accepted = WakeGate().accept(text, now)
+        if acoustic_wake is not None and type(acoustic_wake) is not bool:
+            raise ValueError('Invalid acoustic wake evidence')
+        accepted = (selected_text or '') if acoustic_wake is True else (
+            None if acoustic_wake is False else WakeGate().accept(text, now))
         # A live decoder conflict deliberately selects nothing. Only legacy
         # direct samples without selection metadata fall back to the wake pass.
         command_text = selected_text if selected_text is not None else (accepted if not selection else None)
@@ -523,13 +527,13 @@ class VoiceCalibration:
         self.last_wake_detected = accepted is not None
         self.last_expected_wake = expects_wake
         self.last_selection = selection
-        self.last_free_wake_detected = wake_near_start(free_text)
+        self.last_free_wake_detected = acoustic_wake if acoustic_wake is not None else wake_near_start(free_text)
         self.last_word_match = word_match_fraction(PHRASES[self.index], free_text)
         lexical_evidence = (selection != 'learned' and self.last_word_match is not None
                             and self.last_word_match >= .75)
         raw_word_match = (word_match_fraction(PHRASES[self.index], raw_free_text)
                           if raw_compared else None)
-        self.last_free_text = free_text[:160]
+        self.last_free_text = (acoustic_free_text if acoustic_wake is True else free_text)[:160]
         self.last_phrase_index = self.index
         canonical = PHRASES[self.index].removeprefix('hey luma ')
         self.last_correction_count = len(self.correction_examples.get(canonical, []))
@@ -542,7 +546,9 @@ class VoiceCalibration:
         # Aggregate levels/results only, never transcripts or audio samples.
         self.results.append({"phrase_index": self.index, "matched": matched,
                              "free_wake": self.last_free_wake_detected,
-                             "constrained_wake_near_start": wake_near_start(text),
+                             "constrained_wake_near_start": (acoustic_wake if acoustic_wake is not None
+                                                              else wake_near_start(text)),
+                             "acoustic_wake": acoustic_wake,
                              "word_match": self.last_word_match,
                              "lexical_evidence": lexical_evidence,
                              "raw_word_match": raw_word_match,

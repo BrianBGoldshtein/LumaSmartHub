@@ -135,7 +135,7 @@ def answer_query(intent, snapshot):
     if intent=='weather_beyond_forecast':
         return 'My detailed local forecast reaches only two days ahead. Ask about today or tomorrow.'
     if intent not in QUERY_PHRASES:
-        return 'That question is not in my local library. Say, Hey Luma, what can I say?'
+        return 'Unknown command'
     if intent=='help':
         return 'Ask about weather today or tomorrow, rain, your next event, free time, tasks, your timer, phone or internet status. You can also change the theme, open a screen, start a timer, or run a configured room scene. Find examples in Hey Luma setup. I answer locally, without an AI service.'
     if (snapshot.get('display') or {}).get('awaiting_clock'):

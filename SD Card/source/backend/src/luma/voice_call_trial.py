@@ -35,6 +35,7 @@ class VoiceCallTrial:
         self.processed_dual_compared = 0
         self.tuned_only_dual_wakes = 0
         self.raw_only_dual_wakes = 0
+        self.acoustic_observations = self.acoustic_wakes = 0
 
     def start(self, now: float | None = None) -> dict:
         now = time.monotonic() if now is None else now
@@ -50,6 +51,7 @@ class VoiceCallTrial:
         self.raw_compared_utterances = self.raw_constrained_wakes = self.raw_dual_wakes = 0
         self.processed_dual_compared = 0
         self.tuned_only_dual_wakes = self.raw_only_dual_wakes = 0
+        self.acoustic_observations = self.acoustic_wakes = 0
         return self.status(now)
 
     def arm(self, session: str, now: float | None = None) -> dict:
@@ -79,6 +81,9 @@ class VoiceCallTrial:
     def status(self, now: float | None = None) -> dict:
         now = time.monotonic() if now is None else now
         active = bool(self.session and now < self.until)
+        covered = bool(self.session and self.armed_at and self.until > self.started_at
+                       and now >= self.until and self.utterances >= 5 and not self.interrupted
+                       and self.last_heartbeat_at >= self.until - self.MAX_HEARTBEAT_GAP_SECONDS)
         return {
             "session": self.session,
             "active": active,
@@ -87,12 +92,9 @@ class VoiceCallTrial:
             # Only a full-length, speech-bearing owner-started trial can
             # supply the negative evidence for an early wake-only check.
             # A stopped/empty trial or one with confirmed wakes cannot.
-            "negative_ready": bool(self.session and self.armed_at
-                                   and self.until > self.started_at
-                                   and now >= self.until and self.utterances >= 5
-                                   and self.dual_wakes == 0 and not self.interrupted
-                                   and self.last_heartbeat_at >=
-                                   self.until - self.MAX_HEARTBEAT_GAP_SECONDS),
+            "negative_ready": covered and self.dual_wakes == 0,
+            "acoustic_negative_ready": (covered and self.acoustic_wakes == 0
+                                        and self.acoustic_observations == self.utterances),
             "interrupted": self.interrupted,
             "utterances": self.utterances,
             "partial_wakes": self.partial_wakes,
@@ -105,6 +107,8 @@ class VoiceCallTrial:
             "processed_dual_compared": self.processed_dual_compared,
             "tuned_only_dual_wakes": self.tuned_only_dual_wakes,
             "raw_only_dual_wakes": self.raw_only_dual_wakes,
+            "acoustic_observations": self.acoustic_observations,
+            "acoustic_wakes": self.acoustic_wakes,
         }
 
     def record(self, session: str, *, partial_wake: bool, constrained_wake: bool,
@@ -114,7 +118,7 @@ class VoiceCallTrial:
                raw_constrained_near_start: bool | None = None,
                raw_free_wake: bool | None = None,
                raw_free_near_start: bool | None = None,
-               now: float | None = None) -> dict:
+               now: float | None = None, acoustic_wake: bool | None = None) -> dict:
         now = time.monotonic() if now is None else now
         if session != self.session or not self.armed_at or not self.status(now)["active"]:
             raise ValueError("The call test is not active.")
@@ -122,6 +126,8 @@ class VoiceCallTrial:
                 partial_wake, constrained_wake, constrained_near_start,
                 free_wake, free_near_start)):
             raise ValueError("Invalid call-test observation.")
+        if acoustic_wake is not None and type(acoustic_wake) is not bool:
+            raise ValueError('Invalid acoustic call-test observation.')
         if (constrained_near_start and not constrained_wake
                 or free_near_start and not free_wake
                 or free_wake and not constrained_wake):
@@ -137,6 +143,9 @@ class VoiceCallTrial:
                              or raw_free_wake and not raw_constrained_wake):
             raise ValueError('Inconsistent raw call-test comparison.')
         self.utterances += 1
+        if acoustic_wake is not None:
+            self.acoustic_observations += 1
+            self.acoustic_wakes += acoustic_wake
         if partial_wake:
             self.partial_wakes += 1
         if constrained_wake:

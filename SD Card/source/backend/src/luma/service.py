@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from time import monotonic
+from secrets import randbelow
 
 from .calendar_logic import active_sleep_end, ongoing_events, todo_events, todo_view, visible_events
 from .commands import CommandRouter
@@ -79,6 +81,10 @@ class LumaService:
         self._pending_notification_chimes: deque[str] = deque(maxlen=20)
         self._seen_notification_chimes: deque[str] = deque(maxlen=256)
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
+        # Generic feedback never enters the phone notification/chime queue
+        # or the saved settings database. No recognized speech is retained.
+        self._unknown_command_until = 0.0
+        self._unknown_command_id = 0
         self._sync_sleep(datetime.now(UTC))
 
     @property
@@ -282,6 +288,13 @@ class LumaService:
         self._persist_runtime()
         self.publish("privacy.updated")
 
+    def unknown_voice_command(self) -> None:
+        # A browser may survive an API restart. A process-local counter would
+        # reuse its already-expired id and hide the next legitimate notice.
+        self._unknown_command_id = randbelow((1 << 52) - 1) + 1
+        self._unknown_command_until = monotonic() + 3
+        self.publish("voice.feedback")
+
     def snapshot(self, now: datetime | None = None, *, briefing=False) -> dict[str, Any]:
         now = now or datetime.now(UTC)
         self._sync_sleep(now)
@@ -307,6 +320,8 @@ class LumaService:
                               and timedelta(0) <= now - self.calendar_synced_at <= timedelta(minutes=10))
         return {
             "server_time": now.isoformat(),
+            "voice_notice": {"id": self._unknown_command_id,
+                             "remaining_ms": max(0, int((self._unknown_command_until - monotonic()) * 1000))},
             "room": self.room.view(now) if full else None,
             "countdowns": self.countdowns.snapshot(now,private=not full,
                 quiet=bool(self.display_state and (self.display_state['mode']!='day' or self.display_state['awaiting_clock']))),

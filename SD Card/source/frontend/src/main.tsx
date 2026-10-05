@@ -16,6 +16,7 @@ import { GoogleSetup } from "./GoogleSetup";
 import { DeviceSetup } from "./DeviceSetup";
 import { Onboarding } from "./Onboarding";
 import { NetworkNotice } from "./NetworkNotice";
+import {VoiceNotice} from './VoiceNotice';
 import {TimerBadge,TimerPanel,TimerComplete} from './FocusTimer';
 import {ExtrasSetup} from './ExtrasSetup';
 import {TodosPage} from './TodosPage';
@@ -44,6 +45,7 @@ function initialDemoSnapshot(): Snapshot {
   const privateMode = demoParameters.has("privacy");
   const result:Snapshot = {
     ...demoSnapshot,
+    voice_notice:demoParameters.get('voice')==='unknown'?{id:1,remaining_ms:3000}:undefined,
     transit:demoParameters.get('page')==='transit'?visibleTransit((demoParameters.get('fixture')==='long-transit'?transitStress:sampleTransit)(Date.parse(demoSnapshot.server_time)),privateMode):[],
     countdowns:demoParameters.get('page')==='countdowns'||demoParameters.get('fixture')==='countdowns'?visibleDates(demoParameters.get('fixture')==='many-dates'?Array.from({length:12},(_,i)=>({...sampleDates[i%3],id:`date-${i}`,title:`${sampleDates[i%3].title} ${i+1}`})):demoParameters.get('fixture')==='long-dates'?sampleDates.map(item=>({...item,title:'A long-awaited celebration with family and friends across the country',value:item.value===null?null:12345})):sampleDates,privateMode):[],
     display:demoParameters.get('fixture')==='night'?previewDisplay('night-clock'):demoParameters.get('fixture')==='waking'?previewDisplay('waking'):null,
@@ -316,15 +318,16 @@ function App() {
 
   const wake=async()=>{if(!snapshot)return;if(demoMode)setSnapshot({...snapshot,display:previewDisplay('waking',snapshot.settings.brightness),state:{...snapshot.state,display_power:'on'}});else setSnapshot(await sendCommand('wake'));};
   const privateSetup=!demoMode&&snapshot?.settings.onboarding_completed===true&&snapshot.privacy_redacted;
+  const withVoiceNotice=(view:React.ReactNode)=><>{view}<div className={`app theme-${snapshot?.settings.theme??'luma-glass'} voice-notice-layer`}><VoiceNotice notice={snapshot?.voice_notice}/></div></>;
   if(snapshot?.display?.mode==='off')return <button className="sleep-screen" onClick={()=>void wake()} aria-label="Wake Luma"/>;
-  if(snapshot?.display?.mode==='night-clock' || snapshot?.display?.mode==='waking')return <div className={`app theme-${snapshot.settings.theme} night-screen`}><NightDisplay snapshot={snapshot} onWake={()=>void wake()}/>{snapshot.state.assistant_phase!=='idle'&&<AssistantOrb phase={snapshot.state.assistant_phase} onClick={()=>void wake()}/>}</div>;
-  if (demoParameters.get("setup") === "google") return <GoogleSetup demo={demoMode}/>;
-  if (demoParameters.get("setup") === "device") return <DeviceSetup demo={demoMode}/>;
-  if (demoParameters.get("setup") === "onboarding") return <Onboarding demo={demoMode} locked={privateSetup}/>;
-  if (demoParameters.get("setup") === "extras") return <ExtrasSetup demo={demoMode} locked={privateSetup}/>;
+  if(snapshot?.display?.mode==='night-clock' || snapshot?.display?.mode==='waking')return <div className={`app theme-${snapshot.settings.theme} night-screen`}><NightDisplay snapshot={snapshot} onWake={()=>void wake()}/><VoiceNotice notice={snapshot.voice_notice}/>{snapshot.state.assistant_phase!=='idle'&&<AssistantOrb phase={snapshot.state.assistant_phase} onClick={()=>void wake()}/>}</div>;
+  if (demoParameters.get("setup") === "google") return withVoiceNotice(<GoogleSetup demo={demoMode}/>);
+  if (demoParameters.get("setup") === "device") return withVoiceNotice(<DeviceSetup demo={demoMode}/>);
+  if (demoParameters.get("setup") === "onboarding") return withVoiceNotice(<Onboarding demo={demoMode} locked={privateSetup}/>);
+  if (demoParameters.get("setup") === "extras") return withVoiceNotice(<ExtrasSetup demo={demoMode} locked={privateSetup}/>);
   if (error) return <div className="boot-screen error"><LumaGlow/><h1>Luma is reconnecting</h1><p>{error}</p></div>;
   if (!snapshot) return <div className="boot-screen"><LumaGlow/><p>Waking your space…</p></div>;
-  if (!demoMode && snapshot.settings.onboarding_completed === false) return <Onboarding demo={false}/>;
+  if (!demoMode && snapshot.settings.onboarding_completed === false) return withVoiceNotice(<Onboarding demo={false}/>);
   if (snapshot.state.display_power === "off") return <button className="sleep-screen" onClick={()=>void wake()} aria-label="Wake Luma" />;
 
   return (
@@ -333,6 +336,7 @@ function App() {
       <div className="page-stage" key={`${snapshot.privacy_redacted}-${page}`}>{content}</div>
       {!snapshot.privacy_redacted && <nav className="page-dots" aria-label="Dashboard pages">{(["home", "agenda", "weather", "todos", "ambient",...(hasDates?['countdowns']:[]),...(hasTransit?['transit']:[])] as Page[]).map((item) => <button aria-label={item} className={page === item ? "active" : ""} onClick={() => setPage(item)} key={item} />)}</nav>}
       <AssistantOrb phase={snapshot.state.assistant_phase} onClick={() => setPage("home")} />
+      <VoiceNotice notice={snapshot.voice_notice}/>
       <ControlIsland snapshot={snapshot} onUpdate={setSnapshot} open={overlay==='controls'} setOpen={open=>setOverlay(open?'controls':null)} onTimer={()=>setOverlay('timer')} />
       {overlay==='timer' && <TimerPanel snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}
       {overlay==='departure' && !snapshot.privacy_redacted && snapshot.departure && <DeparturePanel key={snapshot.departure.key} snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}

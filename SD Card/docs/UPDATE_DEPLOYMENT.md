@@ -11,6 +11,10 @@ OS image.
 
 ## Primary update path: GitHub Releases
 
+Current workflow: the owner has authorized signed Beta releases from `main`, with a **Beta** headline on a stable `vX.Y.Z` GitHub Release (not a prerelease). The installed Pi already has this updater. The first-image/feature-branch history below describes earlier commissioning, not a reason to reflash for an ordinary app update.
+
+The 0.2.9 candidate also publishes `luma-keyword-0.2.9.lka`, a separately signed ~46 MB phonetic wake model/runtime. Source-pinned vendor hashes, canonical manifest, signature and every payload are checked before offline installation in a private optional venv. It does not alter the application's dependency contract or saved settings. Both staging and the final relocated path must pass the worker protocol smoke. Interruption recovery is scoped to installer-owned paths. Preparation is interlocked with voice/speaker checks and never qualifies the owner's microphone or identity. The app-only update can finish before the separate model download; Settings → Voice reports preparation and commands wait rather than use a sensitive fallback. The offline publisher requires exact signed payload verification and isolated ARM64 installation before attaching this asset; it never uploads the private key.
+
 The on-device **Settings → Luma software → Check for updates** control checks
 the public `BrianBGoldshtein/LumaSmartHub` GitHub Releases feed. It does not
 execute `git pull`, install a branch checkout, or trust a branch archive. The

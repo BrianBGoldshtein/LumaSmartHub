@@ -21,6 +21,58 @@ from luma.voice_signal import AudioPreprocessor, AudioProfile, CalibrationSegmen
 from luma.voice_adaptation import PhraseAdaptations
 from luma.voice_agent import accept_live_utterance
 from luma.voice_wake import WakeAudioBuffer
+from luma.voice_agent import present_voice_response
+
+
+def test_unknown_command_is_silent_ephemeral_and_privacy_safe(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    import luma.service as service_module
+    clock = [100.0]
+    monkeypatch.setattr(service_module, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(service_module, 'randbelow', lambda bound: 0)
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+    response = client.post('/api/v1/voice/command', json={
+        'text': 'flibbertigibbet purple banana'}).json()
+    assert response == {'accepted': False, 'message': 'Unknown command', 'speak': False}
+    say, phase = Mock(), Mock()
+    present_voice_response(response, say=say, phase=phase)
+    say.assert_not_called()
+    phase.assert_not_called()
+    view = client.get('/api/v1/state').json()
+    assert view['voice_notice'] == {'id': 1, 'remaining_ms': 3000}
+    assert view['privacy_redacted']
+    assert not view['notifications']
+    assert not app.state.luma._pending_notification_chimes
+    clock[0] += 3.1
+    assert client.get('/api/v1/state').json()['voice_notice']['remaining_ms'] == 0
+    assert create_app(data_dir=tmp_path).state.luma.snapshot()['voice_notice']['id'] == 0
+
+
+def test_unknown_notice_id_does_not_repeat_after_api_restart(tmp_path, monkeypatch):
+    import luma.service as service_module
+    sequence = iter([42, 43])
+    monkeypatch.setattr(service_module, 'randbelow', lambda bound: next(sequence))
+    first = create_app(data_dir=tmp_path).state.luma
+    first.unknown_voice_command()
+    old_id = first.snapshot()['voice_notice']['id']
+    restarted = create_app(data_dir=tmp_path).state.luma
+    assert restarted.snapshot()['voice_notice']['id'] == 0
+    restarted.unknown_voice_command()
+    assert restarted.snapshot()['voice_notice']['id'] == old_id + 1
+    assert 0 < old_id < 2**53  # exact JavaScript integer; no saved transcript
+
+
+def test_valid_commands_keep_spoken_feedback_and_playback_failure_reporting():
+    from unittest.mock import Mock
+    say, phase = Mock(return_value='kristin'), Mock()
+    present_voice_response({'accepted': True, 'message': 'It is noon.'}, say=say, phase=phase)
+    say.assert_called_once_with('It is noon.')
+    phase.assert_called_once_with('speaking')
+    say.return_value = 'silent'
+    phase.reset_mock()
+    present_voice_response({'message': 'It is noon.'}, say=say, phase=phase)
+    assert [call.args[0] for call in phase.call_args_list] == ['speaking', 'error']
 
 
 def test_live_protected_wake_rejects_forced_conversation_before_opening_command_window():
@@ -311,6 +363,7 @@ def test_one_hundred_is_not_parsed_as_zero():
 
 def test_mute_cancels_calibration_and_rejects_late_voice_actions(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path))
+    client.post('/api/v1/voice/wake-confirmation',json={'mode':'dual_decoder'})
     assert client.get("/api/v1/settings").json()["voice_enabled"] is True
     session = client.post("/api/v1/voice/calibration/start").json()["session"]
     client.post("/api/v1/voice/phase", json={"phase": "listening"})

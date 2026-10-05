@@ -207,6 +207,7 @@ def test_owner_local_call_trial_blocks_commands_and_keeps_no_saved_results(tmp_p
         return original_heartbeat(self, now)
     monkeypatch.setattr(VoiceCallTrial, 'heartbeat', recording_heartbeat)
     with TestClient(create_app(data_dir=tmp_path)) as client:
+        client.post('/api/v1/voice/wake-confirmation',json={'mode':'dual_decoder'})
         assert client.post('/api/v1/voice/call-trial/start').status_code == 409
         assert client.post('/api/v1/voice/heartbeat', json={}).json()['accepted']
         started = client.post('/api/v1/voice/call-trial/start')
@@ -251,6 +252,7 @@ def test_call_trial_freezes_mic_tuning_and_microphone_off_ends_trial(tmp_path, m
     monkeypatch.setattr(api.mic_hardware, 'save_and_apply',
                         lambda _gain: pytest.fail('gain changed during trial'))
     with TestClient(create_app(data_dir=tmp_path)) as client:
+        client.post('/api/v1/voice/wake-confirmation',json={'mode':'dual_decoder'})
         client.post('/api/v1/voice/heartbeat', json={})
         assert client.post('/api/v1/voice/call-trial/start').status_code == 200
         assert client.post('/api/v1/voice/hardware/gain', json={'gain': 40}).status_code == 409

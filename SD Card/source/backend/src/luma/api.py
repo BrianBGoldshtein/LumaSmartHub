@@ -496,7 +496,7 @@ def create_app(
                 service.timer_tick(trusted=trusted)
                 await asyncio.sleep(1)
 
-        workers = [asyncio.create_task(calendar_worker()), asyncio.create_task(weather.run()), asyncio.create_task(clock_worker()), asyncio.create_task(backup_worker()), asyncio.create_task(bluetooth.run()), asyncio.create_task(bluetooth.scene_presence_worker()), asyncio.create_task(network.run()), asyncio.create_task(timer_worker()), asyncio.create_task(app.state.countdown_runtime.run()), asyncio.create_task(app.state.transit_runtime.run()), asyncio.create_task(app.state.room_runtime.run()), asyncio.create_task(app.state.scene_runtime.run())]
+        workers = [asyncio.create_task(calendar_worker()), asyncio.create_task(weather.run()), asyncio.create_task(clock_worker()), asyncio.create_task(backup_worker()), asyncio.create_task(bluetooth.run()), asyncio.create_task(bluetooth.reconnect_advertising_worker()), asyncio.create_task(bluetooth.scene_presence_worker()), asyncio.create_task(network.run()), asyncio.create_task(timer_worker()), asyncio.create_task(app.state.countdown_runtime.run()), asyncio.create_task(app.state.transit_runtime.run()), asyncio.create_task(app.state.room_runtime.run()), asyncio.create_task(app.state.scene_runtime.run())]
         if (sys.platform == "linux" and os.environ.get("LUMA_DATA_DIR") == "/var/lib/luma"):
             workers.append(asyncio.create_task(voice_asset_worker()))
         try:
@@ -605,6 +605,7 @@ def create_app(
     def pairing_status() -> dict:
         return {**pairing.snapshot(), "phone_address": service.settings.phone_address,
                 "connection_status": bluetooth.status,
+                "reconnect_advertising": bluetooth.advertising_status,
                 "last_reconnect_at": bluetooth.last_reconnect_at,
                 "reconnect_attempts": bluetooth.reconnect_attempts,
                 "last_service_recovery_at": bluetooth.last_service_recovery_at,
@@ -896,7 +897,7 @@ def create_app(
         return {**result, "audio_profile": active_profile.public(),
                 "call_trial": call_trial.status(),
                 "speaker_trial": speaker_trial.status(),
-                "wake_confirmation": {'version': 1, 'mode': wake_mode},
+                "wake_confirmation": {'version': 2, 'mode': wake_mode},
                 "phrase_adaptations": phrase_adaptations.public(),
                 "learned_phrase_count": len(phrase_adaptations.entries),
                 "agent_available": available,
@@ -1064,9 +1065,7 @@ def create_app(
     @app.post('/api/v1/voice/wake-confirmation', dependencies=[Depends(local_only)])
     async def set_wake_confirmation(payload: WakeConfirmationChoice) -> dict:
         """Owner-local false-wake filter; never described as voice identity."""
-        if payload.mode == 'dual_decoder' and not wake_filter_ready():
-            raise HTTPException(409, 'Complete the guided wake checks or four clean wake attempts plus a full no-wake call test before enabling this filter.')
-        value = {'version': 1, 'mode': payload.mode}
+        value = {'version': 2, 'mode': payload.mode}
         storage.set_cache('voice', 'wake_confirmation', value)
         return {'wake_confirmation': value}
 

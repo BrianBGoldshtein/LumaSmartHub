@@ -1,5 +1,7 @@
 # Luma development status — 2026-09-30
 
+Current checkpoint (2026-10-04): 0.2.7 is published as a signed Beta. The owner reports that speech works and Pi Connect sign-in succeeded after a full reboot, but ordinary speech still triggers Hey Luma and iPhone reconnection still requires manual Connect. 0.2.8 development and verification are tracked in [V028_WORKING_NOTES.md](docs/V028_WORKING_NOTES.md). It adds default independent wake protection and an ANCS peripheral solicitation reconnect path. Do not treat source tests as hardware acceptance. The sections below retain the earlier recovery history, not the current release status.
+
 Luma is a pre-v1 Raspberry Pi 4 appliance. The owner's Pi currently runs the
 **0.2.3 application**, installed through the no-flash microSD recovery path;
 the saved device and account settings remain on that card. Google Calendar and

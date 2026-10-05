@@ -10,6 +10,7 @@ from time import monotonic
 from .integrations.ancs import SERVICE, SOURCE, DATA, CONTROL, AttributeResponse, notification, parse_source, request_attributes
 from .service import LumaService
 from .scene_presence import ScenePresence, evidence
+from .ancs_advertising import ANCSReconnectAdvertising
 
 SERVICE_CHANGED = '00002a05-0000-1000-8000-00805f9b34fb'
 
@@ -32,7 +33,8 @@ class BluetoothStatusError(Exception):
 
 
 async def scan_for_paired_phone(manager, adapter, phone_path: str, *, phone_address: str | None = None,
-                                pause=asyncio.sleep) -> bool:
+                                pause=asyncio.sleep, connect=None,
+                                address_is_current=lambda: True) -> bool:
     """Briefly refresh BlueZ's LE view before a normal bonded reconnect.
 
     Discovery is only a hint that a device may be reachable. It never changes
@@ -63,10 +65,19 @@ async def scan_for_paired_phone(manager, adapter, phone_path: str, *, phone_addr
     try:
         for _ in range(12):
             await pause(0.5)
+            if not address_is_current():
+                return False
             objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
             device = objects.get(phone_path, {}).get("org.bluez.Device1")
             if device and plain(device).get("Connected") is True:
                 return True
+        if connect is not None and address_is_current():
+            # LE Connect needs a fresh scan report. Keep this caller's scan
+            # running while it connects, instead of stopping just before it.
+            values = plain(device) if device else {}
+            if all(values.get(key) is True for key in ('Paired', 'Bonded', 'Trusted')):
+                await asyncio.wait_for(connect(), 15)
+                return True  # Link request only, NOT presence/authorization.
         return False
     finally:
         with suppress(Exception):
@@ -163,6 +174,14 @@ class BluetoothRuntime:
         self.last_service_recovery = -300.0
         self.last_service_recovery_at: str | None = None
         self.service_recovery_attempts = 0
+        self.advertiser = ANCSReconnectAdvertising(lambda: self.service.settings.phone_address)
+
+    @property
+    def advertising_status(self):
+        return self.advertiser.status
+
+    async def reconnect_advertising_worker(self):
+        await self.advertiser.run()
 
     async def refresh_phone_services(self, manager, device, device_props, phone_path,
                                      adapter, address: str) -> None:
@@ -263,7 +282,12 @@ class BluetoothRuntime:
                         self.status = "Looking for paired iPhone"
                         try:
                             adapter = await interface(adapter_path, "org.bluez.Adapter1")
-                            await scan_for_paired_phone(manager, adapter, phone_path, phone_address=address)
+                            await prefer_le_bearer(device_props, properties)
+                            self.last_reconnect_at = datetime.now(UTC).isoformat()
+                            self.reconnect_attempts += 1
+                            await scan_for_paired_phone(manager, adapter, phone_path, phone_address=address,
+                                connect=device.call_connect,
+                                address_is_current=lambda: self.service.settings.phone_address == address)
                         except Exception:
                             # Some controllers cannot scan while another radio
                             # operation is active. Still attempt the direct bond.
@@ -273,6 +297,8 @@ class BluetoothRuntime:
                 if not all(properties.get(key) for key in ("Paired", "Bonded", "Trusted")):
                     raise BluetoothStatusError("iPhone bond or trust was lost")
             if not properties.get("Connected"):
+                if self.service.settings.phone_address != address:
+                    raise BluetoothStatusError("Selected iPhone changed before reconnect")
                 await prefer_le_bearer(device_props, properties)
                 self.status = "Reconnecting to paired iPhone"
                 self.last_reconnect_at = datetime.now(UTC).isoformat()
@@ -442,7 +468,9 @@ async def recover_stalled_services(manager, device, properties_interface, phone_
                 # when an iPhone also has a BR/EDR bond. Discovery is bounded
                 # and belongs only to this D-Bus connection.
                 await scan_for_paired_phone(manager, adapter, phone_path,
-                                            phone_address=fresh.get('Address'), pause=pause)
+                                            phone_address=fresh.get('Address'), pause=pause,
+                                            connect=device.call_connect,
+                                            address_is_current=address_is_current)
             except Exception:
                 pass
         objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)

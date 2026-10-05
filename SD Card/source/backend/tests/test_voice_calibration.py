@@ -504,7 +504,7 @@ def test_owner_can_confirm_two_different_accent_transcriptions_of_one_phrase():
                for variant in heard)
 
 
-def test_dual_decoder_mode_requires_local_calibration_evidence(tmp_path, monkeypatch):
+def test_dual_decoder_is_default_and_explicit_sensitivity_is_local_persistent(tmp_path, monkeypatch):
     import luma.api as api
     original_start = api.VoiceCalibration.start
     monkeypatch.setattr(api.VoiceCalibration, 'start',
@@ -512,7 +512,9 @@ def test_dual_decoder_mode_requires_local_calibration_evidence(tmp_path, monkeyp
     app = create_app(data_dir=tmp_path)
     with TestClient(app) as client:
         endpoint = '/api/v1/voice/wake-confirmation'
-        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 409
+        assert client.get('/api/v1/voice/calibration').json()['wake_confirmation'] == {
+            'version': 2, 'mode': 'dual_decoder'}
+        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 200
         session = client.post('/api/v1/voice/calibration/start').json()['session']
         for phrase in PHRASES[:-2]:
             response = client.post('/api/v1/voice/calibration/sample', json={
@@ -531,12 +533,13 @@ def test_dual_decoder_mode_requires_local_calibration_evidence(tmp_path, monkeyp
         assert enabled.json()['wake_confirmation']['mode'] == 'dual_decoder'
         assert client.get('/api/v1/voice/calibration').json()['wake_confirmation']['mode'] == 'dual_decoder'
         assert app.state.luma.storage.get_cache('voice', 'wake_confirmation') == {
-            'version': 1, 'mode': 'dual_decoder',
+            'version': 2, 'mode': 'dual_decoder',
         }
         assert client.post(endpoint, json={'mode': 'off'}).status_code == 422
         remote = TestClient(app, client=('192.168.1.7', 5000))
         assert remote.post(endpoint, json={'mode': 'standard'}).status_code == 403
         assert client.post(endpoint, json={'mode': 'standard'}).status_code == 200
+        assert client.get('/api/v1/voice/calibration').json()['wake_confirmation']['mode'] == 'standard'
 
 
 def test_wake_only_api_requires_later_negative_trial_and_never_passes_calibration(tmp_path, monkeypatch):
@@ -568,7 +571,7 @@ def test_wake_only_api_requires_later_negative_trial_and_never_passes_calibratio
         assert not finished.json()['strict_wake_ready']
         assert app.state.luma.storage.get_cache('voice', 'audio_profile') is None
         endpoint = '/api/v1/voice/wake-confirmation'
-        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 409
+        assert client.post(endpoint, json={'mode': 'dual_decoder'}).status_code == 200
 
         original_status = api.VoiceCallTrial.status
         def after_full_negative_trial(self, now=None):
@@ -618,7 +621,7 @@ def test_changing_mic_path_invalidates_finished_wake_evidence(tmp_path, monkeypa
         assert not client.get('/api/v1/voice/calibration').json()['strict_wake_ready']
         assert client.post('/api/v1/voice/wake-confirmation', json={
             'mode': 'dual_decoder',
-        }).status_code == 409
+        }).status_code == 200
 
         finish_wake_only(client)
         assert client.post('/api/v1/voice/audio-profile/reset', json={}).status_code == 200

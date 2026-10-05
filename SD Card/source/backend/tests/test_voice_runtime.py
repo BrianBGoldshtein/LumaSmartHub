@@ -19,6 +19,47 @@ from luma.voice_audio import AudioCaptureError
 from luma.voice_speech import VoicePlaybackError
 from luma.voice_signal import AudioPreprocessor, AudioProfile, CalibrationSegmenter
 from luma.voice_adaptation import PhraseAdaptations
+from luma.voice_agent import accept_live_utterance
+from luma.voice_wake import WakeAudioBuffer
+
+
+def test_live_protected_wake_rejects_forced_conversation_before_opening_command_window():
+    from unittest.mock import Mock
+    independent = Mock()
+    independent.AcceptWaveform.return_value = False
+    independent.FinalResult.return_value = json.dumps({'text': 'we should move on to the next slide'})
+    frames = WakeAudioBuffer()
+    frames.append(bytes(8000))
+    gate = WakeGate()
+    accepted, heard, discard = accept_live_utterance('hey luma good morning', frames,
+        independent, gate, 100, 'dual_decoder')
+    assert discard and accepted is None and gate.until == 0
+    assert heard == 'we should move on to the next slide'
+    assert gate.accept('good morning', 101) is None
+
+
+def test_live_verified_wake_allows_only_one_followup_and_incomplete_audio_revokes_it():
+    from unittest.mock import Mock
+    independent = Mock()
+    independent.AcceptWaveform.return_value = False
+    independent.FinalResult.return_value = json.dumps({'text': 'hey luma'})
+    frames = WakeAudioBuffer()
+    frames.append(bytes(8000))
+    gate = WakeGate()
+    assert accept_live_utterance('hey luma', frames, independent, gate, 100, 'dual_decoder') == (
+        '', 'hey luma', False)
+    accepted, _, discard = accept_live_utterance('what time is it', frames, independent, gate,
+                                               101, 'dual_decoder')
+    assert accepted == 'what time is it' and not discard and gate.until == 0
+    assert accept_live_utterance('good morning', frames, independent, gate, 102, 'dual_decoder')[0] is None
+    for _ in range(37):
+        frames.append(bytes(8000))
+    independent.Reset.reset_mock()
+    gate.until = 110
+    assert accept_live_utterance('hey luma good morning', frames, independent, gate,
+                                103, 'dual_decoder') == (None, None, True)
+    assert gate.until == 0
+    independent.Reset.assert_not_called()
 
 
 def test_calibration_decodes_tuned_audio_before_raw_comparison_or_intent():

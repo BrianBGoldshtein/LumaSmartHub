@@ -20,6 +20,40 @@ def test_presence_requires_all_bonded_trusted_connection_properties():
 
 
 @pytest.mark.asyncio
+async def test_explicit_le_connect_runs_before_scan_stops_and_is_not_presence():
+    props = {key: SimpleNamespace(value=True) for key in ('Paired', 'Bonded', 'Trusted')}
+    props['Connected'] = SimpleNamespace(value=False)
+    manager = SimpleNamespace(call_get_managed_objects=AsyncMock(return_value={
+        '/phone': {'org.bluez.Device1': props}}))
+    adapter = SimpleNamespace(call_set_discovery_filter=AsyncMock(), call_start_discovery=AsyncMock(),
+                              call_stop_discovery=AsyncMock())
+    async def connect():
+        adapter.call_start_discovery.assert_awaited_once()
+        adapter.call_stop_discovery.assert_not_awaited()
+    assert await scan_for_paired_phone(manager, adapter, '/phone', pause=AsyncMock(), connect=connect)
+    adapter.call_stop_discovery.assert_awaited_once()
+    assert StateMachine(Settings()).state.privacy == PrivacyLevel.PRIVATE
+
+
+@pytest.mark.asyncio
+async def test_scan_cancel_or_selection_change_never_connects_or_leaves_discovery_active():
+    manager = SimpleNamespace(call_get_managed_objects=AsyncMock(return_value={}))
+    adapter = SimpleNamespace(call_set_discovery_filter=AsyncMock(), call_start_discovery=AsyncMock(),
+                              call_stop_discovery=AsyncMock())
+    connect = AsyncMock()
+    assert not await scan_for_paired_phone(manager, adapter, '/phone', pause=AsyncMock(), connect=connect,
+                                           address_is_current=lambda: False)
+    connect.assert_not_awaited()
+    adapter.call_stop_discovery.assert_awaited_once()
+    adapter.call_stop_discovery.reset_mock()
+    with pytest.raises(asyncio.CancelledError):
+        await scan_for_paired_phone(manager, adapter, '/phone',
+            pause=AsyncMock(side_effect=asyncio.CancelledError()), connect=connect)
+    adapter.call_stop_discovery.assert_awaited_once()
+    connect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_gatt_resolution_can_finish_after_connected_event():
     def snapshot(resolved):
         props = {key: SimpleNamespace(value=True) for key in ("Paired", "Bonded", "Trusted", "Connected")}

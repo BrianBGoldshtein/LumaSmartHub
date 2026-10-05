@@ -23,7 +23,7 @@ from .voice_speech import (OfflineSpeaker, PIPER_WORKER_FAILURES, VoicePlaybackE
                            speaker_route_warning)
 from .voice_signal import (AudioPreprocessor, AudioProfile, CalibrationSegmenter, pcm_measurements,
                            low_frequency_fraction, read_profile, speech_measurements)
-from .voice_wake import (command_after_wake, has_wake, read_wake_mode,
+from .voice_wake import (WakeAudioBuffer, command_after_wake, has_wake, read_wake_mode,
                          wake_confirmed, wake_near_start)
 from .voice_adaptation import PhraseAdaptations
 from .voice_speaker import SpeakerVectorError, decode_speaker_observation
@@ -58,6 +58,27 @@ def _unrestricted_transcript(recognizer, frames: list[bytes]) -> str:
             parts.append(json.loads(recognizer.Result()).get('text', ''))
     parts.append(json.loads(recognizer.FinalResult()).get('text', ''))
     return ' '.join(part for part in parts if part)
+
+
+def accept_live_utterance(text: str, frames: WakeAudioBuffer, recognizer,
+                          gate: WakeGate, now: float, mode: str):
+    """A final utterance is verified BEFORE any phase feedback or command.
+
+    Returns accepted command, reusable independent transcript, discard flag.
+    A rejected wake closes even a previous follow-up window. A verified wake
+    without a command may open one follow-up; partial guesses never enter here.
+    """
+    independent = None
+    if not frames.complete:
+        gate.until = 0
+        return None, None, True
+    if has_wake(text, gate.phrase):
+        if mode == 'dual_decoder':
+            independent = _unrestricted_transcript(recognizer, frames)
+        if not wake_confirmed(text, independent or '', mode, gate.phrase):
+            gate.until = 0
+            return None, independent, True
+    return gate.accept(text, now), independent, False
 
 
 def calibration_decoding_payload(constrained, unrestricted, raw_spoken: list[bytes],
@@ -403,7 +424,7 @@ def main() -> None:
                 speaker_model = None
                 speaker_model_load_ms = 0.0
                 handled_speaker_token = None
-                wake_mode = 'standard'
+                wake_mode = 'dual_decoder'
                 adaptations = PhraseAdaptations()
                 next_check = 0.0
                 next_preview_check = 0.0
@@ -414,7 +435,7 @@ def main() -> None:
                 meter_energy = meter_count = meter_peak = 0
                 meter_floors: list[float] = []
                 meter_low_fractions: list[float] = []
-                utterance: list[bytes] = []
+                utterance = WakeAudioBuffer()
                 raw_utterance: list[bytes] = []  # Only populated during a call A/B trial.
                 seen_drops = recognition_drops = 0
                 early_wake = False
@@ -746,8 +767,6 @@ def main() -> None:
                         preprocessor.reset()
                         continue  # Calibration never executes commands.
                     utterance.append(chunk)
-                    if len(utterance)>36:
-                        utterance.pop(0)  # At most nine seconds of 16 kHz mono audio.
                     if calibration.get('call_trial', {}).get('active'):
                         raw_utterance.append(raw_chunk)
                         if len(raw_utterance) > 36:
@@ -756,14 +775,9 @@ def main() -> None:
                         if calibration.get('call_trial', {}).get('active') and not trial_partial_wake:
                             trial_partial_wake = partial_has_wake(
                                 recognizer.PartialResult(), gate.phrase)
-                        if (not calibration["active"] and not calibration.get('call_trial', {}).get('active')
-                                and wake_mode == 'standard' and not early_wake
-                                and partial_has_wake(recognizer.PartialResult(), gate.phrase)):
-                            # Light the small corner orb while the owner is
-                            # still speaking. Only a final, exact wake match
-                            # below can dispatch a command.
-                            early_wake = True
-                            phase("listening")
+                        # Partial command-grammar guesses are deliberately
+                        # silent: normal conversation can look like a wake
+                        # until the final independent check rejects it.
                         continue
                     text = json.loads(recognizer.Result()).get("text", "")
                     if capture.dropped_frames != seen_drops:
@@ -779,10 +793,9 @@ def main() -> None:
                         early_wake = trial_partial_wake = False
                         phase('idle')
                         continue
-                    had_early_wake = early_wake
                     early_wake = False
                     spoken=utterance
-                    utterance=[]
+                    utterance=WakeAudioBuffer()
                     trial = calibration.get('call_trial') or {}
                     if trial.get('active'):
                         raw_spoken = raw_utterance
@@ -814,19 +827,15 @@ def main() -> None:
                         phase('idle')
                         continue  # A call-test utterance can never execute.
                     # The constrained grammar can hallucinate its nearest
-                    # allowed phrase over unrelated speech. In the optional
-                    # strict mode, a *new* wake must also be present in the
+                    # allowed phrase over unrelated speech. By default a
+                    # *new* wake must also be present in the
                     # unrestricted transcription before opening the window.
-                    new_wake = has_wake(text, gate.phrase)
-                    free_text = None
-                    if wake_mode == 'dual_decoder' and new_wake:
-                        free_text = _unrestricted_transcript(free_recognizer, spoken)
-                        if not wake_confirmed(text, free_text, wake_mode, gate.phrase):
-                            gate.until = 0
-                            recognizer.Reset()
-                            phase('idle')
-                            continue
-                    accepted = gate.accept(text, time.monotonic())
+                    accepted, free_text, discard = accept_live_utterance(
+                        text, spoken, free_recognizer, gate, time.monotonic(), wake_mode)
+                    if discard:
+                        recognizer.Reset()
+                        phase('idle')
+                        continue
                     if capture.dropped_frames != seen_drops:
                         recognition_drops += capture.dropped_frames - seen_drops
                         seen_drops = capture.dropped_frames
@@ -835,10 +844,7 @@ def main() -> None:
                         phase('idle')
                         continue
                     if accepted is None:
-                        if new_wake and gate.until > time.monotonic():
-                            phase('listening')
-                        elif had_early_wake and gate.until <= time.monotonic():
-                            phase("idle")
+                        phase('listening' if gate.until > time.monotonic() else 'idle')
                         continue
                     # Light the corner listening state as soon as the
                     # wake phrase is accepted, including one-shot commands.

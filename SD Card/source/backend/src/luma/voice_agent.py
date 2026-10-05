@@ -438,7 +438,6 @@ def main() -> None:
                 utterance = WakeAudioBuffer()
                 raw_utterance: list[bytes] = []  # Only populated during a call A/B trial.
                 seen_drops = recognition_drops = 0
-                early_wake = False
                 trial_partial_wake = False
                 while True:
                     now = time.monotonic()
@@ -476,7 +475,6 @@ def main() -> None:
                                                     preprocessor, gate, calibration_segmenter,
                                                     utterance, raw_utterance)
                             seen_drops = capture.dropped_frames
-                            early_wake = False
                             trial_partial_wake = False
                             phase('listening' if calibration['active'] else 'idle')
                             continue
@@ -503,7 +501,6 @@ def main() -> None:
                                                     preprocessor, gate, calibration_segmenter,
                                                     utterance, raw_utterance)
                             seen_drops = capture.dropped_frames
-                            early_wake = False
                             trial_partial_wake = False
                             phase('listening' if calibration['active'] else 'idle')
                             continue
@@ -518,7 +515,6 @@ def main() -> None:
                                                         preprocessor, gate, calibration_segmenter,
                                                         utterance, raw_utterance)
                                 seen_drops = capture.dropped_frames
-                                early_wake = False
                                 trial_partial_wake = False
                                 meter_energy = meter_count = meter_peak = 0
                                 meter_floors.clear()
@@ -536,7 +532,6 @@ def main() -> None:
                                                         preprocessor, gate, calibration_segmenter,
                                                         utterance, raw_utterance)
                                 seen_drops = capture.dropped_frames
-                                early_wake = False
                                 trial_partial_wake = False
                                 phase('idle')
                             if new_trial.get('active') and not new_trial.get('armed'):
@@ -556,7 +551,7 @@ def main() -> None:
                                 _reset_voice_transition(chunks, recognizer, free_recognizer,
                                                         preprocessor, gate, calibration_segmenter,
                                                         utterance, raw_utterance)
-                                early_wake = trial_partial_wake = False
+                                trial_partial_wake = False
                                 seen_drops = capture.dropped_frames
                                 phase('idle')
                             if not new_speaker_trial.get('active'):
@@ -569,7 +564,6 @@ def main() -> None:
                                                         preprocessor, gate, calibration_segmenter,
                                                         utterance, raw_utterance)
                                 seen_drops = capture.dropped_frames
-                                early_wake = False
                                 trial_partial_wake = False
                                 phase("listening" if fresh["active"] else "idle")
                             adaptations = PhraseAdaptations(fresh.get('phrase_adaptations'))
@@ -581,7 +575,6 @@ def main() -> None:
                                 utterance.clear()
                                 raw_utterance.clear()
                                 calibration_segmenter.reset()
-                                early_wake = False
                                 trial_partial_wake = False
                                 gate.until = 0
                                 _discard_pending_audio(chunks)
@@ -601,7 +594,7 @@ def main() -> None:
                             utterance.clear()
                             raw_utterance.clear()
                             gate.until = 0
-                            early_wake = trial_partial_wake = False
+                            trial_partial_wake = False
                             preprocessor.reset()
                             model_failed = False
                             try:
@@ -692,7 +685,6 @@ def main() -> None:
                         utterance.clear()
                         raw_utterance.clear()
                         calibration_segmenter.reset()
-                        early_wake = False
                         trial_partial_wake = False
                         preprocessor.reset()
                         _discard_pending_audio(chunks)
@@ -790,10 +782,9 @@ def main() -> None:
                                                preprocessor, gate)
                         utterance.clear()
                         raw_utterance.clear()
-                        early_wake = trial_partial_wake = False
+                        trial_partial_wake = False
                         phase('idle')
                         continue
-                    early_wake = False
                     spoken=utterance
                     utterance=WakeAudioBuffer()
                     trial = calibration.get('call_trial') or {}

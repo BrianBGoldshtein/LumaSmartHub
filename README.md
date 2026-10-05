@@ -13,6 +13,12 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
+Latest: [Luma 0.2.9 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.9).
+On an existing Luma Pi, use **Settings → Luma software → Check for updates**;
+do not reflash its SD card. After the automatic reboot, allow the signed wake
+model to prepare in Settings → Voice before testing. [Release notes and owner
+checks](SD%20Card/docs/V029_RELEASE_NOTES.md) describe what remains to verify.
+
 ## What it does
 
 - Cycles through high-contrast, themed glance screens, with a full day agenda
@@ -130,24 +136,25 @@ frontend, production UI build and image-manifest tools. Required public assets
 are regenerated from checksum-pinned sources in CI. **CI has no updater signing
 private key and does not publish a trusted image or update bundle.**
 
-The owner flashed and began testing [r12](SD%20Card/image/r12-current-916b5d7-20260930/README.md).
-That test found three unresolved platform issues: Pi Connect sign-in stopped
-before the verification QR, the native file browser could not mount USB media,
-and Hey Luma's input meter stayed near zero. The next r13 source corrects the
-Connect command order, packages the missing USB authorization service and
-adds a ReSpeaker V1 hardware check and saved capture-gain control. It also
-slightly raises Pong ball speed while preserving saved games. Source tests
-passed locally (900 backend, 127 frontend, 43 image-builder), but the r13
-image and physical retest are not yet accepted. See
-[`SD Card/CURRENT_STATUS.md`](SD%20Card/CURRENT_STATUS.md) for the current
-artifact and acceptance state. `boot_verified=false` and
-`hardware_qualified=false` remain true until actual Pi checks pass.
+Early [r12](SD%20Card/image/r12-current-916b5d7-20260930/README.md) and r13
+commissioning found platform issues in Connect, USB and microphone setup;
+their image reports remain historical, not the current software version.
+The owner has since confirmed speech and Pi Connect after a full reboot.
+Wake false triggers/misses and automatic iPhone reconnect still need acceptance
+of the new 0.2.9 corrections. Its final checks passed 1,506 backend, 157
+frontend and 43 image/recovery/packaging tests, production build, signed app
+switch/rollback and ARM64-emulated keyword installation. The published GitHub
+assets were fetched and signature/checksum-verified through production code.
+These are software/package proofs, not actual microphone/radio/thermal results.
+See [`SD Card/CURRENT_STATUS.md`](SD%20Card/CURRENT_STATUS.md) for the latest
+artifact and owner acceptance state. Historical image qualification flags must
+not be upgraded merely because a software suite or emulator passes.
 
 The device checks signed releases targeted to `main`, not raw branch files;
 the private signing key stays on the Linux build machine and outside GitHub.
 The owner has approved `main` for explicitly labeled beta releases. The
-installed Pi has already received a signed 0.2.4 application update; 0.2.5
-follows the same GitHub updater path after software qualification. Hardware
+installed Pi's last reported version is 0.2.8; 0.2.9 follows the same signed
+GitHub updater path and preserves its dependency and saved-data contracts. Hardware
 acceptance and v1 publication remain separate decisions.
 In-place update scope, release publishing, verification, rollback and recovery are documented in
 [`SD Card/docs/UPDATE_DEPLOYMENT.md`](SD%20Card/docs/UPDATE_DEPLOYMENT.md).

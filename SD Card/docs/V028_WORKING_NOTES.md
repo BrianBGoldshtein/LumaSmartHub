@@ -1,6 +1,6 @@
 # 0.2.8 wake protection and iPhone reconnection
 
-Status: implementation candidate, not yet a signed published release or a hardware-accepted fix. The owner reports continued false wakes during ordinary speech and successful manual iPhone connection but no automatic reconnection. Both are active 0.2.8 acceptance gates. Preserve Google authorization, Wi-Fi, PIN, Bluetooth bonds, voice assets and game state; do not reflash to apply this application update.
+Status: [signed 0.2.8 Beta published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.8) from main commit `132abc530b016275a71564204a029433916b8205`, after green main CI and exact-archive qualification. This is not a hardware-accepted fix. The owner reports continued false wakes during ordinary speech and successful manual iPhone connection but no automatic reconnection. Both remain active 0.2.8 acceptance gates. Preserve Google authorization, Wi-Fi, PIN, Bluetooth bonds, voice assets and game state; do not reflash to apply this application update.
 
 ## Voice findings and implementation
 
@@ -33,7 +33,9 @@ iPhone-side setup remains Settings → Bluetooth on, with Share System Notificat
 - Complete Linux backend run: 1,302 tests passed, including the production wake-dispatch helper and a real private D-Bus interface regression. All 43 image-builder/recovery/packaging tests also passed. Dependency deprecation warnings remain.
 - Frontend: all 150 tests and production build passed; existing large-chunk advisory remains. Settings use existing theme/layout primitives; no dashboard typography or game behavior was changed.
 - New coverage includes legacy mode migration, quoted/unknown-prefix/truncated wake rejection, protected production dispatch, one-follow-up consumption, selected-bond advertising, link/forget/cancel cleanup, BlueZ release/retry, real D-Bus property/Release transport, in-scan Connect ordering and privacy remaining locked. These are software and D-Bus transport checks, not Pi radio/acoustic acceptance.
-- Next: rerun all backend/image-builder tests; inspect Settings; push/CI; sign and qualify exact bundle switch/rollback against 0.2.7; publish only after software gates pass. Record the tested commit, bundle hash and release URL here. Keep the signing key offline.
+- The publishing checkout reran all 1,302 backend, 150 frontend and 43 image-builder tests plus the production build. [Main CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37251119253) passed on the exact release commit. The signed archive passed synthetic switch and rollback from both 0.2.7 and 0.2.6, including the saved-state separation marker and installed-file readability checks. The real GitHub feed accepts the uploaded 0.2.8 asset through size/digest/signature validation. These are software qualification, not a live SD install or UI screenshot inspection. The existing font/theme styling was not changed.
+- Signed archive SHA-256: `9b3f054dba205b67324adb7913c8c9fad24a451643433a0a086c1bea4941d8db`. Signed source manifest: `dcb4ecb596c5d40c4b92bd1f2ec895a9e66cd66b994333fa75ac56b4396c66f7`. The private signing key remained offline outside the repository and was not sent to GitHub.
+- Remaining: owner-led Pi wake/call, radio reconnect and settings-preservation acceptance below. No recordings, BLE packet trace or owner-specific acoustic model was obtained in this development session; do not invent a measured real-world false-wake rate or promise guaranteed iPhone reconnect.
 
 On the owner's Pi after installation:
 

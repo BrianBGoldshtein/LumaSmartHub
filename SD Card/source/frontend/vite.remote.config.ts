@@ -1,7 +1,8 @@
 import {defineConfig} from 'vite';
 import react from '@vitejs/plugin-react';
-import {copyFile,mkdir,readdir} from 'node:fs/promises';
+import {copyFile,mkdir,readdir,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
+import {remoteIcon} from './tools/remote-icon.mjs';
 export default defineConfig({
   root:'remote',base:'/remote/',publicDir:'public',plugins:[react(),{
     name:'legacy-updater-compatible-remote-assets',
@@ -17,6 +18,8 @@ export default defineConfig({
       }
       for(const name of ['index.html','manifest.webmanifest','icon.svg'])
         await copyFile(resolve(source,name),resolve(target,'remote-'+name));
+      for(const [size,name] of [[180,'touch-icon'],[192,'icon-192'],[512,'icon-512']] as const)
+        await writeFile(resolve(target,`remote-${name}.png`),remoteIcon(size));
     },
   }],
   build:{outDir:'../remote-build',emptyOutDir:true,target:'es2022',sourcemap:false,assetsInlineLimit:0,

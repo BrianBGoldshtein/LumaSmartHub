@@ -21,6 +21,7 @@ def test_remote_build_only_and_private_static_delivery(tmp_path):
     remote=tmp_path/'assets';remote.mkdir()
     (remote/'remote-index.html').write_text('<h1>Luma remote</h1>')
     (remote/'remote-manifest.webmanifest').write_text('{"start_url":"/remote/"}')
+    (remote/'remote-touch-icon.png').write_bytes(b'PNG fixture')
     (remote/'remote-index-abc123.js').write_text('/* remote only */')
     (remote/'remote-index-abc123.js.map').write_text('PRIVATE_SOURCE')
     (remote/'wall-index-abc123.js').write_text('WALL_DASHBOARD_JS')
@@ -29,16 +30,25 @@ def test_remote_build_only_and_private_static_delivery(tmp_path):
     (remote/'remote-leak-abc123.js').symlink_to(tmp_path/'secret.txt')
     app=create_gateway(frontend_dir=tmp_path)
     client=TestClient(app,client=('127.0.0.1',1234),base_url=ORIGIN)
-    for path in ['/remote/','/remote/assets/remote-index-abc123.js','/remote/manifest.webmanifest']:
+    for path in ['/remote/','/remote/assets/remote-index-abc123.js','/remote/manifest.webmanifest','/remote/touch-icon.png']:
         result=client.get(path,headers=HEADERS)
         assert result.status_code==200 and result.headers['cache-control']=='no-store'
         assert 'WALL_DASHBOARD' not in result.text
         assert "script-src 'self'" in result.headers['content-security-policy']
+        assert result.headers['x-content-type-options']=='nosniff'
     for path in ['/remote/assets/remote-index-abc123.js.map','/remote/assets/remote-leak-abc123.js','/remote/assets/wall-index-abc123.js','/remote/index.html','/remote/secret.txt']:
         assert client.get(path,headers=HEADERS).status_code==404
     assert client.get('/remote/').status_code==403
     assert client.get('/remote/',headers={**HEADERS,'Tailscale-Funnel-Request':'?1'}).status_code==403
     assert client.get('/remote/assets/remote-index-abc123.js?token=secret',headers=HEADERS).status_code==403
+
+
+def test_even_the_static_entry_cannot_follow_a_symlink(tmp_path):
+    assets=tmp_path/'assets';assets.mkdir();secret=tmp_path/'secret';secret.write_text('PRIVATE_SECRET')
+    (assets/'remote-index.html').symlink_to(secret)
+    client=TestClient(create_gateway(frontend_dir=tmp_path),client=('127.0.0.1',1),base_url=ORIGIN)
+    result=client.get('/remote/',headers=HEADERS)
+    assert result.status_code==503 and 'PRIVATE_SECRET' not in result.text
 
 
 def signed(gateway,rig,method,path,value=None,headers=None):

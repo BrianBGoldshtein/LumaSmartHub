@@ -9,6 +9,8 @@ export type RemoteSettings={theme:Theme;brightness:number;volume:number;timezone
   notification_chime_enabled:boolean;notification_chime_volume:number;visible_calendar_ids:string[];todo_calendar_id:string|null;
   todo_completed_color_id:string|null;sleep_calendar_ids:string[];sleep_event_title:string;departure_calendar_ids:string[];
   departure_enabled:boolean;departure_include_virtual:boolean;departure_prep_minutes:number;departure_travel_minutes:number;
+  timer_focus_minutes:number;timer_break_minutes:number;weather_nudges_enabled:boolean;
+  weather_rain_percent:number;weather_gust_mph:number;weather_hot_f:number;weather_cold_f:number;
   cycle:{page:string;seconds:number}[]};
 export type UpdateStatus={current_version:string;state?:string;phase?:string;message?:string;target_version?:string;elapsed_seconds?:number};
 export type Candidate={state:string;current_version:string;version?:string;release_notes?:string;candidate_id?:string;expires_in_seconds?:number};

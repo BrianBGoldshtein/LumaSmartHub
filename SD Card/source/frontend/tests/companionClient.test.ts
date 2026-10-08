@@ -71,3 +71,15 @@ test('browser fetch is not called with the remote object as its receiver',async(
   const client=new RemoteClient(await credential(),context,fetcher,()=>true);
   assert.deepEqual(await client.request('GET','/remote/api/preview'),{ok:true});
 });
+
+test('serialized operations are paced below the gateway burst budget without replay',async()=>{
+  const starts:number[]=[];let calls=0;
+  const fetcher=(async(url)=>{calls++;
+    if(String(url).endsWith('/challenge')){starts.push(performance.now());return response({nonce:'c'.repeat(43),expires_in_seconds:30});}
+    return response({ok:true});
+  }) as typeof fetch;
+  const client=new RemoteClient(await credential(),context,fetcher,()=>true);
+  await Promise.all([client.request('GET','/remote/api/preview'),client.request('GET','/remote/api/settings'),client.request('GET','/remote/api/preview')]);
+  assert.equal(calls,6);assert.equal(starts.length,3);
+  for(let i=1;i<starts.length;i++)assert.ok(starts[i]-starts[i-1]>=100);
+});

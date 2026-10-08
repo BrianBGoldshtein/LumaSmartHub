@@ -164,6 +164,7 @@ function RemoteApp(){
 
 function Hub({preview,busy,command,task}:{preview:Preview;busy:boolean;command:(name:string,value?:unknown)=>Promise<void>;task:(event:Preview['todos'][number])=>Promise<void>}){
   const zone=preview.settings.timezone,events=upcoming(preview.calendar,preview.server_time);
+  const [timerUnit,setTimerUnit]=useState('minutes');
   return <>
     <section className="hero"><span>{new Intl.DateTimeFormat(undefined,{weekday:'long',month:'short',day:'numeric',timeZone:zone}).format(new Date(preview.server_time))}</span>
       <h1>{clockText(preview.server_time,zone)}</h1><div className="weather"><b>{preview.weather?`${Math.round(preview.weather.temperature)}°`:'—'}</b><div>{preview.weather?.summary??'Weather unavailable'}<small>{preview.settings.weather_location_label}{preview.weather?.stale?' · Saved forecast':''}</small></div></div>
@@ -175,16 +176,17 @@ function Hub({preview,busy,command,task}:{preview:Preview;busy:boolean;command:(
       </article>):<p>No upcoming events in the hub’s current window.</p>}
     </section>
     {!preview.privacy_redacted&&<section><h2>To-dos</h2>{preview.todos.length?preview.todos.map(event=><div className={`task ${event.completed?'completed':''}`} key={`${event.calendar_id}:${event.id}`}>
-      <button aria-label={`${event.completed?'Reopen':'Complete'} ${event.summary}`} aria-pressed={!!event.completed} disabled={busy||!preview.todo_controls.can_update||!event.etag} onClick={()=>void task(event)}>{event.completed?<Check size={19}/>:<span/>}</button>
+      <button aria-label={`${event.completed?'Reopen':'Complete'} ${event.summary}`} aria-pressed={!!event.completed} disabled={busy||!preview.todo_controls.can_update||preview.todo_controls.stale||!event.etag} onClick={()=>void task(event)}>{event.completed?<Check size={19}/>:<span/>}</button>
       <div><b>{event.summary}</b><small>{event.due_date?`Due ${event.due_date}`:''}</small></div>
-    </div>):<p>No tasks today.</p>}{!preview.todo_controls.can_update&&<small>Task editing requires Google write permission and a fresh sync.</small>}</section>}
-    {preview.departure&&!preview.privacy_redacted&&<section><h2>Time to leave</h2><p>{preview.departure.title}</p></section>}
+    </div>):<p>No tasks today.</p>}{(!preview.todo_controls.can_update||preview.todo_controls.stale)&&<small>Task editing requires Google write permission and a fresh sync.</small>}</section>}
+    {preview.departure&&!preview.privacy_redacted&&<section><h2>Leave at {clockText(preview.departure.depart_at,zone)}</h2><p>{preview.departure.title}</p></section>}
     <section><h2><Timer size={20}/> Timer</h2>{preview.timer.status!=='idle'&&<div className="timer"><b>{timerText(preview.timer.remaining_seconds)}</b><p>{preview.timer.label} · {preview.timer.status}</p>
       <div className="buttons">{preview.timer.status==='running'&&<button disabled={busy} onClick={()=>void command('pause_timer')}>Pause</button>}{preview.timer.status==='paused'&&<button disabled={busy} onClick={()=>void command('resume_timer')}>Resume</button>}<button disabled={busy} onClick={()=>void command('cancel_timer')}>Cancel</button></div></div>}
       <form onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);const amount=Number(form.get('amount')),unit=String(form.get('unit'));
         const active=['running','paused','awaiting_time'].includes(preview.timer.status);if(active&&!confirm('Replace the current timer?'))return;
         void command('start_timer',{seconds:amount*(unit==='hours'?3600:unit==='minutes'?60:1),label:String(form.get('label')).trim()||'Timer',...(active?{replace_id:preview.timer.id}:{})});}}>
-        <div className="split"><label>Duration<input name="amount" type="number" required min="1" max="14400" step="1" defaultValue="5"/></label><label>Unit<select name="unit" defaultValue="minutes"><option>seconds</option><option>minutes</option><option>hours</option></select></label></div>
+        <div className="split"><label>Duration<input name="amount" type="number" required min="1" max={timerUnit==='hours'?4:timerUnit==='minutes'?240:14400} step="1" defaultValue="5"/></label><label>Unit<select name="unit" value={timerUnit} onChange={event=>setTimerUnit(event.target.value)}><option>seconds</option><option>minutes</option><option>hours</option></select></label></div>
+        <small>Timers run for up to four hours.</small>
         <label>Name<input name="label" maxLength={40} placeholder="Tea, study, laundry…"/></label><button disabled={busy}>Start timer</button>
       </form>
     </section>
@@ -213,7 +215,25 @@ function SettingsPanel({settings,busy,save,request,run}:SettingsProps){
       <section><h2>Quiet nights</h2><label className="check"><input type="checkbox" checked={settings.night_clock_enabled} disabled={busy} onChange={event=>void save({night_clock_enabled:event.target.checked})}/> Barely visible night clock</label>
         <label className="check"><input type="checkbox" checked={settings.voice_enabled} disabled={busy} onChange={event=>void save({voice_enabled:event.target.checked})}/> Hey Luma enabled</label>
         <label className="check"><input type="checkbox" checked={settings.notification_chime_enabled} disabled={busy} onChange={event=>void save({notification_chime_enabled:event.target.checked})}/> Notification chime</label>
+        <details><summary>Night light & chime volume</summary><form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);
+          void save({night_brightness:Number(values.get('night')),notification_chime_volume:Number(values.get('chime'))});}}>
+          <label>Night brightness (%)<input name="night" type="number" min="0" max="100" step="1" required defaultValue={settings.night_brightness}/></label>
+          <small>Keep this near zero for a barely visible clock in darkness.</small>
+          <label>Chime volume (%)<input name="chime" type="number" min="0" max="100" step="1" required defaultValue={settings.notification_chime_volume}/></label><button disabled={busy}>Save night & chime</button></form></details>
         <p>Microphone calibration, pairing, private-network setup and browser revocation stay on the hub.</p>
+      </section>
+      <section><h2>Timer defaults</h2><form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);
+        void save({timer_focus_minutes:Number(values.get('focus')),timer_break_minutes:Number(values.get('break'))});}}>
+        <div className="split"><label>Focus minutes<input name="focus" type="number" min="1" max="240" step="1" required defaultValue={settings.timer_focus_minutes}/></label>
+        <label>Break minutes<input name="break" type="number" min="1" max="240" step="1" required defaultValue={settings.timer_break_minutes}/></label></div><button disabled={busy}>Save timer defaults</button></form>
+      </section>
+      <section><h2>Weather reminders</h2><label className="check"><input type="checkbox" checked={settings.weather_nudges_enabled} disabled={busy} onChange={event=>void save({weather_nudges_enabled:event.target.checked})}/> Weather warnings on the hub</label>
+        <details><summary>Adjust warning thresholds</summary><form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);
+          void save({weather_rain_percent:Number(values.get('rain')),weather_gust_mph:Number(values.get('gust')),weather_hot_f:Number(values.get('hot')),weather_cold_f:Number(values.get('cold'))});}}>
+          <div className="split"><label>Rain chance (%)<input name="rain" type="number" min="1" max="100" step="1" required defaultValue={settings.weather_rain_percent}/></label>
+          <label>Gusts (mph)<input name="gust" type="number" min="5" max="100" step="1" required defaultValue={settings.weather_gust_mph}/></label></div>
+          <div className="split"><label>Hot above (°F)<input name="hot" type="number" min="-50" max="130" step="1" required defaultValue={settings.weather_hot_f}/></label>
+          <label>Cold below (°F)<input name="cold" type="number" min="-50" max="130" step="1" required defaultValue={settings.weather_cold_f}/></label></div><button disabled={busy}>Save weather warnings</button></form></details>
       </section>
       <section><h2>Wall cycle</h2><form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);
         const pages=values.getAll('page').map(String),cycle=pages.map(page=>({page,seconds:Number(values.get(`seconds-${page}`))}));void save({cycle});
@@ -255,9 +275,11 @@ function CalendarSettings({settings,busy,save,request,run}:SettingsProps){
     {error&&<p role="alert">{error}</p>}{!calendars&&<button disabled={busy} onClick={()=>setRetry(value=>value+1)}>Retry calendar list</button>}
     <button disabled={busy||!status?.authorized} onClick={()=>void run(async()=>{await request('POST','/remote/api/google/sync',{});setRetry(value=>value+1);})}>Sync now</button>
     {calendars&&<form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);
+      if(values.has('departureEnabled')&&!values.getAll('departure').length){setError('Choose a leaving-reminder calendar, or leave reminders off.');return;}
       void save({visible_calendar_ids:values.getAll('agenda').map(String),todo_calendar_id:String(values.get('todo'))||null,
         todo_completed_color_id:String(values.get('completed'))||null,sleep_calendar_ids:values.getAll('sleep').map(String),sleep_event_title:String(values.get('sleepTitle')),
-        departure_calendar_ids:values.getAll('departure').map(String)});
+        departure_calendar_ids:values.getAll('departure').map(String),departure_enabled:values.has('departureEnabled'),departure_include_virtual:values.has('includeVirtual'),
+        departure_prep_minutes:Number(values.get('prep')),departure_travel_minutes:Number(values.get('travel'))});
     }}>
       <h3>Agenda · select all that apply</h3>{calendars.map(calendar=><label className="check" key={calendar.id}><input type="checkbox" name="agenda" value={calendar.id} defaultChecked={calendarSelection(settings.visible_calendar_ids,calendars).includes(calendar.id)}/><i style={{background:safeColor(calendar.background_color)}}/>{calendar.summary}</label>)}
       <label>To-do calendar<select name="todo" defaultValue={settings.todo_calendar_id??''}><option value="">None</option>{calendars.map(calendar=><option value={calendar.id} key={calendar.id}>{calendar.summary}</option>)}</select></label>
@@ -266,6 +288,10 @@ function CalendarSettings({settings,busy,save,request,run}:SettingsProps){
       <h3>Sleep calendars</h3>{calendars.map(calendar=><label className="check" key={calendar.id}><input type="checkbox" name="sleep" value={calendar.id} defaultChecked={settings.sleep_calendar_ids.includes(calendar.id)}/>{calendar.summary}</label>)}
       <label>Sleep event name<input name="sleepTitle" required maxLength={100} defaultValue={settings.sleep_event_title}/></label>
       <h3>Leaving reminders</h3>{calendars.map(calendar=><label className="check" key={calendar.id}><input type="checkbox" name="departure" value={calendar.id} defaultChecked={settings.departure_calendar_ids.includes(calendar.id)}/>{calendar.summary}</label>)}
+      <label className="check"><input type="checkbox" name="departureEnabled" defaultChecked={settings.departure_enabled}/> Enable leaving reminders</label>
+      <label className="check"><input type="checkbox" name="includeVirtual" defaultChecked={settings.departure_include_virtual}/> Include virtual events</label>
+      <div className="split"><label>Preparation minutes<input name="prep" type="number" min="0" max="240" step="1" required defaultValue={settings.departure_prep_minutes}/></label>
+      <label>Travel minutes<input name="travel" type="number" min="0" max="240" step="1" required defaultValue={settings.departure_travel_minutes}/></label></div>
       <button className="primary" disabled={busy}>Save calendar choices</button>
     </form>}
   </section>;

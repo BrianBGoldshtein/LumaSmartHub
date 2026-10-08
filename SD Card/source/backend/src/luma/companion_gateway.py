@@ -121,17 +121,20 @@ def install_companion_gateway(app, transport=None, *, frontend_dir=None):
     @app.get('/remote/')
     async def entry(request: Request):
         connection_context(request);budget(static=True)
-        if not (root/'remote-index.html').is_file():
+        file=root/'remote-index.html'
+        if file.is_symlink() or not file.is_file() or file.stat().st_size>2*1024*1024:
             raise HTTPException(503,'Remote interface unavailable. Check the installed release.')
-        return FileResponse(root/'remote-index.html',media_type='text/html')
+        return FileResponse(file,media_type='text/html')
 
     async def asset(request: Request,asset_path: str):
         connection_context(request);budget(static=True)
-        if asset_path not in {'manifest.webmanifest','icon.svg'} and not re.fullmatch(
+        if asset_path not in {'manifest.webmanifest','icon.svg','touch-icon.png','icon-192.png','icon-512.png'} and not re.fullmatch(
                 r'assets/remote-[A-Za-z0-9_-]+\.(js|css|woff2?|svg|png)',asset_path):
             raise HTTPException(404,'Remote asset unavailable.')
         name=asset_path.removeprefix('assets/') if asset_path.startswith('assets/') else 'remote-'+asset_path
-        candidate=(root/name).resolve()
+        file=root/name
+        if file.is_symlink():raise HTTPException(404,'Remote asset unavailable.')
+        candidate=file.resolve()
         if root not in candidate.parents or not candidate.is_file() or candidate.stat().st_size>2*1024*1024:
             raise HTTPException(404,'Remote asset unavailable.')
         return FileResponse(candidate,media_type='application/manifest+json' if asset_path=='manifest.webmanifest' else None)
@@ -190,6 +193,7 @@ def install_companion_gateway(app, transport=None, *, frontend_dir=None):
         response=await call_next(request)
         if request.url.path=='/remote' or request.url.path.startswith("/remote/"):
             response.headers.update({"Cache-Control":"no-store","Referrer-Policy":"no-referrer",
+                "X-Content-Type-Options":"nosniff",
                 "X-Frame-Options":"DENY","Content-Security-Policy":CSP,
                 "Permissions-Policy":"camera=(), microphone=(), geolocation=()"})
         return response

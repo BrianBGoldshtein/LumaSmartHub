@@ -22,6 +22,9 @@ game state and the working phone bond are retained; voice/wake assets are unchan
 [0.2.11 changes and checks](SD%20Card/docs/V0211_RELEASE_NOTES.md).
 The next development target is **0.3.0**, a secure,
 phone-specific iPhone preview/settings remote with Bluetooth-gated synchronization.
+The candidate now implements the private Safari/Home Screen remote; it is not
+published yet. [Setup and privacy model](SD%20Card/docs/IPHONE_REMOTE.md) and
+[release qualification checkpoint](SD%20Card/docs/V030_PLAN.md).
 
 ## What it does
 

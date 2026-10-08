@@ -130,9 +130,12 @@ def speaker_route_warning(route: str | None) -> str | None:
     return bypass
 
 
-def _play_pcm(pcm: bytes, env: dict[str, str], *, rate: int = 22050) -> str:
+def _play_pcm(pcm: bytes, env: dict[str, str], *, rate: int = 22050, on_started=None) -> str:
     if not 8000 <= rate <= 48000 or not pcm or len(pcm) % 2:
         raise VoicePlaybackError("speaker_playback_failed")
+    if on_started is not None:
+        return _play_pcm_stream((pcm[offset:offset + 16384] for offset in range(0, len(pcm), 16384)),
+                                env, on_started, rate=rate)
     routes = _speaker_routes(env)
     for sink in routes:
         try:
@@ -145,6 +148,95 @@ def _play_pcm(pcm: bytes, env: dict[str, str], *, rate: int = 22050) -> str:
         except (OSError, subprocess.SubprocessError):
             continue
     raise VoicePlaybackError("speaker_playback_failed")
+
+
+def _write_pcm(process, pcm: bytes, deadline: float, on_first_write=None) -> None:
+    """Backpressure from the speaker may not hang the voice service forever."""
+    descriptor = process.stdin.fileno()
+    os.set_blocking(descriptor, False)
+    offset = 0
+    while offset < len(pcm):
+        remaining = deadline - monotonic()
+        if remaining <= 0 or not select.select([], [descriptor], [], remaining)[1]:
+            raise VoicePlaybackError("speaker_playback_failed")
+        try:
+            written = os.write(descriptor, pcm[offset:])
+        except BlockingIOError:
+            continue
+        if written <= 0:
+            raise VoicePlaybackError("speaker_playback_failed")
+        if offset == 0 and on_first_write is not None:
+            on_first_write()
+        offset += written
+
+
+def _play_pcm_stream(frames, env, on_started, *, rate=22050, routes=None) -> str:
+    routes = _speaker_routes(env) if routes is None else routes
+    process = None
+    try:
+        # Failures before any PCM is submitted may try another permitted
+        # local sink. Never replay a partially heard answer on a second sink.
+        for sink in routes:
+            try:
+                process = subprocess.Popen(
+                    ["pacat", "--playback", f"--device={sink}", "--raw", "--format=s16le",
+                     f"--rate={rate}", "--channels=1", "--latency-msec=80"],
+                    stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, bufsize=0, env={**env, "PULSE_SINK": sink})
+                if process.stdin is None:
+                    raise OSError
+                break
+            except OSError:
+                if process is not None:
+                    with suppress(OSError):
+                        process.kill()
+                    with suppress(OSError, subprocess.SubprocessError):
+                        process.wait(timeout=2)
+                process = None
+        if process is None:
+            raise VoicePlaybackError("speaker_playback_failed")
+        started = False
+        def submitted():
+            nonlocal started
+            started = True
+            on_started()  # Any submitted PCM forbids repeating a partial reply.
+        for frame in frames:
+            _write_pcm(process, frame, monotonic() + 10,
+                       on_first_write=submitted if not started else None)
+        if not started:
+            raise VoicePlaybackError("piper_audio_invalid")
+        process.stdin.close()
+        if process.wait(timeout=90) != 0:
+            raise VoicePlaybackError("speaker_playback_failed")
+        return "luma_speaker" if sink == SPEAKER_SINK else "system_speaker"
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise VoicePlaybackError("speaker_playback_failed") from exc
+    finally:
+        if process is not None:
+            if process.poll() is None:
+                with suppress(OSError):
+                    process.kill()
+            with suppress(OSError, subprocess.SubprocessError):
+                process.wait(timeout=2)
+            if process.stdin:
+                with suppress(OSError):
+                    process.stdin.close()
+
+
+def _stream_frames(process, deadline):
+    total = 0
+    while True:
+        size = struct.unpack(">I", _read_exact(process, 4, deadline))[0]
+        if size == 0xffffffff:
+            raise VoicePlaybackError("piper_synthesis_failed")
+        if size == 0 and total:
+            return
+        if not 0 < size <= 16384 or size % 2:
+            raise VoicePlaybackError("piper_audio_invalid")
+        total += size
+        if total > 22050 * 90 * 2:
+            raise VoicePlaybackError("piper_audio_invalid")
+        yield _read_exact(process, size, deadline)
 
 
 def play_test_tone() -> str:
@@ -252,6 +344,9 @@ class OfflineSpeaker:
         self.last_primary_error: str | None = None
         self.failure_cause: str | None = None
         self.asset_identity: tuple[int, int, int] | None = None
+        self.on_playback_started = lambda: None
+        self.last_playback_started = False
+        self.timings: dict[str, float] = {}
 
     def close(self) -> None:
         process = self.process
@@ -314,7 +409,32 @@ class OfflineSpeaker:
             self.retry_after = 0
             self.failure_cause = None
 
+    def prepare(self) -> bool:
+        """Warm the installed model before opening mic capture; no audio."""
+        self._refresh_asset_identity()
+        if sys.platform != "linux" or not ready(self.root) or monotonic() < self.retry_after:
+            return False
+        try:
+            if self.process is not None and self.process.poll() is not None:
+                self.close()
+            if self.process is None:
+                self._start()
+            return True
+        except (VoicePlaybackError, OSError, EOFError, ValueError, TimeoutError,
+                subprocess.SubprocessError) as exc:
+            self.failure_cause = exc.code if isinstance(exc, VoicePlaybackError) else "piper_start_failed"
+            self.close()
+            self.retry_after = monotonic() + 30
+            return False
+
+    def _started(self) -> None:
+        self.last_playback_started = True
+        self.on_playback_started()
+
     def _piper(self, reply: str) -> None:
+        began = monotonic()
+        self.timings = {}
+        self.last_playback_started = False
         self._refresh_asset_identity()
         env = pulse_playback_environment()
         try:
@@ -326,20 +446,30 @@ class OfflineSpeaker:
         try:
             if process.poll() is not None or process.stdin is None:
                 raise EOFError("offline voice worker stopped")
-            process.stdin.write(json.dumps({"text": reply}, ensure_ascii=True).encode("ascii") + b"\n")
+            self.timings['model_start_ms'] = round((monotonic() - began) * 1000, 1)
+            route_began = monotonic()
+            routes = _speaker_routes(env)
+            self.timings['route_setup_ms'] = round((monotonic() - route_began) * 1000, 1)
+            process.stdin.write(json.dumps({"text": reply, "stream": True}, ensure_ascii=True).encode("ascii") + b"\n")
             process.stdin.flush()
+            synthesis_began = monotonic()
             deadline = monotonic() + 60
-            size = struct.unpack(">I", _read_exact(process, 4, deadline))[0]
-            if not 44 < size <= MAX_WAV:
-                raise ValueError("offline voice worker returned no audio")
-            output = _read_exact(process, size, deadline)
+            frames = _stream_frames(process, deadline)
+            first_at = None
+            def measured_frames():
+                nonlocal first_at
+                for frame in frames:
+                    if first_at is None:
+                        first_at = monotonic()
+                        self.timings['first_pcm_ms'] = round((first_at - synthesis_began) * 1000, 1)
+                    yield frame
+            def started():
+                self.timings['playback_submit_ms'] = round((monotonic() - began) * 1000, 1)
+                self._started()
+            self.last_route = _play_pcm_stream(measured_frames(), env, started, routes=routes)
+            self.timings['output_total_ms'] = round((monotonic() - began) * 1000, 1)
         except (OSError, EOFError, ValueError, TimeoutError, subprocess.SubprocessError) as exc:
             raise VoicePlaybackError("piper_synthesis_failed") from exc
-        try:
-            pcm = wav_to_pcm(output)
-        except (ValueError, wave.Error) as exc:
-            raise VoicePlaybackError("piper_audio_invalid") from exc
-        self.last_route = _play_pcm(pcm, env)
 
     def speak(self, reply: str) -> str:
         # The API already bounds answers; guard the worker regardless.
@@ -349,6 +479,8 @@ class OfflineSpeaker:
         self.last_error = None
         self.last_route = None
         self.last_primary_error = None
+        self.last_playback_started = False
+        self.timings = {}
         self._refresh_asset_identity()
         if sys.platform == "linux" and ready(self.root) and monotonic() >= self.retry_after:
             try:
@@ -359,9 +491,15 @@ class OfflineSpeaker:
                 self.last_error = exc.code
                 self.last_primary_error = exc.code
                 self.failure_cause = exc.code
+                # A stream interrupted by a failed sink also leaves an unread
+                # protocol tail. Reap it before the next reply.
                 if exc.code in PIPER_WORKER_FAILURES:
                     self.close()
                     self.retry_after = monotonic() + 30
+                elif exc.code == 'speaker_playback_failed':
+                    self.close()  # interrupted protocol, not a broken model
+                if self.last_playback_started:
+                    raise  # no duplicate fallback after a partially played reply
                 # A changing/missing speaker is not a broken voice model.
                 # Keep the warm worker and try the route again next time.
         elif not ready(self.root):
@@ -379,7 +517,8 @@ class OfflineSpeaker:
                                        input=reply.encode("utf-8"), check=True, timeout=45,
                                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             pcm, rate = fallback_wav_to_pcm(generated.stdout)
-            self.last_route = _play_pcm(pcm, pulse_playback_environment(), rate=rate)
+            self.last_route = _play_pcm(pcm, pulse_playback_environment(), rate=rate,
+                                        on_started=self._started)
         except (OSError, subprocess.SubprocessError, ValueError, wave.Error,
                 VoicePlaybackError) as exc:
             self.last_error = "fallback_playback_failed"

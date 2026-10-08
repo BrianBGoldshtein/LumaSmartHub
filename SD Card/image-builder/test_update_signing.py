@@ -110,6 +110,8 @@ class OfflineSigningTests(unittest.TestCase):
         self.assertIn('QUALIFY_FROM="0.2.6"', source)
         self.assertIn('elif [[ "${VERSION}" == "0.2.9" ]]', source)
         self.assertIn('QUALIFY_FROM="0.2.8"', source)
+        self.assertIn('elif [[ "${VERSION}" == "0.2.11" ]]', source)
+        self.assertIn('QUALIFY_FROM="0.2.10"', source)
         self.assertIn('0.2.9 requires its separately signed acoustic wake asset', source)
         self.assertIn('RELEASE_ASSETS+=("${KEYWORD_OUTPUT}")', source)
         self.assertLess(source.index('qualify-keyword-asset.py'), source.index('read -r CONFIRMATION'))

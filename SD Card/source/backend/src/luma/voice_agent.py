@@ -41,8 +41,8 @@ def _report_diagnostic(client: httpx.Client, code: str) -> None:
 
 
 def _recover_preview_failure(speaker: OfflineSpeaker, error: VoicePlaybackError) -> None:
-    """Keep a healthy warm model after a speaker-only sample failure."""
-    if error.code in PIPER_WORKER_FAILURES:
+    """Keep pre-synthesis route failures warm; reap an interrupted stream."""
+    if error.code in PIPER_WORKER_FAILURES or error.code == 'speaker_playback_failed':
         speaker.close()
 
 
@@ -429,7 +429,7 @@ def present_voice_response(response: dict, *, say, phase) -> None:
     """
     if response.get("speak") is False:
         return
-    phase("speaking")
+    phase("thinking")
     if say(response["message"]) == "silent":
         phase("error")
 
@@ -492,14 +492,15 @@ def main() -> None:
                     'primary_error': speaker.last_primary_error,
                     'route': speaker.last_route,
                     'sink_warning': speaker_route_warning(speaker.last_route),
+                    'timings': speaker.timings,
                 }).raise_for_status()
             except httpx.HTTPError:
                 pass
             return engine
-        def phase(value):
+        def phase(value, timeout=1):
             leds.phase(value)
             try:
-                client.post("/api/v1/voice/phase", json={"phase": value}).raise_for_status()
+                client.post("/api/v1/voice/phase", json={"phase": value}, timeout=timeout).raise_for_status()
             except httpx.HTTPError:
                 pass
 
@@ -512,6 +513,12 @@ def main() -> None:
             except httpx.HTTPError:
                 pass
 
+        # Visual feedback must not hold up the following PCM frames while a
+        # busy API renders its snapshot. LED/UI update is best effort, bounded.
+        speaker.on_playback_started = lambda: phase("speaking", timeout=.05)
+        # Load before opening capture, never while treating queued mic audio
+        # as a fresh command. A missing optional asset retains explicit fallback.
+        speaker.prepare()
         try:
             # parec is a PulseAudio-protocol client. Supplying the source name
             # explicitly guarantees capture from PipeWire's echo-cancelled
@@ -558,7 +565,7 @@ def main() -> None:
                         if request_id and request_id != handled_preview_id:
                             handled_preview_id = request_id
                             keyword.close()
-                            phase('speaking')
+                            phase('thinking')
                             try:
                                 if preview_variant == 'fallback':
                                     speaker._fallback("Hello, I'm Luma. It's good to see you.")
@@ -1016,13 +1023,13 @@ def main() -> None:
                         continue
                     if selection in {"conflict", "negated", "timer_duration_unconfirmed", "timer_name_unheard"}:
                         if selection == "conflict":
-                            phase("speaking")
+                            phase("thinking")
                             say("I heard two different commands. Please repeat that.")
                         elif selection == "timer_duration_unconfirmed":
-                            phase("speaking")
+                            phase("thinking")
                             say("I could not confirm the timer duration. Please repeat the time and name.")
                         elif selection == "timer_name_unheard":
-                            phase("speaking")
+                            phase("thinking")
                             say("I missed the timer name. Please repeat the time and name.")
                         _discard_pending_audio(chunks)
                         seen_drops = capture.dropped_frames

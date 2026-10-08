@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {Check,CloudDownload,RefreshCw,ShieldCheck} from 'lucide-react';
+import {dashboardRefreshUrl} from './dashboardRefresh';
 
 type Status={current_version:string;state:'idle'|'installing'|'installed'|'failed';phase?:string;target_version?:string|null;message?:string;elapsed_seconds?:number};
 type Candidate={state:'available'|'current';current_version:string;version?:string;release_notes?:string;published_at?:string;candidate_id?:string};
@@ -35,7 +36,8 @@ export function UpdateSetup({demo=false}:{demo?:boolean}){
     if(status.state==='failed'){setMessage(status.message||'The update failed. Check the active version before retrying.');initiated.current=null;}
     else if(status.state==='installed'&&status.current_version===initiated.current&&!reloading.current){
       reloading.current=true;setMessage(`Luma ${status.current_version} passed its health check. Reloading the dashboard…`);
-      setCandidate(null);setTimeout(()=>location.reload(),2500);
+      const freshUrl=dashboardRefreshUrl(location.href,status.current_version);
+      setCandidate(null);setTimeout(()=>location.replace(freshUrl),2500);
     }
   },[status]);
   async function check(){setBusy(true);setMessage('');setCandidate(null);

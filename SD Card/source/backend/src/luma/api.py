@@ -164,9 +164,19 @@ class VoiceDiagnostic(BaseModel):
     ]
 
 
+class VoiceOutputTimings(BaseModel):
+    model_config = {"extra": "forbid", "allow_inf_nan": False}
+    model_start_ms: float | None = Field(default=None, ge=0, le=600000)
+    route_setup_ms: float | None = Field(default=None, ge=0, le=600000)
+    first_pcm_ms: float | None = Field(default=None, ge=0, le=600000)
+    playback_submit_ms: float | None = Field(default=None, ge=0, le=600000)
+    output_total_ms: float | None = Field(default=None, ge=0, le=600000)
+
+
 class VoiceOutputReport(BaseModel):
     model_config = {"extra": "forbid"}
     engine: Literal["piper", "fallback", "silent"]
+    timings: VoiceOutputTimings | None = None
     route: Literal["luma_speaker", "system_speaker"] | None = None
     sink_warning: Literal["muted", "very_low", "echo_reference_bypassed"] | None = None
     error: Literal[
@@ -937,7 +947,8 @@ def create_app(
                                    last_reply_primary_error=payload.primary_error,
                                    last_reply_at=event['at'],
                                    last_reply_route=payload.route,
-                                   last_reply_sink_warning=payload.sink_warning)
+                                   last_reply_sink_warning=payload.sink_warning,
+                                   last_reply_timings=payload.timings.model_dump(exclude_none=True) if payload.timings else None)
         return {"accepted": True}
 
     def calibration_payload() -> dict[str, Any]:
@@ -1955,8 +1966,11 @@ def create_app(
         def frontend(path: str) -> FileResponse:
             candidate = frontend_root / path
             if candidate.is_file() and frontend_root in candidate.resolve().parents:
-                return FileResponse(candidate)
-            return FileResponse(frontend_root / "index.html")
+                # HTML selects the active release's hashed assets. Never retain
+                # an old entry point across an atomic application switch.
+                headers = {"Cache-Control": "no-store"} if candidate.suffix.lower() == ".html" else None
+                return FileResponse(candidate, headers=headers)
+            return FileResponse(frontend_root / "index.html", headers={"Cache-Control": "no-store"})
 
     return app
 

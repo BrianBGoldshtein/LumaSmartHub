@@ -4,15 +4,19 @@ import { ArrowLeft, CalendarDays } from "lucide-react";
 import {setupTheme,setupLink} from "./setupTheme";
 import {TouchField,TouchInputProvider} from "./TouchField";
 import {SystemKeyboardControl} from "./SystemKeyboardControl";
+import {dashboardRefreshUrl} from "./dashboardRefresh";
 import {googleCallbackMessage,loadGoogleSetup,calendarSelection,canEditGoogleCalendars,type GoogleCalendar,type GoogleEventColor,type GoogleStatus} from "./googleSetupState";
 
 type Calendar = GoogleCalendar;
 type EventColor = GoogleEventColor;
 async function api(path:string, method="GET", body?:unknown) {
-  const response = await fetch(`/api/v1/${path}`, {method, headers:{"Content-Type":"application/json"}, body:body === undefined ? undefined : JSON.stringify(body)});
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.detail || "Could not reach Luma.");
-  return data;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+  try{
+    const response = await fetch(`/api/v1/${path}`, {method, cache:"no-store", signal:controller.signal, headers:{"Content-Type":"application/json"}, body:body === undefined ? undefined : JSON.stringify(body)});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Could not reach Luma.");
+    return data;
+  }finally{clearTimeout(timeout);}
 }
 
 export function GoogleSetup({demo,embedded=false,onSaved}:{demo:boolean;embedded?:boolean;onSaved?:()=>void}) {
@@ -69,7 +73,15 @@ export function GoogleSetup({demo,embedded=false,onSaved}:{demo:boolean;embedded
   const selection=JSON.stringify({visible_calendar_ids:selected,todo_calendar_id:todo || null,todo_completed_color_id:completedColor || null,sleep_calendar_ids:sleepCalendars,sleep_event_title:sleepTitle.trim()});
   const editable=canEditGoogleCalendars(status,catalogReady);
   useEffect(()=>{if(editable && !savedSelection)setSavedSelection(selection);},[editable,selection,savedSelection]);
-  if(!ready)return <div className="device-setup"><p role="status">{message || "Loading saved calendar settings…"}</p>{message && <button onClick={()=>{setMessage("");setRetry(value=>value+1);}}>Retry calendar settings</button>}<a href={setupLink(demo,theme,"onboarding")}>Return to guided setup</a></div>;
+  if(!ready)return <div className={embedded?"setup-embedded":`app theme-${theme} setup-page`}><Panel className={embedded?"device-setup":"setup-content device-setup"}>
+    {!embedded && <><CalendarDays size={40}/><h1>Google Calendar</h1></>}
+    <p role="status">{message || "Loading saved calendar settings…"}</p>
+    {message && <>
+      <button onClick={()=>{setMessage("");setRetry(value=>value+1);}}>Retry calendar settings</button>
+      <button onClick={()=>location.replace(dashboardRefreshUrl(new URL(setupLink(demo,theme,"google"),location.href).href))}>Reload Google setup</button>
+    </>}
+    <a href={setupLink(demo,theme,"onboarding")}>Return to guided setup</a>
+  </Panel></div>;
   return <TouchInputProvider><div className={embedded?"setup-embedded":`app theme-${theme} setup-page`}>{!embedded && <a className="setup-back" href={setupLink(demo,theme,"onboarding")}><ArrowLeft/> Continue guided setup</a>}<Panel className={embedded?"device-setup":"setup-content device-setup"}>
     {!embedded && <><CalendarDays size={40}/><h1>Google Calendar</h1><p>Your calendars. Your colors.</p></>}
     {demo && <p className="setup-note">Preview calendars — no Google account connected.</p>}

@@ -1,5 +1,11 @@
 # Luma development status — 2026-10-08
 
+## Next Beta — 0.2.11 in qualification, not published
+
+Owner is running 0.2.10 and successfully renewed Google via a fresh-window recovery. The 0.2.11 candidate adds uncached/versioned dashboard navigation, themed Google recovery with bounded requests, preloaded/CPU-bounded Kristin sentence streaming, truthful thinking/playback phases, and numeric-only voice output timings. Full source tests, a real pinned-model probe and disposable browser checks are tracked in [V0211_WORKING_NOTES.md](docs/V0211_WORKING_NOTES.md). Signed switch/rollback and exact-commit CI/publication are still pending; do not update yet. No OS reflash, account reset or bond changes are required. This app updater restarts application services, not the operating system; older documentation that promised automatic reboot was incorrect.
+
+After 0.2.11 is published, plan and develop the owner's minimal themed iPhone remote/preview companion for 0.3.0. Require phone-specific PIN-controlled enrollment/revocation and Bluetooth-gated private synchronization. The expanded goal is not complete when 0.2.11 alone ships.
+
 ## Current Beta — 0.2.10 published
 
 [Luma 0.2.10 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.10) is published on the signed-main update channel from commit **47385899fb704ea646fe152f5740a6a07de2e6ae**. [Exact-commit CI succeeded](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37749102730). The final guarded publisher passed **1,533 backend / 170 frontend / 43 image/recovery/packaging tests**, production build and exact signed install/switch/health-failure rollback from the 0.2.9 contract. Luma's production updater then downloaded GitHub's archive, verified its signature/checksum/payload and confirmed byte-for-byte equality with the qualified archive.

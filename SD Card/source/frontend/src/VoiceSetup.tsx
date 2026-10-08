@@ -12,6 +12,7 @@ type MicHardware={available:boolean;gain:number;max_gain:number;capture_on:boole
 type VoiceGroup={title:string;examples:string[]};
 type PhrasePreview={understood:boolean;command:string|null;intent:string|null;model_suggestion:string|null;model_confidence:number|null;personal_correction:boolean;executed:false};
 type VoiceHealthEvent={kind:"reply"|"sample"|"tone";at:string;engine:"piper"|"fallback"|"silent"|null;route:string|null;error:string|null;primary_error:string|null};
+type VoiceTimings={model_start_ms?:number;route_setup_ms?:number;first_pcm_ms?:number;playback_submit_ms?:number;output_total_ms?:number};
 type SinkWarning="muted"|"very_low"|"echo_reference_bypassed";
 type VoiceAsset={phase:"checking"|"downloading"|"verifying"|"installing"|"ready"|"failed";message:string;downloaded_bytes?:number;total_bytes?:number;asset_available?:boolean;repair_error?:string|null;last_reply_engine?:"piper"|"fallback"|"silent"|null;last_reply_error?:string|null;last_reply_primary_error?:string|null;last_reply_at?:string|null;last_reply_route?:string|null;last_reply_sink_warning?:SinkWarning|null;last_preview_error?:string|null;last_preview_route?:string|null;last_preview_sink_warning?:SinkWarning|null;last_fallback_error?:string|null;last_fallback_route?:string|null;last_fallback_sink_warning?:SinkWarning|null;last_tone_error?:string|null;last_tone_route?:string|null;last_tone_sink_warning?:SinkWarning|null;health_history?:VoiceHealthEvent[]};
 const outputErrorCopy:Record<string,string>={audio_session_unavailable:"The desktop audio session was unavailable.",speaker_route_unavailable:"No local speaker route was found. Choose HDMI or HAT in Device setup.",speaker_playback_failed:"The selected speaker rejected audio, even after a safe local fallback.",piper_start_failed:"Kristin's local worker did not start.",piper_start_timeout:"Kristin took too long to start. Try after the Pi settles.",piper_runtime_missing:"Kristin's installed runtime is incomplete. Repair the installed voice.",piper_model_load_failed:"Kristin's installed model could not load. Repair the installed voice.",piper_memory_pressure:"Kristin stopped under possible memory pressure. Close other apps and retry.",piper_synthesis_failed:"Kristin's worker started but did not generate speech.",piper_audio_invalid:"Kristin generated an unexpected audio format.",synthesis_unavailable:"The local voice could not generate audio.",voice_asset_unavailable:"Kristin is not installed yet.",piper_retry_wait:"Kristin is cooling down after an error; Luma will retry.",fallback_playback_failed:"Neither Kristin nor the original voice reached a local speaker."};
@@ -34,12 +35,22 @@ async function request(path:string,body?:unknown){
   const response=await fetch(`/api/v1/${path}`,{method:body===undefined?"GET":path==="settings"?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
   const data=await response.json();if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:"Voice check unavailable.");return data;
 }
+function VoiceTimingDetails({timings}:{timings?:VoiceTimings|null}){
+  if(!timings || !Object.keys(timings).length)return null;
+  const seconds=(ms:number|undefined)=>ms===undefined?'—':`${(ms/1000).toFixed(2)} s`;
+  return <details><summary>Last reply timing</summary>
+    <p>Voice preparation: {seconds(timings.model_start_ms)} · Speaker setup: {seconds(timings.route_setup_ms)}</p>
+    <p>Generate first audio: {seconds(timings.first_pcm_ms)} · Audio submitted after: {seconds(timings.playback_submit_ms)}</p>
+    <small>Measured after command recognition. Submission is not proof of audible sound. Total {seconds(timings.output_total_ms)} includes the spoken reply. Only numeric timings are reported; no words or audio are stored.</small>
+  </details>;
+}
+
 export function VoiceSetup({demo}:{demo:boolean}){
   const [enabled,setEnabled]=useState<boolean|null>(demo?true:null),[status,setStatus]=useState<Calibration>(),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
   const [hardware,setHardware]=useState<MicHardware|undefined>(demo?{available:true,gain:39,max_gain:63,capture_on:true,route_ready:true}:undefined),[gain,setGain]=useState(39);
   const [library,setLibrary]=useState<VoiceGroup[]>(demo?previewLibrary:[]);
   const [phrase,setPhrase]=useState("What's the time?"),[phrasePreview,setPhrasePreview]=useState<PhrasePreview>(),[phraseError,setPhraseError]=useState("");
-  const [voiceAsset,setVoiceAsset]=useState<VoiceAsset|undefined>(demo?{phase:"ready",message:"Preview only — offline voice is not installed here."}:undefined);
+  const [voiceAsset,setVoiceAsset]=useState<(VoiceAsset & {last_reply_timings?:VoiceTimings|null})|undefined>(demo?{phase:"ready",message:"Preview only — offline voice is not installed here."}:undefined);
   const [sampleMessage,setSampleMessage]=useState("");
   const [fallbackMessage,setFallbackMessage]=useState("");
   const [toneMessage,setToneMessage]=useState("");
@@ -77,6 +88,7 @@ export function VoiceSetup({demo}:{demo:boolean}){
       <p>{voiceAsset?.phase==="ready"?(demo?voiceAsset.message:"Kristin installed · speaker playback not yet confirmed"):(voiceAsset?.message||"Checking the local speech voice…")}</p>
       {!demo&&voiceAsset?.last_reply_engine&&<p role="status">Last command reply{voiceAsset.last_reply_at?` at ${new Date(voiceAsset.last_reply_at).toLocaleString()}`:""} (separate from the tests below): {voiceAsset.last_reply_engine==="piper"?"Kristin":voiceAsset.last_reply_engine==="fallback"?"original fallback voice":"silent"}{routeCopy(voiceAsset.last_reply_route)?` · ${routeCopy(voiceAsset.last_reply_route)}`:""}{voiceAsset.last_reply_error?` · ${outputErrorCopy[voiceAsset.last_reply_error]??"Playback needs checking."}`:""}{voiceAsset.last_reply_primary_error&&voiceAsset.last_reply_primary_error!==voiceAsset.last_reply_error?` · Kristin failed first: ${outputErrorCopy[voiceAsset.last_reply_primary_error]??"Reason unavailable."}`:""}</p>}
       {!demo&&voiceAsset?.last_reply_sink_warning&&<p role="status">Last reply warning: {sinkWarningCopy(voiceAsset.last_reply_sink_warning,voiceAsset.last_reply_route)}</p>}
+      {!demo&&<VoiceTimingDetails timings={voiceAsset?.last_reply_timings}/>}
       {!demo&&voiceAsset?.last_preview_error&&<p role="status">Sample check: {outputErrorCopy[voiceAsset.last_preview_error]??"Playback needs checking."}</p>}
       {!demo&&voiceAsset?.last_preview_sink_warning&&<p role="status">Kristin sample warning: {sinkWarningCopy(voiceAsset.last_preview_sink_warning,voiceAsset.last_preview_route)}</p>}
       {!demo&&voiceAsset?.last_fallback_error&&<p role="status">Original voice check: {outputErrorCopy[voiceAsset.last_fallback_error]??"Playback needs checking."}</p>}

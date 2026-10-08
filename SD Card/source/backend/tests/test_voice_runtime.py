@@ -68,11 +68,11 @@ def test_valid_commands_keep_spoken_feedback_and_playback_failure_reporting():
     say, phase = Mock(return_value='kristin'), Mock()
     present_voice_response({'accepted': True, 'message': 'It is noon.'}, say=say, phase=phase)
     say.assert_called_once_with('It is noon.')
-    phase.assert_called_once_with('speaking')
+    phase.assert_called_once_with('thinking')
     say.return_value = 'silent'
     phase.reset_mock()
     present_voice_response({'message': 'It is noon.'}, say=say, phase=phase)
-    assert [call.args[0] for call in phase.call_args_list] == ['speaking', 'error']
+    assert [call.args[0] for call in phase.call_args_list] == ['thinking', 'error']
 
 
 def test_live_protected_wake_rejects_forced_conversation_before_opening_command_window():
@@ -190,7 +190,7 @@ def test_speaker_route_failure_keeps_warm_voice_worker():
             self.closes += 1
 
     worker = Worker()
-    _recover_preview_failure(worker, VoicePlaybackError('speaker_playback_failed'))
+    _recover_preview_failure(worker, VoicePlaybackError('speaker_route_unavailable'))
     _recover_preview_failure(worker, VoicePlaybackError('audio_session_unavailable'))
     assert worker.closes == 0
     _recover_preview_failure(worker, VoicePlaybackError('piper_model_load_failed'))

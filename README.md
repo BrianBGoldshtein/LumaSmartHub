@@ -20,6 +20,13 @@ Bluetooth retry interference and Pong reflection; voice/wake assets are unchange
 After reboot, reconnect Google if requested and retain the working phone bond.
 [Release notes and owner checks](SD%20Card/docs/V0210_RELEASE_NOTES.md) describe what remains to verify.
 
+In qualification: **0.2.11 Beta**, focused on fresh dashboard/Google recovery,
+warm sentence-streamed Kristin output and truthful playback timing. It is not
+ready to install until its signed release is published.
+[0.2.11 changes and checks](SD%20Card/docs/V0211_RELEASE_NOTES.md).
+After that publication, the next development target is **0.3.0**, a secure,
+phone-specific iPhone preview/settings remote with Bluetooth-gated synchronization.
+
 ## What it does
 
 - Cycles through high-contrast, themed glance screens, with a full day agenda

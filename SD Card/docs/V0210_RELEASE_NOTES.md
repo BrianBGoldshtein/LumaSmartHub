@@ -12,7 +12,7 @@ Application update for the existing Luma Pi. Not a new SD image or a hardware-ac
 
 ## Update
 
-Settings → Luma software → Check for updates → review **Luma 0.2.10 Beta** → Install. Keep power and internet connected through installation and its automatic reboot. No SD flash. Google credentials, Wi-Fi, PIN, calendar selections and saved games remain on the Pi. The existing separately signed voice/wake assets are unchanged.
+Settings → Luma software → Check for updates → review **Luma 0.2.10 Beta** → Install. Keep power and internet connected through installation and the application service restart. Correction: this version does not automatically reboot the operating system. No SD flash. Google credentials, Wi-Fi, PIN, calendar selections and saved games remain on the Pi. The existing separately signed voice/wake assets are unchanged.
 
 If Google still requests renewal, open Google Calendar setup → **Reconnect Google**, complete consent using the existing OAuth client, then verify the calendar sync succeeds. Do not replace your client JSON or erase saved configuration to recover an expired grant.
 

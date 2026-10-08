@@ -66,6 +66,8 @@ from .pairing import PairingFlow
 from .shortcut_protocol import command_token, read_command
 from .focus_timer import TIMER_COMMANDS
 from .companion_api import install_companion_api, remote_guard
+from .admin_api import install_admin_api, request_origin, set_admin_cookie
+from .admin_authority import AdminDenied, COOKIE
 
 
 class CommandRequest(BaseModel):
@@ -602,6 +604,15 @@ def create_app(
         if not _loopback(request.client.host if request.client else None):
             raise HTTPException(403, "This operation is only available on Luma")
         authorize(request)
+
+    def administration_command(path, body):
+        if path == '/api/v1/voice/command':
+            text = body.get('text')
+            parsed = parse_local_command(text) if isinstance(text, str) and len(text) <= 1024 else None
+            return parsed.name.value if parsed else None
+        return body.get('name') if isinstance(body.get('name'), str) else None
+
+    install_admin_api(app, service, security, local_only, administration_command)
 
     install_countdown_api(app,service,google,google_sync_lock,local_only)
     install_transit_api(app,service,local_only)
@@ -1919,16 +1930,24 @@ def create_app(
         return JSONResponse({"token": security.rotate_lan_token()}, headers={"Cache-Control": "no-store"})
 
     @app.post("/api/v1/security/pin", dependencies=[Depends(local_only)])
-    def set_pin(payload: PinRequest) -> dict[str, bool]:
+    def set_pin(payload: PinRequest, request: Request):
         security.set_pin(payload.pin)
-        return {"configured": True}
+        app.state.admin.clear()
+        token = app.state.admin.unlock_local(payload.pin, request_origin(request))
+        response = JSONResponse({'configured': True}, headers={'Cache-Control':'no-store'})
+        set_admin_cookie(response, token, request)
+        return response
 
     @app.post("/api/v1/security/unlock", dependencies=[Depends(local_only)])
-    async def unlock(payload: PinRequest) -> dict[str, Any]:
-        if not security.verify_pin(payload.pin):
-            raise HTTPException(status_code=401, detail="Incorrect PIN, or too many attempts. After five failures, wait one minute.")
+    async def unlock(payload: PinRequest, request: Request):
+        try:
+            token = app.state.admin.unlock_local(payload.pin, request_origin(request), previous=request.cookies.get(COOKIE))
+        except AdminDenied:
+            raise HTTPException(status_code=401, detail="Incorrect PIN, or too many attempts. After five failures, wait one minute.") from None
         service.unlock_with_pin()
-        return service.snapshot()
+        response = JSONResponse(service.snapshot(), headers={'Cache-Control':'no-store'})
+        set_admin_cookie(response, token, request)
+        return response
 
     @app.websocket("/api/v1/events")
     async def events(websocket: WebSocket) -> None:

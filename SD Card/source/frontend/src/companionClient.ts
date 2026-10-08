@@ -1,8 +1,9 @@
 import {enrollmentBytes, requestBytes, sha256, signProof} from './companionProof.ts';
 import type {BrowserCredential, BrowserKey, RemoteContext} from './companionProof.ts';
+import {isAdminNeeded} from './adminState.ts';
 
 export class RemoteError extends Error {
-  readonly kind:'connection'|'conflict'|'expired'|'invalid'|'unavailable';
+  readonly kind:'connection'|'conflict'|'expired'|'invalid'|'unavailable'|'admin';
   constructor(kind:RemoteError['kind'],message:string){super(message);this.kind=kind;}
 }
 type Fetcher = typeof fetch;
@@ -15,8 +16,7 @@ function failure(status:number): RemoteError {
 }
 
 async function jsonResponse(response:Response):Promise<unknown>{
-  if(!response.ok)throw failure(response.status);
-  if(response.headers.get('Content-Type')?.split(';')[0]!=='application/json')throw failure(503);
+  if(response.headers.get('Content-Type')?.split(';')[0]!=='application/json')throw failure(response.ok?503:response.status);
   const reader=response.body?.getReader();
   if(!reader)throw failure(503);
   const chunks:Uint8Array[]=[];let size=0;
@@ -28,8 +28,14 @@ async function jsonResponse(response:Response):Promise<unknown>{
     }
     const bytes=new Uint8Array(size);let offset=0;
     for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
-    try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
-    catch{throw failure(503);}
+    let value:unknown;
+    try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+    catch{throw failure(response.ok?503:response.status);}
+    if(!response.ok){
+      if(response.status===403&&isAdminNeeded(value))throw new RemoteError('admin','Confirm your primary hub PIN, then review and try again.');
+      throw failure(response.status);
+    }
+    return value;
   }finally{reader.releaseLock();}
 }
 

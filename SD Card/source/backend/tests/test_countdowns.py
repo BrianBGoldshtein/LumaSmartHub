@@ -130,6 +130,7 @@ def test_countdown_api_local_only_strict_and_privacy_gated(tmp_path):
     assert client.get('/api/v1/countdowns').status_code==403
     assert client.get('/api/v1/state').json()['countdowns']==[]
     service.unlock_with_pin()
+    assert client.post('/api/v1/security/pin',json={'pin':'123456'}).status_code==200
     assert client.get('/api/v1/countdowns').status_code==200
 
 

@@ -379,6 +379,7 @@ def test_room_configuration_owner_gate_and_secret_body_never_echoed(tmp_path):
     assert client.get('/api/v1/room').status_code == 403
     assert client.post('/api/v1/room/purifier/discover', json={'revision': config['revision']}).status_code == 403
     service.unlock_with_pin()
+    assert client.post('/api/v1/security/pin',json={'pin':'123456'}).status_code==200
     assert client.get('/api/v1/room').status_code == 200
     assert client.get('/api/v1/room', headers={'origin': 'https://evil.invalid'}).status_code == 403
     remote = TestClient(app, client=('192.0.2.25', 50000))

@@ -259,6 +259,7 @@ def test_scene_api_local_owner_strict_body_no_remote_raw_trigger(tmp_path):
     service.update_settings({'onboarding_completed': True})
     assert client.get('/api/v1/scenes').status_code == 403
     service.unlock_with_pin()
+    assert client.post('/api/v1/security/pin',json={'pin':'123456'}).status_code==200
     assert client.get('/api/v1/scenes').status_code == 200
 
 

@@ -1,0 +1,7 @@
+.primary-admin-prompt{color:var(--ink);width:min(100%,34rem);margin:auto;padding:1rem;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius,1rem)}
+.primary-admin-prompt h1{font-family:var(--heading);font-size:clamp(1.8rem,4vw,3rem);line-height:1.05;margin:.7rem 0}.primary-admin-prompt p{font-size:1rem;line-height:1.45}
+.primary-admin-prompt a{color:var(--accent);font-weight:700;text-underline-offset:.2em}
+.primary-admin-prompt form{display:grid;gap:.65rem}.primary-admin-prompt button,.primary-admin-bar button{font:inherit;min-height:2.8rem;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--radius,.6rem);padding:.5rem .8rem}
+.primary-admin-bar{position:fixed;z-index:50;top:.65rem;right:1rem;display:flex;align-items:center;gap:.45rem;font-size:.85rem;padding:.35rem .5rem;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius,.6rem)}
+.primary-admin-bar.inline{position:static;flex-wrap:wrap}.primary-admin-bar svg{width:1.1rem}.primary-admin-bar button{font-size:.85rem;min-height:2rem}
+.primary-admin-shade{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:1rem;background:#000b;overflow:auto}.theme-neon-grid .primary-admin-prompt,.theme-neon-grid .primary-admin-bar{border-radius:0}

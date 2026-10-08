@@ -72,6 +72,9 @@ def install_update_api(app, local_only):
             check = request.scope.get("luma_companion_check")
             if check is not None:
                 check()
+            admin_check = request.scope.get('luma_admin_check')
+            if admin_check is not None:
+                admin_check()
             accepted = await update_request({"action": "install",
                                              "bundle": base64.b64encode(bundle).decode("ascii")})
         except UpdateError as error:

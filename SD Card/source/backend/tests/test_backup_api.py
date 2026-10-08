@@ -48,6 +48,7 @@ def _app(tmp_path, monkeypatch):
 def test_backup_routes_are_local_owner_gated_and_do_not_export_on_passphrase_mismatch(tmp_path, monkeypatch):
     app, state = _app(tmp_path, monkeypatch)
     with TestClient(app) as client:
+        assert client.post('/api/v1/security/unlock', json={'pin':'1234'}).status_code == 200
         assert client.post("/api/v1/backups/scan").status_code == 200
         mismatch = client.post("/api/v1/backups/export", json={
             "volume_id": VOLUME, "passphrase": PASSWORD, "confirm_passphrase": "wrong passphrase"})
@@ -63,6 +64,7 @@ def test_backup_export_preview_expiry_and_transactional_apply_preserve_pi_identi
     app.state.luma.settings.voice_enabled = False
     app.state.luma.storage.save_settings(app.state.luma.settings)
     with TestClient(app) as client:
+        assert client.post('/api/v1/security/unlock', json={'pin':'1234'}).status_code == 200
         exported = client.post("/api/v1/backups/export", json={
             "volume_id": VOLUME, "passphrase": PASSWORD, "confirm_passphrase": PASSWORD,
             "games": {"snake": {"body": [1, 0], "food": 3, "head": 1, "score": 120,
@@ -95,6 +97,7 @@ def test_restore_preview_expires_and_wrong_passphrase_never_creates_session(tmp_
     clock = [10.0]
     monkeypatch.setattr(backup_api, "monotonic", lambda: clock[0])
     with TestClient(app) as client:
+        assert client.post('/api/v1/security/unlock', json={'pin':'1234'}).status_code == 200
         wrong = client.post("/api/v1/backups/preview", json={
             "volume_id": VOLUME, "backup_id": BACKUP, "passphrase": "wrong horse battery staple"})
         assert wrong.status_code == 422

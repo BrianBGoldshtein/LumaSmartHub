@@ -32,6 +32,7 @@ service.replace_events([CalendarEvent('lecture','classes','A very long lecture t
     CalendarEvent('task','tasks','Finish the assignment and review tomorrow’s notes',now.replace(hour=0,minute=0,second=0),now.replace(hour=0,minute=0,second=0)+timedelta(days=2),all_day=True,etag='"fake-etag"',calendar_writable=True)])
 service.todo_write_authorized=True
 service.calendar_synced_at=now
+core.state.profile_calendars.account('primary').status['last_synced']=now.isoformat()
 core.state.google.authorized=lambda:True
 core.state.google.configured=lambda:True
 core.state.google.task_write_authorized=lambda:True
@@ -44,6 +45,26 @@ def recolor(**values):
     actions.append('task')
     return replace(task,event_color_id=values['color_id'],event_color='#e1e1e1',etag='"changed-etag"')
 core.state.google.recolor_task=recolor
+guest=core.state.profiles.create_secondary('Alex')
+core.state.profiles.bind_phone(guest.id,'AA:BB:CC:DD:EE:02')
+guest=core.state.profiles.get(guest.id)
+core.state.profiles.set_setup(guest.id,'ready',wall_share_approved=True)
+core.state.profiles.update_personal(guest.id,{'visible_calendar_ids':['classes'],'todo_calendar_id':'tasks','todo_completed_color_id':'8'})
+guest_account=core.state.profile_calendars.account(guest.id)
+guest_account.events=[CalendarEvent('lecture','classes','Alex PRIVATE seminar',now+timedelta(minutes=30),now+timedelta(hours=2)),
+    CalendarEvent('task','tasks','Alex PRIVATE assignment',now.replace(hour=0,minute=0,second=0),now.replace(hour=0,minute=0,second=0)+timedelta(days=2),all_day=True,etag='"guest-etag"',calendar_writable=True)]
+guest_account.status['last_synced']=now.isoformat()
+guest_account.google.authorized=lambda:True
+guest_account.google.configured=lambda:True
+guest_account.google.task_write_authorized=lambda:True
+guest_account.google.list_calendars=core.state.google.list_calendars
+guest_account.google.event_colors=core.state.google.event_colors
+def guest_recolor(**values):
+    task=next(event for event in guest_account.events if event.id==values['event_id'])
+    assert values['expected_etag']==task.etag
+    return replace(task,event_color_id=values['color_id'],event_color='#e1e1e1',etag='"guest-updated"')
+guest_account.google.recolor_task=guest_recolor
+guest_selected=False
 # Exercise review/confirmation/progress UI without a signed install, network
 # download or root broker. A real archive/switch is a separate release gate.
 update_state={'state':'idle','phase':'idle','target_version':None,'message':''}
@@ -69,6 +90,18 @@ async def qa_only(request,call_next):
     if request.url.path=='/qa/ticket':
         ticket=core.state.companion.issue_ticket('123456',ORIGIN)
         return JSONResponse({'url':ORIGIN+'/remote/#enroll='+ticket})
+    if request.url.path=='/qa/guest-ticket':
+        global guest_selected
+        guest_selected=True
+        phone=core.state.bluetooth.runtime(guest.id)
+        phone.remote_authorized.begin(guest.phone_address,'/guest-phone','/guest-phone/source')
+        phone.remote_authorized.heartbeat(guest.phone_address)
+        phone.service.phone_seen()
+        ticket=core.state.companion.issue_ticket('123456',ORIGIN,profile_id=guest.id)
+        return JSONResponse({'url':ORIGIN+'/remote/#enroll='+ticket})
+    if guest_selected:
+        core.state.bluetooth.runtime(guest.id).remote_authorized.heartbeat(guest.phone_address)
+        core.state.bluetooth.runtime(guest.id).service.phone_seen()
     if request.url.path=='/qa/approve':
         pending=core.state.companion.pending_status('123456')
         core.state.companion.approve('123456',pending['device_id'],pending['comparison_code'])
@@ -94,5 +127,5 @@ async def qa_only(request,call_next):
         return JSONResponse({'revoked':True})
     # Emulate the fixed Serve headers from a trusted TLS loopback proxy.
     request.scope['headers']=[(k,v) for k,v in request.scope['headers'] if k not in (b'tailscale-user-login',b'x-forwarded-proto')]+[
-        (b'tailscale-user-login',b'owner@example.test'),(b'x-forwarded-proto',b'https')]
+        (b'tailscale-user-login',b'guest@example.test' if guest_selected else b'owner@example.test'),(b'x-forwarded-proto',b'https')]
     return await call_next(request)

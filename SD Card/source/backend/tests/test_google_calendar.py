@@ -97,12 +97,12 @@ def test_sync_endpoint_updates_cache_and_keeps_it_on_failure(tmp_path):
         assert "saved events" in client.get("/api/v1/google/status").json()["error"]
 
 
-def test_google_routes_require_lan_auth_and_bad_oauth_state_is_rejected(tmp_path):
+def test_google_management_is_local_primary_only_and_bad_oauth_state_is_rejected(tmp_path):
     app = create_app(data_dir=tmp_path)
     remote = TestClient(app, client=("192.0.2.20", 1000))
-    assert remote.get("/api/v1/google/calendars").status_code == 401
-    assert remote.post("/api/v1/google/config", json={}).status_code == 401
-    assert remote.post("/api/v1/google/sync").status_code == 401
+    assert remote.get("/api/v1/google/calendars").status_code == 403
+    assert remote.post("/api/v1/google/config", json={}).status_code == 403
+    assert remote.post("/api/v1/google/sync").status_code == 403
     local = TestClient(app)
     failed = local.get("/api/v1/google/callback?state=wrong&code=fake", follow_redirects=False)
     assert failed.status_code == 303

@@ -27,6 +27,7 @@ def test_local_settings_flow_checks_reviews_and_installs_verified_release(monkey
 
     monkeypatch.setattr(update_api, "update_request", broker)
     with TestClient(app) as client:
+        assert client.post('/api/v1/security/pin', json={'pin':'123456'}).status_code == 200
         status = client.get("/api/v1/updates/status")
         checked = client.post("/api/v1/updates/check")
         details = checked.json()
@@ -45,6 +46,7 @@ def test_local_settings_flow_checks_reviews_and_installs_verified_release(monkey
 def test_update_install_requires_a_reviewed_candidate_and_rejects_extra_fields(monkeypatch, tmp_path):
     app = create_app(data_dir=tmp_path)
     with TestClient(app) as client:
+        assert client.post('/api/v1/security/pin', json={'pin':'123456'}).status_code == 200
         missing = client.post("/api/v1/updates/install", json={"candidate_id": "a" * 40})
         extra = client.post("/api/v1/updates/install", json={"candidate_id": "a" * 40, "bundle": "x"})
     assert missing.status_code == 410

@@ -43,6 +43,7 @@ def rig(tmp_path):
     ticket = auth.issue_ticket('123456',ORIGIN)
     claim = auth.claim(ticket,ORIGIN,IDENTITY,public,sign(key,enrollment_message(ticket,ORIGIN,IDENTITY,public)))
     auth.approve('123456',claim['device_id'],claim['comparison_code'])
+    app.state.admin.unlock_remote('123456', claim['device_id'], auth._phone('primary'))
     return app, key, claim['device_id']
 
 

@@ -12,8 +12,8 @@ import type {BrowserCredential,RemoteContext} from '../companionProof';
 import type {GoogleCalendar,GoogleEventColor,GoogleStatus} from '../googleSetupState';
 import {calendarSelection} from '../googleSetupState';
 import {timerText} from '../timerState';
-import {clockText,enrollTicket,safeColor,upcoming,updateOutcome} from './state';
-import type {Preview,RemoteSettings,UpdateStatus,Candidate} from './state';
+import {clockText,enrollTicket,safeColor,upcoming,updateOutcome,primaryRemote} from './state';
+import type {Preview,RemoteSettings,PersonalSettings,UpdateStatus,Candidate} from './state';
 import type {Theme} from '../types';
 import './style.css';
 
@@ -22,7 +22,7 @@ import './style.css';
 let initialTicket=enrollTicket(location.href,location.origin);
 const googleReturn=new URLSearchParams(location.hash.slice(1)).get('google');
 history.replaceState(null,'','/remote/');
-type Tab='hub'|'settings'|'software';
+type Tab='hub'|'personal'|'settings'|'software';
 const themes=[['luma-glass','Glass'],['hearth','Hearth'],['neon-grid','Neon']] as const;
 function message(error:unknown){return error instanceof RemoteError?error.message:'Luma is unavailable. Reconnect and refresh.';}
 
@@ -30,6 +30,7 @@ function RemoteApp(){
   const [tab,setTab]=useState<Tab>('hub'),[client,setClient]=useState<RemoteClient|null>(null);
   const [credential,setCredential]=useState<BrowserCredential|null>(null),[context,setContext]=useState<RemoteContext|null>(null);
   const [preview,setPreview]=useState<Preview|null>(null),[settings,setSettings]=useState<RemoteSettings|null>(null);
+  const [personal,setPersonal]=useState<PersonalSettings|null>(null),[adminUnlocked,setAdminUnlocked]=useState(false),[confirmPrimary,setConfirmPrimary]=useState(false),[pin,setPin]=useState('');
   const [status,setStatus]=useState<UpdateStatus|null>(null),[candidate,setCandidate]=useState<Candidate|null>(null);
   const [code,setCode]=useState(''),[notice,setNotice]=useState('Opening your private connection…');
   const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[epoch,setEpoch]=useState(0);
@@ -39,7 +40,9 @@ function RemoteApp(){
   const [callbackNote,setCallbackNote]=useState(googleReturn==='ok'?'Google connected. Refresh calendar choices.':googleReturn==='failed'?'Google sign-in did not finish. Reconnect your phone to Luma and try again. Existing sign-in is retained.':'');
   const generation=useRef(0),pollBusy=useRef(false),installed=useRef(false);
   const clientRef=useRef<RemoteClient|null>(null);clientRef.current=client;
-  const clear=()=>{setPreview(null);setSettings(null);setStatus(null);setCandidate(null);};
+  const clear=()=>{setPreview(null);setSettings(null);setPersonal(null);setAdminUnlocked(false);setConfirmPrimary(false);setPin('');setStatus(null);setCandidate(null);};
+  const failed=(error:unknown)=>{if(error instanceof RemoteError&&error.kind==='admin'){setAdminUnlocked(false);setConfirmPrimary(true);setPin('');}
+    else clear();setNotice(message(error));};
   useEffect(()=>{
     let live=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
     Promise.all([bootstrapRemote(location.origin,fetch,controller.signal),loadCredential()]).then(([connection,key])=>{
@@ -80,26 +83,34 @@ function RemoteApp(){
           const value=await client.request<Preview>('GET','/remote/api/preview');
           if(!live||current!==generation.current)return;
           setPreview(value);setAppearance(value.settings.theme);setNotice('');setCode('');
-          if(tab==='settings'){
-            const result=await client.request<RemoteSettings>('GET','/remote/api/settings');
-            if(live&&current===generation.current)setSettings(result);
+          if(tab==='personal'){
+            const result=await client.request<PersonalSettings>('GET','/remote/api/personal-settings');
+            if(live&&current===generation.current)setPersonal(result);
           }
-          if(tab==='software'||installed.current){
+          if(primaryRemote(value)&&(tab==='settings'||tab==='software')){
+            const authority=await client.request<{unlocked:boolean}>('GET','/remote/api/admin/status');
+            if(!live||current!==generation.current)return;setAdminUnlocked(authority.unlocked);
+            if(authority.unlocked&&!confirmPrimary&&tab==='settings'){
+              const result=await client.request<RemoteSettings>('GET','/remote/api/settings');
+              if(live&&current===generation.current)setSettings(result);
+            }
+          }
+          if(primaryRemote(value)&&(tab==='software'||installed.current)){
             const result=await client.request<UpdateStatus>('GET','/remote/api/updates/status');
             if(live&&current===generation.current){setStatus(result);
               if(updateTarget){const outcome=updateOutcome(result,updateTarget);
                 if(outcome){installed.current=false;setUpdateTarget(null);setUpdateResult(outcome);}}
             }
           }
-        }catch(error){if(live&&current===generation.current){clear();setNotice(message(error));}}
+        }catch(error){if(live&&current===generation.current)failed(error);}
         finally{if(current===generation.current)pollBusy.current=false;}
       }
       if(live)handle=window.setTimeout(poll,5000);
     };void poll();return()=>{live=false;if(handle!==undefined)clearTimeout(handle);};
-  },[client,epoch,tab,updateTarget]);
+  },[client,epoch,tab,updateTarget,confirmPrimary]);
   async function run(action:()=>Promise<void>){
     const current=generation.current;setBusy(true);setNotice('');pollBusy.current=true;
-    try{await action();}catch(error){if(current===generation.current){clear();setNotice(message(error));}}
+    try{await action();}catch(error){if(current===generation.current)failed(error);}
     finally{if(current===generation.current){setBusy(false);pollBusy.current=false;}}
   }
   const request=async<T,>(method:string,path:string,payload?:unknown)=>{
@@ -111,6 +122,10 @@ function RemoteApp(){
     const result=await request<{preview:Preview}>('POST','/remote/api/command',{name,...(value===undefined?{}:{value})});setPreview(result.preview);
   });
   const save=(patch:Partial<RemoteSettings>)=>run(async()=>{setSettings(await request<RemoteSettings>('PATCH','/remote/api/settings',patch));setEpoch(value=>value+1);});
+  const savePersonal=(patch:Partial<RemoteSettings>)=>run(async()=>{setPersonal(await request<PersonalSettings>('PATCH','/remote/api/personal-settings',patch));setEpoch(value=>value+1);});
+  const unlockPrimary=()=>{const entered=pin;setPin('');void run(async()=>{
+    await request('POST','/remote/api/admin/unlock',{pin:entered});setAdminUnlocked(true);setConfirmPrimary(false);setEpoch(value=>value+1);
+  });};
   const enroll=()=>run(async()=>{
     if(!context||!initialTicket)throw new RemoteError('expired','Request a new enrollment QR on Luma.');
     const current=generation.current,key=await createBrowserKey();
@@ -145,8 +160,13 @@ function RemoteApp(){
         {tab==='hub'&&<Hub preview={preview} busy={busy} command={command} task={(event)=>run(async()=>{
           setPreview(await request<Preview>('POST','/remote/api/todos/complete',{calendar_id:event.calendar_id,event_id:event.id,completed:!event.completed,etag:event.etag}));
         })}/>}
-        {tab==='settings'&&(settings?<SettingsPanel key={epoch} settings={settings} busy={busy} save={save} request={request} run={run}/>:<p>Loading settings…</p>)}
-        {tab==='software'&&<section className="software"><h1>Luma software</h1><p>Current version <b>{status?.current_version??'Checking…'}</b></p>
+        {tab==='personal'&&(personal?<><h1>{preview.nickname}’s calendars</h1><CalendarSettings settings={personal} busy={busy} save={savePersonal} request={request} run={run} personalOnly/></>:<p>Loading your calendar choices…</p>)}
+        {primaryRemote(preview)&&(tab==='settings'||tab==='software')&&(!adminUnlocked||confirmPrimary)&&<section className="locked"><LockKeyhole/><h1>Primary settings</h1><p>Enter your primary hub PIN. Calendar choices and your timer need no administrator unlock.</p>
+          <form onSubmit={event=>{event.preventDefault();unlockPrimary();}}><label>Primary PIN<input type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{4,8}" required minLength={4} maxLength={8} value={pin} onChange={event=>setPin(event.target.value.replace(/[^0-9]/g,''))} disabled={busy}/></label><button disabled={busy}>Unlock primary settings</button></form></section>}
+        {primaryRemote(preview)&&(tab==='settings'||tab==='software')&&adminUnlocked&&!confirmPrimary&&<div className="buttons"><span>Primary settings unlocked · 5 minutes</span><button disabled={busy} onClick={()=>{setPin('');setConfirmPrimary(true);}}>Confirm PIN</button>
+          <button disabled={busy} onClick={()=>void run(async()=>{await request('POST','/remote/api/admin/lock',{});setAdminUnlocked(false);setSettings(null);setCandidate(null);setPin('');})}>Lock settings</button></div>}
+        {primaryRemote(preview)&&tab==='settings'&&adminUnlocked&&!confirmPrimary&&(settings?<SettingsPanel key={epoch} settings={settings} busy={busy} save={save} request={request} run={run}/>:<p>Loading settings…</p>)}
+        {primaryRemote(preview)&&tab==='software'&&adminUnlocked&&!confirmPrimary&&<section className="software"><h1>Luma software</h1><p>Current version <b>{status?.current_version??'Checking…'}</b></p>
           {status?.state&&status.state!=='idle'&&<div className="notice" role="status"><b>{status.phase??status.state}</b><p>{status.message}</p><span>{status.target_version&&`Target ${status.target_version}`}</span>{status.elapsed_seconds!==undefined&&<small>{Math.floor(status.elapsed_seconds/60)} min elapsed</small>}</div>}
           <p>Signed GitHub releases. Settings, Google sign-in and saved games stay on your Pi.</p>
           <button disabled={busy||status?.state==='installing'} onClick={()=>void run(async()=>{const result=await request<Candidate>('POST','/remote/api/updates/check',{});setCandidate(result);})}>Check for updates</button>
@@ -158,7 +178,7 @@ function RemoteApp(){
         </section>}
       </>}
     </main>
-    <nav aria-label="Remote pages">{([['hub','Hub',Home],['settings','Settings',Settings],['software','Software',Download]] as const).map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}><Icon size={21}/>{label}</button>)}</nav>
+    <nav aria-label="Remote pages">{([['hub','Hub',Home],['personal','My calendars',CalendarDays],['settings','Settings',Settings],['software','Software',Download]] as const).filter(([id])=>id==='hub'||id==='personal'||primaryRemote(preview)).map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}><Icon size={21}/>{label}</button>)}</nav>
   </div>;
 }
 
@@ -190,7 +210,7 @@ function Hub({preview,busy,command,task}:{preview:Preview;busy:boolean;command:(
         <label>Name<input name="label" maxLength={40} placeholder="Tea, study, laundry…"/></label><button disabled={busy}>Start timer</button>
       </form>
     </section>
-    <section><h2>Wall controls</h2><div className="buttons"><button disabled={busy} onClick={()=>void command('previous_page')}>Previous</button><button disabled={busy} onClick={()=>void command('next_page')}>Next</button><button disabled={busy} onClick={()=>void command('pause_cycle')}>Pause cycle</button><button disabled={busy} onClick={()=>void command('resume_cycle')}>Resume</button><button disabled={busy} onClick={()=>void command('good_night')}>Good night</button><button disabled={busy} onClick={()=>void command('wake')}>Wake</button></div></section>
+    {primaryRemote(preview)&&<section><h2>Wall controls</h2><div className="buttons"><button disabled={busy} onClick={()=>void command('previous_page')}>Previous</button><button disabled={busy} onClick={()=>void command('next_page')}>Next</button><button disabled={busy} onClick={()=>void command('pause_cycle')}>Pause cycle</button><button disabled={busy} onClick={()=>void command('resume_cycle')}>Resume</button><button disabled={busy} onClick={()=>void command('good_night')}>Good night</button><button disabled={busy} onClick={()=>void command('wake')}>Wake</button></div></section>}
   </>;
 }
 
@@ -245,7 +265,7 @@ function SettingsPanel({settings,busy,save,request,run}:SettingsProps){
   </>;
 }
 
-function CalendarSettings({settings,busy,save,request,run}:SettingsProps){
+function CalendarSettings({settings,busy,save,request,run,personalOnly=false}:Omit<SettingsProps,'settings'>&{settings:PersonalSettings&Partial<RemoteSettings>;personalOnly?:boolean}){
   type Status=GoogleStatus&{web_configured:boolean;redirect_uri:string};
   const [status,setStatus]=useState<Status|null>(null),[calendars,setCalendars]=useState<GoogleCalendar[]|null>(null),[colors,setColors]=useState<GoogleEventColor[]>([]);
   const [error,setError]=useState(''),[retry,setRetry]=useState(0);
@@ -264,7 +284,7 @@ function CalendarSettings({settings,busy,save,request,run}:SettingsProps){
   return <section><h2>Google Calendar</h2><p>{status?.authorized?'Google linked':'Google needs renewed sign-in.'}</p>
     {status?.web_configured?<div className="buttons"><button disabled={busy} onClick={()=>consent(false)}>{status.authorized?'Reconnect Google':'Sign in with Google'}</button>
       {!status.task_updates&&<button disabled={busy} onClick={()=>{if(confirm('Allow Luma to edit event colors on your selected task calendar? Google grants event-edit scope across writable calendars; Luma restricts task edits to your selection.'))consent(true);}}>Enable task updates</button>}</div>:
-      <details><summary>Enable Google sign-in from this phone</summary><p>Your existing Desktop client stays unchanged. In your Google Cloud project, create an OAuth client of type Web application. Add this exact authorized redirect URI, then download its JSON.</p><code className="notice">{status?.redirect_uri??`${location.origin}/remote/google/callback`}</code>
+      personalOnly?<p>The primary user needs to configure Google Web sign-in first. You can skip Google and still use your timer.</p>:<details><summary>Enable Google sign-in from this phone</summary><p>Your existing Desktop client stays unchanged. In your Google Cloud project, create an OAuth client of type Web application. Add this exact authorized redirect URI, then download its JSON.</p><code className="notice">{status?.redirect_uri??`${location.origin}/remote/google/callback`}</code>
         <p>Keep the same consent project and Calendar API. Client JSON stays on the Pi; never publish it to GitHub.</p>
         <label>Google Web client JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={event=>{
           const input=event.currentTarget,file=input.files?.[0];input.value='';if(!file)return;
@@ -277,7 +297,7 @@ function CalendarSettings({settings,busy,save,request,run}:SettingsProps){
     {calendars&&<form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);
       if(values.has('departureEnabled')&&!values.getAll('departure').length){setError('Choose a leaving-reminder calendar, or leave reminders off.');return;}
       void save({visible_calendar_ids:values.getAll('agenda').map(String),todo_calendar_id:String(values.get('todo'))||null,
-        todo_completed_color_id:String(values.get('completed'))||null,sleep_calendar_ids:values.getAll('sleep').map(String),sleep_event_title:String(values.get('sleepTitle')),
+        todo_completed_color_id:String(values.get('completed'))||null,...(personalOnly?{}:{sleep_calendar_ids:values.getAll('sleep').map(String),sleep_event_title:String(values.get('sleepTitle'))}),
         departure_calendar_ids:values.getAll('departure').map(String),departure_enabled:values.has('departureEnabled'),departure_include_virtual:values.has('includeVirtual'),
         departure_prep_minutes:Number(values.get('prep')),departure_travel_minutes:Number(values.get('travel'))});
     }}>
@@ -285,8 +305,8 @@ function CalendarSettings({settings,busy,save,request,run}:SettingsProps){
       <label>To-do calendar<select name="todo" defaultValue={settings.todo_calendar_id??''}><option value="">None</option>{calendars.map(calendar=><option value={calendar.id} key={calendar.id}>{calendar.summary}</option>)}</select></label>
       <label>Completed color<select name="completed" defaultValue={settings.todo_completed_color_id??''}><option value="">Not selected</option>{colors.map(color=><option key={color.id} value={color.id}>Color {color.id}</option>)}</select></label>
       <div className="color-key">{colors.map(color=><span key={color.id}><i style={{background:safeColor(color.background)}}/>{color.id}</span>)}</div><p>Only your chosen completed color marks a task done. Other custom colors remain outstanding.</p>
-      <h3>Sleep calendars</h3>{calendars.map(calendar=><label className="check" key={calendar.id}><input type="checkbox" name="sleep" value={calendar.id} defaultChecked={settings.sleep_calendar_ids.includes(calendar.id)}/>{calendar.summary}</label>)}
-      <label>Sleep event name<input name="sleepTitle" required maxLength={100} defaultValue={settings.sleep_event_title}/></label>
+      {!personalOnly&&<><h3>Room Sleep calendars · primary only</h3>{calendars.map(calendar=><label className="check" key={calendar.id}><input type="checkbox" name="sleep" value={calendar.id} defaultChecked={settings.sleep_calendar_ids?.includes(calendar.id)}/>{calendar.summary}</label>)}
+      <label>Sleep event name<input name="sleepTitle" required maxLength={100} defaultValue={settings.sleep_event_title}/></label></>}
       <h3>Leaving reminders</h3>{calendars.map(calendar=><label className="check" key={calendar.id}><input type="checkbox" name="departure" value={calendar.id} defaultChecked={settings.departure_calendar_ids.includes(calendar.id)}/>{calendar.summary}</label>)}
       <label className="check"><input type="checkbox" name="departureEnabled" defaultChecked={settings.departure_enabled}/> Enable leaving reminders</label>
       <label className="check"><input type="checkbox" name="includeVirtual" defaultChecked={settings.departure_include_virtual}/> Include virtual events</label>

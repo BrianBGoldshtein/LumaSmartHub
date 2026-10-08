@@ -268,6 +268,7 @@ def test_voice_scene_requires_owner_and_nonempty_explicitly_enabled_config(tmp_p
     service.display_clock_trusted=lambda:True
     client=TestClient(app)
     service.update_settings({'onboarding_completed':True})
+    assert client.post('/api/v1/security/pin',json={'pin':'123456'}).status_code==200
     private=client.post('/api/v1/voice/command',json={'text':'run morning scene'}).json()
     assert not private['accepted'] and 'Unlock Luma' in private['message']
     runtime.owner_allowed=lambda:True

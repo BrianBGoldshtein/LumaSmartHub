@@ -12,11 +12,12 @@ import {UpdateSetup} from "./UpdateSetup";
 import {NotificationSoundSetup} from "./NotificationSoundSetup";
 import {coordinates} from "./touchInput";
 import {setupTheme,setupLink} from "./setupTheme";
+import {announceAdminNeeded} from './adminState';
 
 async function api(path:string, method="GET", body?:unknown) {
   const response=await fetch(`/api/v1/${path}`,{method,headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
   const data=await response.json();
-  if(!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Check the entered settings.");
+  if(!response.ok){announceAdminNeeded(data);throw new Error(typeof data.detail === "string" ? data.detail : "Check the entered settings.");}
   return data;
 }
 

@@ -3,7 +3,7 @@
 set -euo pipefail
 qaRoot=$(cd "$(dirname "$0")" && pwd)
 frontendRoot=$(cd "$qaRoot/.." && pwd)
-backendRoot=$(cd "$frontendRoot/../backend" && pwd)
+backendRoot=${REMOTE_QA_BACKEND:-$(cd "$frontendRoot/../backend" && pwd)}
 pythonRuntime=${1:?Pass the qualified Linux Python executable}
 if ss -ltn | grep -Eq ':(443|19226)\b'; then
   echo 'QA ports already occupied; no processes were touched.' >&2
@@ -11,7 +11,7 @@ if ss -ltn | grep -Eq ':(443|19226)\b'; then
 fi
 qaDirectory=$(mktemp -d "${REMOTE_QA_PARENT:-/tmp}/luma-030-mobile.XXXXXXXX")
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$qaDirectory/key.pem" -out "$qaDirectory/cert.pem" -days 1 -subj '/CN=luma.example-tail.ts.net' > "$qaDirectory/certificate.log" 2>&1
-export REMOTE_QA_DATA="$qaDirectory/data" REMOTE_QA_FRONTEND="$frontendRoot/dist" PYTHONPATH="$backendRoot/src"
+export REMOTE_QA_DATA="$qaDirectory/data" REMOTE_QA_FRONTEND="${REMOTE_QA_FRONTEND:-$frontendRoot/dist}" PYTHONPATH="$backendRoot/src"
 cd "$qaRoot"
 "$pythonRuntime" -m uvicorn remote-server:app --host 127.0.0.1 --port 443 --ssl-keyfile "$qaDirectory/key.pem" --ssl-certfile "$qaDirectory/cert.pem" --no-access-log > "$qaDirectory/server.log" 2>&1 &
 qaServer=$!

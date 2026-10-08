@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Check,CloudDownload,RefreshCw,ShieldCheck} from 'lucide-react';
 import {dashboardRefreshUrl} from './dashboardRefresh';
+import {announceAdminNeeded} from './adminState';
 
 type Status={current_version:string;state:'idle'|'installing'|'installed'|'failed';phase?:string;target_version?:string|null;message?:string;elapsed_seconds?:number};
 type Candidate={state:'available'|'current';current_version:string;version?:string;release_notes?:string;published_at?:string;candidate_id?:string};
@@ -10,7 +11,7 @@ async function call<T>(path:string,method='GET',body?:unknown,timeoutMs=0):Promi
   try{
     const response=await fetch(`/api/v1/updates/${path}`,{method,cache:'no-store',signal:controller.signal,headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Luma could not check for updates. Check Wi-Fi sign-in and retry.');
+    if(!response.ok){announceAdminNeeded(data);throw Error(typeof data.detail==='string'?data.detail:'Luma could not check for updates. Check Wi-Fi sign-in and retry.');}
     return data as T;
   }finally{if(timeout)clearTimeout(timeout);}
 }

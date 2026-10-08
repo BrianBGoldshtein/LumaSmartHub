@@ -16,7 +16,10 @@ async function value(expression){const result=await send('Runtime.evaluate',{exp
 async function until(expression,timeout=18000){const deadline=Date.now()+timeout;while(!(await value(expression))){
   if(Date.now()>=deadline)throw Error('Condition timed out: '+expression+'\n'+JSON.stringify({page:await value('({text:document.body.innerText,visibility:document.visibilityState,online:navigator.onLine})'),errors,responses}));
   await new Promise(resolve=>setTimeout(resolve,100));}}
-const click=text=>value(`(()=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!button)throw Error('Button unavailable');button.click();})()`);
+async function click(text){
+  await until(`[...document.querySelectorAll('button')].some(button=>button.textContent.trim()===${JSON.stringify(text)}&&!button.disabled)`);
+  return value(`(()=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled);if(!button)throw Error('Button unavailable');button.click();})()`);
+}
 try{
   await send('Page.enable');await send('Runtime.enable');await send('Network.enable');
   await send('Page.bringToFront');
@@ -40,7 +43,9 @@ try{
       if(width===390){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`${process.env.REMOTE_QA_OUTPUT}/${theme}.png`,Buffer.from(shot.data,'base64'));}
     }
   }
-  await click('Settings');await until(`document.querySelector('.themes')!==null`);
+  await click('Settings');await until(`document.body.innerText.includes('Primary settings')`);
+  await value(`(()=>{const field=document.querySelector('input[type="password"]');const native=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;native.call(field,'123456');field.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await click('Unlock primary settings');await until(`document.querySelector('.themes')!==null`);
   await click('Calendars');await until(`document.body.innerText.includes('Agenda · select all that apply')`);
   await click('Save calendar choices');await until(`document.querySelector('.themes')!==null`);
   await click('Hub');await until(`document.querySelector('.hero')!==null`);
@@ -79,6 +84,37 @@ try{
   await until(`document.querySelector('.hero')!==null`);
   await value(`fetch('/qa/revoke').then(r=>r.json())`);await until(`document.querySelector('.locked')!==null`);
   assert.ok(!(await value('document.body.innerText')).includes('A very long lecture title'));
+  const guestUrl=await value(`fetch('/qa/guest-ticket').then(r=>r.json()).then(v=>v.url)`);
+  // A different user's iPhone starts a fresh document/Serve identity context.
+  // A same-document fragment keeps the old bootstrap digest and must fail.
+  await send('Page.navigate',{url:'about:blank'});
+  await send('Page.navigate',{url:guestUrl});
+  await until(`[...document.querySelectorAll('button')].some(b=>b.textContent==='Enroll this browser')`);
+  await click('Enroll this browser');await until(`document.body.innerText.includes('Approval code:')`);
+  await value(`fetch('/qa/approve').then(r=>r.json())`);await until(`document.querySelector('.hero')!==null`);
+  assert.ok((await value('document.body.innerText')).includes('Alex PRIVATE seminar'));
+  assert.ok(!(await value('document.body.innerText')).includes('A very long lecture title'));
+  assert.equal(await value(`[...document.querySelectorAll('nav button')].map(button=>button.textContent).join(',')`),'Hub,My calendars');
+  assert.ok(!(await value('document.body.innerText')).includes('Wall controls'));
+  await click('My calendars');await until(`document.body.innerText.includes('Agenda · select all that apply')`);
+  assert.ok(!(await value('document.body.innerText')).includes('Sleep calendars'));
+  assert.equal(await value(`document.querySelector('input[type="file"]')===null`),true);
+  await click('Save calendar choices');await until(`document.body.innerText.includes('Alex’s calendars')`);
+  await click('Hub');await until(`document.querySelector('.hero')!==null`);
+  await click('Start timer');await until(`document.querySelector('.timer')!==null`);
+  await click('Pause');await until(`document.querySelector('.timer')?.textContent.includes('paused')`);
+  await click('Cancel');await until(`document.querySelector('.timer')===null`);
+  for(const theme of ['luma-glass','hearth','neon-grid']){
+    await value(`fetch('/qa/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:${JSON.stringify(theme)}})}).then(r=>r.json())`);
+    await until(`document.querySelector('.theme-${theme}')!==null`);
+    for(const width of [320,390]){
+      await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});
+      assert.ok(await value(`document.documentElement.scrollWidth<=innerWidth`),'Guest horizontal overflow');
+      if(width===390){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`${process.env.REMOTE_QA_OUTPUT}/guest-${theme}.png`,Buffer.from(shot.data,'base64'));}
+    }
+  }
+  await value(`fetch('/qa/revoke').then(r=>r.json())`);await until(`document.querySelector('.locked')!==null`);
+  assert.ok(!(await value('document.body.innerText')).includes('Alex PRIVATE seminar'));
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,disconnectCleared:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,errors},null,2));
+  console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,disconnectCleared:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,guestOwnCalendars:true,guestOwnTimer:true,guestNoAdminControls:true,guestNoOverflow:true,guestRevocationCleared:true,errors},null,2));
 }finally{socket.close();await fetch(debug+'/json/close/'+target.id);}

@@ -23,6 +23,7 @@ from .companion_google import CompanionGoogle
 from .companion_profiles import own_operation
 from .profiles import PRIMARY_ID, ProfileError
 from .focus_timer import TIMER_COMMANDS
+from .admin_authority import AdminDenied, LEASE_SECONDS, FRESH_PATHS, needs_admin
 
 
 SETTINGS_KEYS = frozenset({
@@ -59,6 +60,9 @@ def remote_guard(request: Request):
     check = request.scope.get("luma_companion_check")
     if check is not None:
         check()
+    admin_check = request.scope.get('luma_admin_check')
+    if admin_check is not None:
+        admin_check()
 
 
 def settings_view(service):
@@ -168,6 +172,10 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                 _shape(payload, {"action", "pin", "device_id"})
                 auth.revoke(payload["pin"], payload["device_id"])
                 result = {"revoked": True}
+            elif action == 'remote_policy_status':
+                _shape(payload, {'action', 'pin'})
+                auth._pin(payload['pin'])
+                result = {'policy': profiles.remote_policy()}
             elif action == "remote_policy":
                 _shape(payload, {"action", "pin", "policy"})
                 auth._pin(payload["pin"])
@@ -258,13 +266,44 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                 except CompanionDenied as error:
                     raise denied(error) from None
             method, path = payload["method"], payload["path"]
+            upstream = UPSTREAMS.get((method, path))
+            command = parse_object(body).get('name') if path == '/remote/api/command' else None
+            requires_admin = (path == '/remote/api/google/web-client' or
+                (method == 'GET' and path == '/remote/api/settings') or
+                (upstream is not None and needs_admin(method, upstream, command)))
+            def admin_recheck(*, fresh=None):
+                recheck()
+                app.state.admin.require_remote(payload['device_id'], initial,
+                    fresh=(upstream in FRESH_PATHS) if fresh is None else fresh)
             own_web = user_web_google(initial.profile_id)
-            if initial.role != 'primary' and path not in {'/remote/api/google/authorize'}:
+            personal_path = path.replace('/remote/api/personal-settings', '/remote/api/settings')
+            account_path = path in {'/remote/api/personal-settings', '/remote/api/google/status',
+                '/remote/api/google/calendars', '/remote/api/google/colors', '/remote/api/google/sync', '/remote/api/todos/complete'}
+            if account_path or (initial.role != 'primary' and path not in {'/remote/api/google/authorize'}):
                 value = {} if method == 'GET' else parse_object(body)
                 async with asyncio.timeout(45):
-                    result = await own_operation(service, initial, method, path, value, recheck)
+                    result = await own_operation(service, initial, method, personal_path, value, recheck)
                 if path == '/remote/api/google/status':
                     result = {**result, **own_web.status(payload['origin'])}
+                status_code = 200
+                requires_admin = False  # Own-account actions are not room administration.
+            elif path.startswith('/remote/api/admin/'):
+                if path.endswith('/unlock'):
+                    value = parse_object(body); _shape(value, {'pin'})
+                    with auth.lock:
+                        recheck()
+                        app.state.admin.unlock_remote(value['pin'], payload['device_id'], initial)
+                    result = {'unlocked': True, 'expires_in_seconds': LEASE_SECONDS}
+                elif path.endswith('/lock'):
+                    value = parse_object(body); _shape(value, set())
+                    app.state.admin.lock_remote(payload['device_id'])
+                    result = {'unlocked': False, 'expires_in_seconds': 0}
+                else:
+                    try:
+                        remaining = app.state.admin.require_remote(payload['device_id'], initial)
+                    except AdminDenied:
+                        remaining = 0
+                    result = {'unlocked': remaining > 0, 'expires_in_seconds': remaining}
                 status_code = 200
             elif path == '/remote/api/command' and parse_object(body).get('name') in TIMER_COMMANDS:
                 result = await own_operation(service, initial, method, path, parse_object(body), recheck)
@@ -272,11 +311,13 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
             elif (method, path) == ("GET", "/remote/api/preview"):
                 result, status_code = primary_preview(), 200
             elif (method, path) == ("GET", "/remote/api/settings"):
+                admin_recheck()
                 result, status_code = settings_view(service), 200
             elif path=='/remote/api/google/web-client':
                 value=parse_object(body)
+                admin_recheck()
                 try:
-                    result=await asyncio.to_thread(web_google.set_client,value,payload['origin'],recheck)
+                    result=await asyncio.to_thread(web_google.set_client,value,payload['origin'],admin_recheck)
                     for account in web_accounts.values():
                         account.cancel_pending()
                 except CompanionDenied:
@@ -294,7 +335,6 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                     raise HTTPException(422,'Configure Google Web consent, then request sign-in again.') from None
                 status_code=200
             else:
-                upstream = UPSTREAMS.get((method, path))
                 if not upstream:
                     raise HTTPException(501, "This remote feature is still being prepared.")
                 if method != "GET":
@@ -313,7 +353,11 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                 # Scope callback is created here, never accepted from a client.
                 async def guarded(scope, receive, send):
                     recheck()
-                    await app({**scope, "luma_companion_check": recheck}, receive, send)
+                    guards = {'luma_companion_check': recheck}
+                    if requires_admin:
+                        admin_recheck()
+                        guards['luma_admin_check'] = admin_recheck
+                    await app({**scope, **guards}, receive, send)
                 async with asyncio.timeout(45):
                     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=guarded, client=("127.0.0.1", 0)),
                             base_url="http://127.0.0.1:8742", trust_env=False, follow_redirects=False) as client:
@@ -324,6 +368,10 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                     raise HTTPException(503, "Remote response is too large.")
                 if response.status_code >= 400:
                     # Never reflect validation inputs/provider text to a phone.
+                    if response.status_code == 403:
+                        error = response.json()
+                        if error.get('code') == 'admin_required' and isinstance(error.get('fresh'), bool):
+                            raise AdminDenied(fresh=error['fresh'])
                     code = response.status_code if response.status_code in {403, 409, 410, 422, 503} else 503
                     raise HTTPException(code, "Hub operation unavailable. Refresh and review before trying again.")
                 result, status_code = response.json(), response.status_code
@@ -332,11 +380,16 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                 elif path == "/remote/api/command": result = {"result":result["result"], "preview":primary_preview()}
                 elif path == "/remote/api/todos/complete": result = primary_preview()
             recheck()
+            if requires_admin:
+                admin_recheck(fresh=False)
             if len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode()) > 1024 * 1024:
                 raise HTTPException(503, 'Remote response is too large.')
             return JSONResponse(result, status_code=status_code, headers={"Cache-Control":"no-store"})
         except CompanionDenied as error:
             raise denied(error) from None
+        except AdminDenied as error:
+            return JSONResponse({'detail':str(error), 'code':'admin_required', 'fresh':error.fresh},
+                                status_code=403, headers={'Cache-Control':'no-store'})
         except HTTPException:
             raise
         except PermissionError:

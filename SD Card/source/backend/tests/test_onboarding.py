@@ -39,8 +39,12 @@ def test_progress_survives_restart_and_finish_is_explicit(tmp_path):
     result = client.post('/api/v1/onboarding', json={'action':'finish'}).json()
     assert result['completed']
     assert client.get('/api/v1/state').json()['privacy_redacted']
+    assert client.post('/api/v1/security/pin',json={'pin':'123456'}).status_code==200
     assert client.post('/api/v1/onboarding', json={'action':'finish'}).json()['completed']
-    assert TestClient(create_app(data_dir=tmp_path)).get('/api/v1/onboarding').json()['completed']
+    restarted=TestClient(create_app(data_dir=tmp_path))
+    assert restarted.get('/api/v1/onboarding').status_code==403
+    assert restarted.post('/api/v1/admin/unlock',json={'pin':'123456'}).status_code==200
+    assert restarted.get('/api/v1/onboarding').json()['completed']
 
 
 @pytest.mark.parametrize('payload', [None, [], {'action':'finish'}, {'action':'later','step':'welcome'},

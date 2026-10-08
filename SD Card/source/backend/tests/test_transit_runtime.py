@@ -185,6 +185,7 @@ def test_api_secret_validation_owner_gates_privacy_and_verified_save(tmp_path):
     assert client.get('/api/v1/transit').status_code==403
     assert client.post('/api/v1/transit/visible',json={'item_id':saved['id']}).status_code==403
     service.unlock_with_pin()
+    assert client.post('/api/v1/security/pin',json={'pin':'123456'}).status_code==200
     assert client.get('/api/v1/state').json()['transit'][0]['title']=='Commute'
     assert client.post('/api/v1/transit/visible',json={'item_id':saved['id']}).status_code==200
 

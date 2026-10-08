@@ -1,7 +1,7 @@
 import type {CalendarEvent,Weather,Theme} from '../types';
 import type {TimerState} from '../timerState';
 import type {Departure} from '../departureState';
-export type Preview={server_time:string;privacy_redacted:boolean;weather:Weather|null;timer:TimerState;
+export type Preview={profile_id:string;role:'primary'|'secondary';nickname:string;server_time:string;privacy_redacted:boolean;weather:Weather|null;timer:TimerState;
   departure:Departure|null;todo_controls:{can_update:boolean;stale?:boolean};calendar:CalendarEvent[];ongoing:CalendarEvent[];todos:CalendarEvent[];
   settings:{theme:Theme;timezone:string;weather_location_label:string};state:{active_page:string;display_power:string;phone_connected:boolean}};
 export type RemoteSettings={theme:Theme;brightness:number;volume:number;timezone:string;latitude:number|null;longitude:number|null;
@@ -12,6 +12,10 @@ export type RemoteSettings={theme:Theme;brightness:number;volume:number;timezone
   timer_focus_minutes:number;timer_break_minutes:number;weather_nudges_enabled:boolean;
   weather_rain_percent:number;weather_gust_mph:number;weather_hot_f:number;weather_cold_f:number;
   cycle:{page:string;seconds:number}[]};
+export type PersonalSettings=Pick<RemoteSettings,'theme'|'timezone'|'weather_location_label'|'visible_calendar_ids'|'todo_calendar_id'|'todo_completed_color_id'|'departure_calendar_ids'|'departure_enabled'|'departure_include_virtual'|'departure_prep_minutes'|'departure_travel_minutes'>;
+export function primaryRemote(value:unknown):boolean{
+  return !!value&&typeof value==='object'&&(value as Partial<Preview>).profile_id==='primary'&&(value as Partial<Preview>).role==='primary';
+}
 export type UpdateStatus={current_version:string;state?:string;phase?:string;message?:string;target_version?:string;elapsed_seconds?:number};
 export type Candidate={state:string;current_version:string;version?:string;release_notes?:string;candidate_id?:string;expires_in_seconds?:number};
 export function updateOutcome(status:UpdateStatus,target:string):string|null{

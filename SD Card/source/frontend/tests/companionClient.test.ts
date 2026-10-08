@@ -63,6 +63,18 @@ test('provider error inputs are replaced with fixed local copy',async()=>{
   });
 });
 
+test('fixed administrator denial requests PIN renewal without reflecting provider text',async()=>{
+  let calls=0;
+  const fetcher=(async()=>{calls++;return calls===1?response({nonce:'c'.repeat(43),expires_in_seconds:30}):
+    response({code:'admin_required',fresh:true,detail:'PRIVATE_PROVIDER_DATA'},403);}) as typeof fetch;
+  const client=new RemoteClient(await credential(),context,fetcher,()=>true);
+  await assert.rejects(client.request('PATCH','/remote/api/settings',{brightness:20}),error=>{
+    assert.ok(error instanceof RemoteError);assert.equal(error.kind,'admin');
+    assert.ok(!error.message.includes('PRIVATE_PROVIDER_DATA'));return true;
+  });
+  assert.equal(calls,2);
+});
+
 test('browser fetch is not called with the remote object as its receiver',async()=>{
   const fetcher=function(this:unknown,url:RequestInfo|URL){
     assert.equal(this,undefined);

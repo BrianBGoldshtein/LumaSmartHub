@@ -1,4 +1,5 @@
 import type { Snapshot } from "./types";
+import {announceAdminNeeded} from './adminState';
 
 export async function fetchSnapshot(): Promise<Snapshot> {
   const response = await fetch("/api/v1/state");
@@ -12,8 +13,9 @@ export async function sendCommand(name: string, value?: unknown): Promise<Snapsh
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, value, source: "touchscreen" }),
   });
-  if (!response.ok) throw new Error(`Command failed with ${response.status}`);
-  return (await response.json()).snapshot;
+  const data=await response.json();
+  if (!response.ok){announceAdminNeeded(data);throw new Error(typeof data.detail==='string'?data.detail:`Command failed with ${response.status}`);}
+  return data.snapshot;
 }
 
 export function watchSnapshots(onSnapshot: (snapshot: Snapshot) => void, onDisconnect?: () => void, onAction?: (action: {name:string;page?:Snapshot["state"]["active_page"];overlay?:string})=>void): () => void {

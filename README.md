@@ -13,18 +13,14 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.2.10 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.10).
+Latest: [Luma 0.2.11 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.11).
 On an existing Luma Pi, use **Settings → Luma software → Check for updates**;
-do not reflash its SD card. This release fixes accessible Google renewal,
-Bluetooth retry interference and Pong reflection; voice/wake assets are unchanged.
-After reboot, reconnect Google if requested and retain the working phone bond.
-[Release notes and owner checks](SD%20Card/docs/V0210_RELEASE_NOTES.md) describe what remains to verify.
-
-In qualification: **0.2.11 Beta**, focused on fresh dashboard/Google recovery,
-warm sentence-streamed Kristin output and truthful playback timing. It is not
-ready to install until its signed release is published.
+do not reflash its SD card. This release adds fresh dashboard/Google recovery,
+warm sentence-streamed Kristin output and truthful playback timing. It restarts
+application services, not the operating system. Saved settings, Google links,
+game state and the working phone bond are retained; voice/wake assets are unchanged.
 [0.2.11 changes and checks](SD%20Card/docs/V0211_RELEASE_NOTES.md).
-After that publication, the next development target is **0.3.0**, a secure,
+The next development target is **0.3.0**, a secure,
 phone-specific iPhone preview/settings remote with Bluetooth-gated synchronization.
 
 ## What it does

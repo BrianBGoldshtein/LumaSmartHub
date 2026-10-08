@@ -1,6 +1,6 @@
 # 0.2.11 working checkpoint — October 8, 2026
 
-Status: 0.2.11 source in release preparation, not signed or published. Owner's Pi is on 0.2.10. Do not tell the owner to update yet.
+Status: **0.2.11 Beta is signed and published** on the normal GitHub channel. Owner's last reported Pi version is 0.2.10. Install through Settings → Luma software → Check for updates → review 0.2.11 Beta → Install; no SD flash or account/bond reset.
 
 ## Owner-confirmed defect and recovery
 
@@ -30,14 +30,22 @@ Wake/command verification, pairing/ANCS privacy, Tetris/Pong/game state, Google 
 
 Source changes and regression tests pass in the isolated Linux lab `/home/luma-build/luma-0211-verify.Us8bYwEg`: **34 targeted backend tests** (cache serving, Google OAuth, core API; 5 dependency warnings), **173 complete frontend tests**, and TypeScript/production build. The existing >500 kB frontend chunk warning remains. New tests cover HTML routes/cache policy, refreshed release HTML with settings preserved, unchanged assets/API routing, and refresh URL preservation/replacement. Existing rejected-grant Google tests remain applicable. These are source/build checks, not on-device browser acceptance or signed release qualification. An initial lab-copy attempt copied the ignored Windows venv; its specific copy process was stopped, and the successful run used source-only copies plus the existing Linux runtime. No Pi state was accessed or changed by these tests.
 
-Before publishing: run backend/frontend suites and production build, qualify the signed application update and rollback against the correct installed base, verify CI at the accepted commit, and publish a new immutable signed 0.2.11 Beta through the normal GitHub channel. Source tests are not physical Pi/browser acceptance.
+The guarded publisher completed all release gates. Source tests and native-host probes are not physical Pi/browser acceptance; the owner still needs to check output latency, audibility, Google recovery and saved state after installation.
 
 ### Latest qualification evidence
 
-- Full isolated Linux run completed: **1,557 backend tests** (26 dependency/intentional archive warnings, 73.67s), **173 frontend tests**, successful TypeScript/production build. A subsequently added first-frame partial-write regression and bounded speaking-phase call still require the final rerun/publisher check; do not reuse this total as final accepted-commit evidence.
+- Final guarded publisher passed **1,558 backend tests** (26 dependency/intentional archive warnings), **173 frontend tests**, **43 packaging tests**, and TypeScript/production build, including the first-frame partial-write regression and bounded speaking-phase call. Existing frontend chunk warning remains.
 - Actual pinned Kristin model extracted from the signature-verified 0.2.4 voice package, using real native-host Piper 1.8.0, passes streaming requests, repeated worker reuse, and legacy WAV installer smoke. Native host measurements: startup including silent warm-up 1,110.7ms; short replies first PCM 66.1/78.8ms; three-sentence reply first PCM 48.8ms versus total generation 167.7ms. These are **not Raspberry Pi latency or speaker audibility results**. Probe/report: `source/tools/probe-voice-output.py`, lab `real-piper-streaming.json`.
 - Real pipe/player process test requires first PCM submission before the simulated worker can generate its next sentence; tests cover invalid audio, bounded framing, no duplicate fallback, phase order and numeric-only timing validation. An initial targeted run correctly caught an outdated keep-worker test for interrupted streams; it now distinguishes pre-synthesis route failure from unread stream tails. A transient test-file indentation error was fixed before the successful rerun (119 targeted tests at that point).
 - Disposable headless Chromium with a synthetic, loopback-only API verifies Google reconnect despite rejected calendars, themed initial-error recovery and fresh-page reload in all three themes. It also verifies successful reviewed updates navigate to the installed-version URL, while failed updates do not. No real Google consent, updater installation, owner browser or Pi state was accessed. Fixture/report: `backend/tests/google_recovery_preview.py`, `frontend/qa/google-recovery.mjs`, lab `browser-google-checks.json`.
+
+### Publication evidence
+
+- Accepted source: **68ca52aea57997fef83f8ea7368751c43f989963**, immutable tag `v0.2.11`; [exact-commit CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37758800298) succeeded.
+- [Published release](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.11) has a Beta headline and stable/main metadata required by the deployed updater.
+- Offline-signed archive `luma-update-0.2.11.lup`: **1,305,560 bytes**, **31 payload files**, SHA-256 **e2f16250ef624c9df4e7ab2b921c387b84843ccaaa0d673e90c8836950fa9cb4**. Signed source digest **3030496936a537df4640fe10022cc38b48b5e8ad96a99e6f38e960e5c612f560**.
+- Exact signed archive passed switch/health-success and failed-health rollback against 0.2.10. The production `latest_release('0.2.10')` downloaded GitHub's asset, verified metadata/checksum/signature/payload, and matched the qualified bytes exactly after publication.
+- Schema 1 and dependency fingerprint remain unchanged; voice 0.2.4 and wake 0.2.9 pins remain. Private signing key was not sent to GitHub. Publisher log: `/home/luma-build/luma-0211-release-20261008/publish-log.txt`.
 
 ## Next release, only after 0.2.11 publication
 

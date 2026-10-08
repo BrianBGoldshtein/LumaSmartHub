@@ -1,10 +1,12 @@
 # Luma development status — 2026-10-08
 
-## Next Beta — 0.2.11 in qualification, not published
+## Current Beta — 0.2.11 published
 
-Owner is running 0.2.10 and successfully renewed Google via a fresh-window recovery. The 0.2.11 candidate adds uncached/versioned dashboard navigation, themed Google recovery with bounded requests, preloaded/CPU-bounded Kristin sentence streaming, truthful thinking/playback phases, and numeric-only voice output timings. Full source tests, a real pinned-model probe and disposable browser checks are tracked in [V0211_WORKING_NOTES.md](docs/V0211_WORKING_NOTES.md). Signed switch/rollback and exact-commit CI/publication are still pending; do not update yet. No OS reflash, account reset or bond changes are required. This app updater restarts application services, not the operating system; older documentation that promised automatic reboot was incorrect.
+Owner is running 0.2.10 and successfully renewed Google via a fresh-window recovery. [0.2.11 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.11), adding uncached/versioned dashboard navigation, themed Google recovery with bounded requests, preloaded/CPU-bounded Kristin sentence streaming, truthful thinking/playback phases, and numeric-only voice output timings. Exact source commit **68ca52aea57997fef83f8ea7368751c43f989963** passed CI and the guarded publisher: **1,558 backend / 173 frontend / 43 packaging tests**, production build, signed install/switch and health-failure rollback from 0.2.10. The production GitHub fetcher verified the downloaded signature and byte-for-byte equality with the qualified archive. Artifact: **1,305,560 bytes**, SHA-256 **e2f16250ef624c9df4e7ab2b921c387b84843ccaaa0d673e90c8836950fa9cb4**. Full evidence and remaining owner checks are in [V0211_WORKING_NOTES.md](docs/V0211_WORKING_NOTES.md). No OS reflash, account reset or bond changes are required. This app updater restarts application services, not the operating system; older documentation that promised automatic reboot was incorrect.
 
-After 0.2.11 is published, plan and develop the owner's minimal themed iPhone remote/preview companion for 0.3.0. Require phone-specific PIN-controlled enrollment/revocation and Bluetooth-gated private synchronization. The expanded goal is not complete when 0.2.11 alone ships.
+Install through Settings → Luma software → Check for updates → review **0.2.11 Beta** → Install. Keep power connected. Check output latency/audibility, Google recovery and saved settings on the actual Pi; native-host timing is not Pi evidence. An older loaded 0.2.10 page may need the documented fresh-URL recovery once during migration.
+
+Next: plan and develop the owner's minimal themed iPhone remote/preview companion for 0.3.0. Require phone-specific PIN-controlled enrollment/revocation and Bluetooth-gated private synchronization. The expanded goal is not complete when 0.2.11 alone ships.
 
 ## Current Beta — 0.2.10 published
 

@@ -13,11 +13,12 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.2.9 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.9).
+Latest: [Luma 0.2.10 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.10).
 On an existing Luma Pi, use **Settings → Luma software → Check for updates**;
-do not reflash its SD card. After the automatic reboot, allow the signed wake
-model to prepare in Settings → Voice before testing. [Release notes and owner
-checks](SD%20Card/docs/V029_RELEASE_NOTES.md) describe what remains to verify.
+do not reflash its SD card. This release fixes accessible Google renewal,
+Bluetooth retry interference and Pong reflection; voice/wake assets are unchanged.
+After reboot, reconnect Google if requested and retain the working phone bond.
+[Release notes and owner checks](SD%20Card/docs/V0210_RELEASE_NOTES.md) describe what remains to verify.
 
 ## What it does
 
@@ -140,11 +141,12 @@ Early [r12](SD%20Card/image/r12-current-916b5d7-20260930/README.md) and r13
 commissioning found platform issues in Connect, USB and microphone setup;
 their image reports remain historical, not the current software version.
 The owner has since confirmed speech and Pi Connect after a full reboot.
-Wake false triggers/misses and automatic iPhone reconnect still need acceptance
-of the new 0.2.9 corrections. Its final checks passed 1,506 backend, 157
-frontend and 43 image/recovery/packaging tests, production build, signed app
-switch/rollback and ARM64-emulated keyword installation. The published GitHub
-assets were fetched and signature/checksum-verified through production code.
+The owner's automatic iPhone-return test now works after an explicitly confirmed
+fresh Bluetooth pairing; long-term/reboot/range acceptance remains. The 0.2.10
+final checks passed 1,533 backend, 170 frontend and 43 image/recovery/packaging
+tests, production build and signed app switch/rollback from the 0.2.9 contract.
+The published GitHub archive was fetched through the production updater and
+signature/checksum-verified as identical to the qualified local bytes.
 These are software/package proofs, not actual microphone/radio/thermal results.
 See [`SD Card/CURRENT_STATUS.md`](SD%20Card/CURRENT_STATUS.md) for the latest
 artifact and owner acceptance state. Historical image qualification flags must
@@ -153,7 +155,7 @@ not be upgraded merely because a software suite or emulator passes.
 The device checks signed releases targeted to `main`, not raw branch files;
 the private signing key stays on the Linux build machine and outside GitHub.
 The owner has approved `main` for explicitly labeled beta releases. The
-installed Pi's last reported version is 0.2.8; 0.2.9 follows the same signed
+installed Pi's last reported version is 0.2.9; 0.2.10 follows the same signed
 GitHub updater path and preserves its dependency and saved-data contracts. Hardware
 acceptance and v1 publication remain separate decisions.
 In-place update scope, release publishing, verification, rollback and recovery are documented in

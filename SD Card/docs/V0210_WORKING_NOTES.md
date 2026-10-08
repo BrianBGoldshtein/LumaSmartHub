@@ -1,6 +1,19 @@
 # 0.2.10 working checkpoint — 2026-10-08
 
-Not published or installed. Owner runs 0.2.9; Pi Connect is available, but this laptop's computer/browser-use runtime fails before initialization. User authorized either a Connect fix or signed GitHub recovery update, then explicitly requested Bluetooth troubleshooting/fixes and Pong reflection in the same 0.2.10. Owner now confirms the one-time fresh pairing test **works** after the encrypted-link failure was isolated. This supports proceeding with release qualification; it does not establish long-term reconnect reliability or hardware acceptance of the new application.
+**Published, not yet owner-installed:** [Luma 0.2.10 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.10). Owner runs 0.2.9; Pi Connect is available, but this laptop's computer/browser-use runtime fails before initialization. Owner confirms the one-time fresh pairing test **works** after the encrypted-link failure was isolated. This does not establish long-term reconnect reliability or hardware acceptance of the new application. Historical investigation notes below retain their original stage-specific claims; this publication record supersedes them.
+
+## Published artifact and completion audit
+
+- Accepted/tagged commit: **47385899fb704ea646fe152f5740a6a07de2e6ae**, exact [CI run 37749102730](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37749102730) completed successfully, including Linux-only backend integration tests, full frontend/build and image/recovery packaging.
+- Final publisher reran **1,533 backend tests** (26 dependency/intentional malformed-archive warnings, 55.21s), **170 frontend tests**, production build and **43 packaging tests** (0.56s). Existing >500kB chunk warning remains.
+- Offline-signed asset: `luma-update-0.2.10.lup`, **1,301,437 bytes**, **31 payload files**, SHA-256 **6bfdddd75148e5195057c310a14dbd6e7b07ba92fc2cbc2a7f178cbf75352b30**. Local artifact/logs: `/home/luma-build/luma-0210-release-20261008/`. Signing key stayed outside checkout/CI/GitHub; only the public verifier key enters the appliance.
+- Exact signed archive passed installed wheel version/command relocation/non-root readability, switch and forced-health-failure rollback from the **0.2.9 dependency/schema contract**, with durable-state marker untouched in both cases. This is disposable Linux qualification, not a physical Pi update/systemd test.
+- Production `latest_release('0.2.9')` fetched GitHub metadata and asset using its normal HTTPS restrictions, verified size/checksum/signature/payload and returned **available 0.2.10**. Downloaded bytes exactly equal the locally qualified archive. GitHub release is not draft/prerelease, targets **main**, and title is **Luma 0.2.10 Beta**. Annotated tag peels to the accepted CI commit.
+- Runtime dependency fingerprint remains **986f6f0a0f2eaa86c4bfd4b59ee98b564f6177920a70d79c7fa9808da50e83ba**, storage schema **1**. Keyword sidecar remains **v0.2.9**; speech/wake assets are not regenerated. App-only boundary still excludes OS units/config, credentials and user data.
+- Requirements delivered: accessible Google reauthorization after failed catalog; no incomplete selections overwrite; structured renewal vs transient errors and real SDK regressions; Bluetooth terminal-rejection cleanup no longer cancels another request; own timeout/manual-link/bond/privacy regressions; physically reflected Pong contacts with pace/checkpoints/themes retained and sustained gameplay regressions; privacy-filtered probes and owner-confirmed scoped phone recovery documented.
+- On-device follow-up remains separate: confirm 0.2.10/settings after install, new Google consent/sync and later automatic refresh, repeated phone return/reboot/range acceptance, and physical Pong viewing. The owner-reported fresh pairing recovery on 0.2.9 is real evidence, but source tests do not prove these further outcomes. Do not reflash or forget the working phone bond.
+
+## Historical development checkpoints
 
 ## Latest release checkpoint
 

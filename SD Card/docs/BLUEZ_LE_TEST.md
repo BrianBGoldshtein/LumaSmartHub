@@ -1,5 +1,7 @@
 # Reversible BlueZ LE-preference test — 2026-10-08
 
+**Historical, already performed on the owner's Pi. Do not rerun as an update step.** The interface became available and PreferredBearer became le, but reconnect still failed. A later controller capture isolated PIN or Key Missing during encryption; the owner confirms a one-time two-sided fresh pairing recovered the automatic-return test. Keep that working bond and the configuration backup. This document records the earlier experiment and its rollback, not a universal fix or an automatic OS migration.
+
 Owner's Pi runs BlueZ 5.82 and Luma 0.2.9. The selected trusted iPhone has a dual-mode bond, LE/classic keys and an identity-resolution key, but PreferredBearer is absent. General.Experimental is unset and bluetooth.service starts `/usr/libexec/bluetooth/bluetoothd` without additional arguments. This establishes a missing interface dependency, not proof of the cause of automatic reconnect failure.
 
 The following owner-run experiment exposes BlueZ's experimental D-Bus interfaces. It does not enable KernelExperimental or Testing, disable SecureConnections, remove bonds, change the Wi-Fi connection, or bypass authorized ANCS. Existing Luma code already requests PreferredBearer=le when it is exposed. Bluetooth restart briefly disconnects devices. Pi Connect over Wi-Fi should remain available, but no remote-access guarantee is implied.

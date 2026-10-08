@@ -1,5 +1,15 @@
 # Luma development status — 2026-10-08
 
+## Current Beta — 0.2.10 published
+
+[Luma 0.2.10 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.10) is published on the signed-main update channel from commit **47385899fb704ea646fe152f5740a6a07de2e6ae**. [Exact-commit CI succeeded](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37749102730). The final guarded publisher passed **1,533 backend / 170 frontend / 43 image/recovery/packaging tests**, production build and exact signed install/switch/health-failure rollback from the 0.2.9 contract. Luma's production updater then downloaded GitHub's archive, verified its signature/checksum/payload and confirmed byte-for-byte equality with the qualified archive.
+
+Asset: `luma-update-0.2.10.lup`, **1,301,437 bytes**, SHA-256 **6bfdddd75148e5195057c310a14dbd6e7b07ba92fc2cbc2a7f178cbf75352b30**. Dependency fingerprint and schema 1 remain unchanged; voice/wake sidecars remain pinned to their existing releases. No private signing key was uploaded, no OS config or bond is silently reset, and no SD flash is required.
+
+Use Settings → Luma software → Check for updates → review **0.2.10 Beta** → Install; keep power and internet connected through reboot. Reconnect Google once if renewal is requested. Retain the new phone bond: the owner confirms the scoped fresh-pairing recovery works on 0.2.9. Remaining on-device checks: 0.2.10 version/settings preservation, successful fresh Google consent/sync and later token refresh, repeated automatic phone return after reboot/range changes, and Pong viewing. [Release notes](docs/V0210_RELEASE_NOTES.md) and [full qualification evidence](docs/V0210_WORKING_NOTES.md). Source tests do not establish new microphone/radio/visual acceptance.
+
+## Historical pre-publication checkpoints (superseded above)
+
 Latest source qualification: **1,533 backend / 170 frontend tests pass**, with the production UI build successful. Scope: accessible expired-Google recovery and classified renewal status, non-interference with other Bluetooth requests, physically reflected Pong contacts, and privacy-filtered recovery documentation/tools. Owner confirms fresh pairing fixed the observed automatic-return test on 0.2.9. Exact-commit CI and offline-signed 0.2.9→0.2.10 install/rollback qualification precede publication. Do not claim a published asset or new on-Pi Google/Pong acceptance yet.
 
 Release gate update: owner reports **Works!** after the scoped fresh Bluetooth pairing/automatic-return test. Do not erase or re-pair that working bond again. 0.2.10 also now distinguishes rejected Google authorization from temporary sync failure and keeps Reconnect Google available without overwriting cached events or saved selections. **39 targeted Google tests pass**; full latest-source tests, exact-main CI and signed update/rollback qualification are next. No GitHub 0.2.10 release is published yet.

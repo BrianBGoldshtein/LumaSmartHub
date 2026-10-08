@@ -127,10 +127,7 @@ class GoogleCalendarClient:
             raise ValueError("Google sign-in expired or did not match. Start sign-in again.") from None
         # Claim exactly this pending attempt once, even across separate clients.
         # Failed exchange requires a fresh consent attempt; existing tokens stay.
-        with self.storage.transaction() as connection:
-            consumed = connection.execute("DELETE FROM secrets WHERE key = ? AND payload = ?",
-                                          (OAUTH_STATE_KEY, encoded)).rowcount
-        if consumed != 1:
+        if not self.storage.consume_secret(OAUTH_STATE_KEY, encoded):
             raise ValueError("Google sign-in was already handled. Start sign-in again.")
         flow = Flow.from_client_config(config, scopes=scopes, state=state,
                                       code_verifier=verifier, autogenerate_code_verifier=False)

@@ -121,6 +121,7 @@ def test_remote_scene_is_rejected_until_separately_allowlisted_then_acknowledged
 
 
 def test_briefing_respects_actual_presence_and_its_expiry(hub):
+    from synthetic_presence import authorize_primary
     app, client, headers = hub
     service = app.state.luma
     now = datetime.now(UTC)
@@ -133,7 +134,7 @@ def test_briefing_respects_actual_presence_and_its_expiry(hub):
         return response.json()["message"]
     assert "Private appointment" not in briefing()
     assert not service.state.phone_connected
-    service.phone_seen(now)
+    authorize_primary(service, now)
     assert "Private appointment" in briefing()
     service.phone_seen(now - timedelta(minutes=5))
     service.phone_disconnected(now - timedelta(minutes=5))

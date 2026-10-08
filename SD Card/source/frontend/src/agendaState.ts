@@ -5,7 +5,7 @@ const MINUTE=60000;
 export type PlacedEvent={event:CalendarEvent;top:number;height:number;column:number;columns:number};
 export type AgendaSection={start:number;end:number;items:PlacedEvent[];allDay:CalendarEvent[];dense:boolean};
 export const calendarColor=(event:CalendarEvent)=>/^#[0-9a-f]{6}$/i.test(event.event_color||event.calendar_color||'')?event.event_color||event.calendar_color!:'var(--accent)';
-export const eventKey=(event:CalendarEvent)=>`${event.calendar_id}:${event.id}`;
+export const eventKey=(event:CalendarEvent)=>`${event.profile_id?event.profile_id+':':''}${event.calendar_id}:${event.id}`;
 
 /** Labels on the left ruler are always whole hours, even in a close-up. */
 export function hourRulerTicks(start:number,end:number):number[]{
@@ -80,8 +80,21 @@ export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns
   // Pair it with the first populated time window, keeping its full-detail tap.
   if(allDay.length>1)sections.push({start,end,items:[],allDay,dense:allDay.length>3});
   for(const window of timeWindows(agenda.events,start,end,viewportHeight)){
-    const from=window.start,to=window.end,duration=to-from;
-    const items=agenda.events.filter(e=>!e.all_day && Date.parse(e.end)>Date.parse(e.start) && Date.parse(e.start)<to && Date.parse(e.end)>from)
+    sections.push(placeAgendaWindow(agenda.events,window.start,window.end,maxColumns));
+  }
+  if(allDay.length===1){
+    const firstPopulated=sections.find(section=>section.items.length>0);
+    if(firstPopulated)firstPopulated.allDay=[allDay[0]];
+    else sections.unshift({start,end,items:[],allDay,dense:false});
+  }
+  return sections;
+}
+
+/** Reuse one truthful interval across independent user panels. */
+export function placeAgendaWindow(events:CalendarEvent[],from:number,to:number,maxColumns=2):AgendaSection{
+    const duration=to-from;
+    if(!Number.isFinite(duration)||duration<=0)return {start:from,end:to,allDay:[],items:[],dense:false};
+    const items=events.filter(e=>!e.all_day && Date.parse(e.end)>Date.parse(e.start) && Date.parse(e.start)<to && Date.parse(e.end)>from)
       .map(event=>{
         // Never pull an event upward to make its card fit: its top edge is the
         // exact start time (or the section boundary for an ongoing event).
@@ -100,15 +113,8 @@ export function agendaSections(agenda:NonNullable<Snapshot['agenda']>,maxColumns
     finish();
     // Every adaptive interval is one complete schedule. Dense overlaps stay
     // on the same time axis, with horizontal scrolling for extra lanes.
-    sections.push({start:from,end:to,allDay:[],items,
-      dense:items.some(item=>item.columns>maxColumns)});
-  }
-  if(allDay.length===1){
-    const firstPopulated=sections.find(section=>section.items.length>0);
-    if(firstPopulated)firstPopulated.allDay=[allDay[0]];
-    else sections.unshift({start,end,items:[],allDay,dense:false});
-  }
-  return sections;
+    return {start:from,end:to,allDay:[],items,
+      dense:items.some(item=>item.columns>maxColumns)};
 }
 
 /** Automatic rotation skips past appointments and empty time windows. */

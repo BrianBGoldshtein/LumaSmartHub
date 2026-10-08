@@ -382,6 +382,7 @@ def test_mute_cancels_calibration_and_rejects_late_voice_actions(tmp_path):
 
 
 def test_voice_morning_never_discloses_private_calendar(tmp_path):
+    from synthetic_presence import authorize_primary
     app = create_app(data_dir=tmp_path)
     now = datetime.now(UTC)
     app.state.luma.update_settings({"visible_calendar_ids": ["primary"]})
@@ -390,6 +391,6 @@ def test_voice_morning_never_discloses_private_calendar(tmp_path):
     reply = client.post("/api/v1/voice/command", json={"text": "good morning"}).json()["message"]
     assert "Secret meeting" not in reply
     assert "private" in reply
-    app.state.luma.phone_seen()
+    authorize_primary(app.state.luma)
     reply = client.post("/api/v1/voice/command", json={"text": "good morning"}).json()["message"]
     assert "Secret meeting" in reply

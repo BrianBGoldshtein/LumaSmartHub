@@ -30,10 +30,13 @@ from .room_api import install_room_api
 from .scene_api import install_scene_api
 from .backup_api import install_backup_api
 from .update_api import install_update_api
-from .bluetooth_runtime import BluetoothRuntime
+from .multi_bluetooth import MultiPhoneBluetooth
+from .profiles import ProfileRepository
+from .profile_calendars import ProfileCalendars
 from .security import SecurityManager
 from .service import LumaService
 from .storage import Storage
+from .serde import to_primitive
 from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
@@ -393,7 +396,18 @@ def create_app(
     service.todo_write_authorized = google.task_write_authorized()
     weather_client = OpenMeteoClient()
     weather = WeatherRuntime(service, weather_client)
-    bluetooth = BluetoothRuntime(service)
+    profiles = ProfileRepository(storage)
+    bluetooth = MultiPhoneBluetooth(service, profiles)
+    def primary_calendar_changed(events, now):
+        service.calendar_synced_at = now
+        service.calendar_sync_error = False
+        service.todo_write_authorized = google.task_write_authorized()
+        service.replace_events(events, now)
+    profile_calendars = ProfileCalendars(profiles, bluetooth.companion_presence,
+        publish=service.publish, primary_changed=primary_calendar_changed)
+    primary_account = profile_calendars.account('primary')
+    primary_account.google = google  # Preserve the legacy client's public hooks.
+    service.attach_users(profiles, bluetooth, profile_calendars)
     calibration = VoiceCalibration()
     call_trial = VoiceCallTrial()
     speaker_trial = SpeakerTrial()
@@ -443,9 +457,8 @@ def create_app(
         elif event['kind'] == 'tone':
             voice_output_status.update(last_tone_error=event['error'],
                                        last_tone_route=event['route'])
-    google_sync_lock = asyncio.Lock()
-    google_status: dict[str, Any] = {"last_synced": None, "error": None,
-                                   "error_kind": None, "reconnect_required": False}
+    google_sync_lock = primary_account.lock
+    google_status = primary_account.status
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
     portal_request: dict[str, Any] = {"id": None, "expires": 0}
     keyboard_request: dict[str, Any] = {"id": None, "expires": 0, "visible": False}
@@ -469,36 +482,15 @@ def create_app(
         return google_status["error"]
 
     async def sync_google() -> dict[str, Any]:
-        async with google_sync_lock:
-            if not google.authorized():
-                raise ValueError("Connect Google Calendar first")
-            settings = service.settings
-            departure_ids = settings.departure_calendar_ids if settings.departure_enabled else []
-            ids = list(dict.fromkeys(settings.visible_calendar_ids + settings.sleep_calendar_ids + departure_ids + ([settings.todo_calendar_id] if settings.todo_calendar_id else [])))
-            if not ids:
-                service.replace_events([])
-                return {"count": 0}
-            now = datetime.now(UTC)
-            try:
-                fetched = await asyncio.to_thread(google.fetch_events, ids, now - timedelta(days=7), now + timedelta(days=7), settings.timezone)
-            except Exception as error:
-                google_failed(error)
-                service.calendar_sync_error = True
-                service.publish('calendar.stale')
-                raise
-            service.calendar_synced_at = now
-            service.calendar_sync_error = False
-            service.replace_events(fetched)
-            google_status.update(last_synced=now.isoformat(), error=None,
-                                 error_kind=None, reconnect_required=False)
-            return {"count": len(fetched)}
+        try:
+            return await profile_calendars.sync('primary')
+        except Exception:
+            service.calendar_sync_error = True
+            service.publish('calendar.stale')
+            raise
 
     async def calendar_worker() -> None:
-        while True:
-            if google.authorized():
-                with suppress(Exception):
-                    await sync_google()
-            await asyncio.sleep(300)
+        await profile_calendars.worker()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -583,6 +575,8 @@ def create_app(
     app.state.luma = service
     app.state.security = security
     app.state.google = google
+    app.state.profiles = profiles
+    app.state.profile_calendars = profile_calendars
     app.state.weather = weather
     app.state.network = network
     app.state.pairing = pairing
@@ -1743,7 +1737,7 @@ def create_app(
             remote_guard(request)
             from .calendar_logic import todo_events
             now = datetime.now(UTC)
-            if service.snapshot(now)['privacy_redacted']:
+            if not service.primary_private_visible(now):
                 raise HTTPException(403, 'Unlock private information before changing a task.')
             settings = service.settings
             if payload.calendar_id != settings.todo_calendar_id or not settings.todo_completed_color_id:
@@ -1803,7 +1797,7 @@ def create_app(
 
     @app.get("/api/v1/settings", dependencies=[secured])
     async def get_settings() -> dict[str, Any]:
-        return service.snapshot()["settings"]
+        return to_primitive(service.settings)
 
     @app.patch("/api/v1/settings", dependencies=[secured])
     async def patch_settings(patch: SettingsPatch, request: Request) -> dict[str, Any]:
@@ -1898,7 +1892,7 @@ def create_app(
     @app.post('/api/v1/device/timer-chime', dependencies=[Depends(local_only)])
     async def timer_chime():
         service.timer_tick()
-        return JSONResponse({'play': service.timer.claim_chime(muted=service.timer_muted())},
+        return JSONResponse({'play': service.claim_timer_chime()},
                             headers={'Cache-Control':'no-store'})
 
     @app.post('/api/v1/device/notification-chime', dependencies=[Depends(local_only)])

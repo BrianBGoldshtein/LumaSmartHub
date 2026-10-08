@@ -104,12 +104,23 @@ class Storage:
         now = datetime.now(UTC).isoformat()
         payload = json.dumps(to_primitive(settings), separators=(",", ":"), sort_keys=True)
         with self.transaction() as connection:
+            # Once profiles exist, legacy primary-only routes cannot select a
+            # secondary user's bond or leave v2 primary browser grants alive.
+            from .profiles import ProfileRepository, ProfileError, REGISTRY_KEY, PRIMARY_ID, phone_address
+            registry = connection.execute("SELECT value FROM metadata WHERE key=?", (REGISTRY_KEY,)).fetchone()
+            if registry:
+                users = ProfileRepository._read(connection)
+                address = phone_address(settings.phone_address)
+                if address and any(row["id"] != PRIMARY_ID and row["phone_address"] == address for row in users):
+                    raise ProfileError("That phone is already registered to another user.")
             old = connection.execute("SELECT payload FROM settings WHERE id=1").fetchone()
             if old and json.loads(old["payload"]).get("phone_address") != settings.phone_address:
                 # Selecting/forgetting another bond must not resurrect grants
                 # when the previous phone is later selected again.
                 connection.execute("DELETE FROM secrets WHERE key IN (?, ?)",
                                    ("companion_browser_grants_v1", "companion_google_oauth_state_v1"))
+                if registry:
+                    ProfileRepository._revoke(connection, PRIMARY_ID)
             connection.execute(
                 "UPDATE settings SET payload = ?, updated_at = ? WHERE id = 1",
                 (payload, now),
@@ -172,6 +183,11 @@ class Storage:
             row = connection.execute("SELECT payload FROM secrets WHERE key = ?", (key,)).fetchone()
         return None if row is None else str(row["payload"])
 
+    def consume_secret(self, key: str, expected: str) -> bool:
+        """Claim an exact OAuth record atomically, also on scoped account storage."""
+        with self.transaction() as connection:
+            return connection.execute("DELETE FROM secrets WHERE key=? AND payload=?", (key, expected)).rowcount == 1
+
     def backup(self, destination: str | Path) -> Path:
         destination_path = Path(destination)
         if destination_path.resolve() == self.path.resolve():
@@ -222,8 +238,11 @@ class Storage:
             try:
                 with closing(sqlite3.connect(prepared_path)) as prepared:
                     test.backup(prepared)
-                    prepared.execute("DELETE FROM secrets WHERE key IN (?, ?)",
-                                     ("companion_browser_grants_v1", "companion_google_oauth_state_v1"))
+                    prepared.execute("DELETE FROM secrets WHERE key IN (?, ?, ?)",
+                                     ("companion_browser_grants_v1", "companion_google_oauth_state_v1", "companion_browser_grants_v2"))
+                    # A copied pending consent must not revive after restoring
+                    # a multi-user backup. Saved Google grants remain intact.
+                    prepared.execute("DELETE FROM secrets WHERE key LIKE 'profile:%:google_oauth_state'")
                     prepared.commit()
                     # SQLite backup handles the live destination WAL.
                     with closing(self.connect()) as destination:

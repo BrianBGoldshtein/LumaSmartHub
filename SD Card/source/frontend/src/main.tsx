@@ -25,6 +25,7 @@ import {NightDisplay,useDisplayFilter} from './NightDisplay';
 import {previewDisplay} from './displayState';
 import {CountdownsPage} from './CountdownsPage';
 import {AgendaPage} from './AgendaPage';
+import {UserPanels} from './UserPanels';
 import {TransitPage} from './TransitPage';
 import {visibleTransit,disconnectedTransit,transitCycle,sampleTransit,transitStress} from './transitState';
 import {agendaDemo} from './agendaState';
@@ -64,6 +65,16 @@ function initialDemoSnapshot(): Snapshot {
   };
   result.agenda=privateMode?null:agendaDemo(result.calendar,['packed','crowded','short'].includes(demoParameters.get('fixture')||''),demoParameters.get('fixture')==='crowded',demoParameters.get('fixture')==='short',demoParameters.get('fixture')==='long');
   if(['packed','crowded','short'].includes(demoParameters.get('fixture')||''))result.calendar=result.agenda?.events.filter(event=>Date.parse(event.end)>Date.now())||[];
+  const userCount=Number(demoParameters.get('users'));
+  if(!privateMode&&Number.isInteger(userCount)&&userCount>=1&&userCount<=5){
+    result.users=Array.from({length:userCount},(_,i)=>({profile_id:i===0?'primary':`demo-${i}`,nickname:['Brian','Alex','Sam','Casey','Robin'][i],role:i===0?'primary' as const:'secondary' as const}));
+    result.user_panels=result.users.map((user,i)=>{
+      const shift=i*5*60000;
+      const calendar=result.calendar.map(event=>({...event,profile_id:user.profile_id,start:new Date(Date.parse(event.start)+shift).toISOString(),end:new Date(Date.parse(event.end)+shift).toISOString()}));
+      const agenda=agendaDemo(calendar);
+      return {...user,configured:true,calendar,agenda,ongoing:[],todos:result.todos.map(task=>({...task,profile_id:user.profile_id})),todo_controls:{can_update:false,stale:false},google:{authorized:true,last_synced:result.server_time,error:null,reconnect_required:false}};
+    });
+  }
   return result;
 }
 
@@ -111,8 +122,9 @@ function StatusBar({ snapshot, page, onTimer }: { snapshot: Snapshot; page: Page
       <div className="status-items">
         <NetworkNotice demo={demoMode} theme={snapshot.settings.theme}/>
         {snapshot.privacy_redacted && <span className="privacy-chip">Private</span>}
-        <span className={`phone-dot ${snapshot.state.phone_connected ? "online" : ""}`} />
-        {snapshot.timer && snapshot.timer.status!=='idle' && page!=='ambient'?<TimerBadge timer={snapshot.timer} onOpen={onTimer}/>:<span className="status-copy">{demoMode ? "Preview" : snapshot.state.phone_connected ? "Connected" : "Standby"}</span>}
+        <span className={`phone-dot ${snapshot.users?.length||snapshot.state.phone_connected ? "online" : ""}`} />
+        {!!snapshot.users?.length&&<div className="user-roster" aria-label="Connected users">{snapshot.users.map(user=><span key={user.profile_id}>{user.nickname}</span>)}</div>}
+        {snapshot.timer && snapshot.timer.status!=='idle' && page!=='ambient'?<TimerBadge timer={snapshot.timer} onOpen={onTimer}/>:!snapshot.users?.length&&<span className="status-copy">{demoMode ? "Preview" : snapshot.state.phone_connected ? "Connected" : "Standby"}</span>}
       </div>
     </header>
   );
@@ -190,7 +202,7 @@ function HomePage({ snapshot }: { snapshot: Snapshot }) {
     <main className="page home-page">
       <section className="hero card"><Clock snapshot={snapshot} large /></section>
       <WeatherCard weather={snapshot.weather} compact />
-      <AgendaCard events={snapshot.calendar} limit={3} timezone={snapshot.settings.timezone} />
+      {snapshot.user_panels?.length?<UserPanels snapshot={snapshot} mode="home"/>:<AgendaCard events={snapshot.calendar} limit={3} timezone={snapshot.settings.timezone} />}
     </main>
   );
 }
@@ -278,7 +290,7 @@ function App() {
     fetchSnapshot().then(receive).catch(() => setError("Waiting for the local service."));
     return watchSnapshots(receive, ()=>{
       // A lost control connection must never leave private events on the wall.
-      setSnapshot(current=>current ? {...current,room:null,agenda:null,transit:disconnectedTransit(current.transit),countdowns:disconnectedDates(current.countdowns),display:current.display && current.display.mode!=='day'?{...current.display,mode:'off',brightness:0,ramp:null,handoff:{...current.display.handoff,revision:null,needs_frame:false}}:current.display,privacy_redacted:true,departure:null,calendar:[],ongoing:[],todos:[],notifications:[],weather:current.weather?{...current.weather,stale:true,nudge:null}:null,state:{...current.state,phone_connected:false}} : null);
+      setSnapshot(current=>current ? {...current,room:null,agenda:null,users:[],user_panels:[],personal_timers:current.personal_timers?.map(timer=>({...timer,label:'Timer',owner_present:false})),transit:disconnectedTransit(current.transit),countdowns:disconnectedDates(current.countdowns),display:current.display && current.display.mode!=='day'?{...current.display,mode:'off',brightness:0,ramp:null,handoff:{...current.display.handoff,revision:null,needs_frame:false}}:current.display,privacy_redacted:true,departure:null,calendar:[],ongoing:[],todos:[],notifications:[],weather:current.weather?{...current.weather,stale:true,nudge:null}:null,state:{...current.state,phone_connected:false}} : null);
     }, action=>{
       if(action.overlay) setOverlay(action.overlay==='timer'?'timer':'controls');
       if(action.page && ["show_page","next_page","previous_page","good_morning"].includes(action.name)) setPage(action.name === "good_morning" ? "home" : action.page);
@@ -309,9 +321,9 @@ function App() {
       const safePage=standbyPage(page);
       return safePage==='weather'?<WeatherPage snapshot={snapshot}/>:safePage==='ambient'?<AmbientPage snapshot={snapshot}/>:<PrivacyStandby snapshot={snapshot}/>;
     }
-    if (page === "agenda") return <AgendaPage snapshot={snapshot} onInteraction={()=>setCalendarHoldUntil(Date.now()+60000)}/>;
+    if (page === "agenda") return snapshot.user_panels?.length?<UserPanels snapshot={snapshot} mode="agenda" onInteraction={()=>setCalendarHoldUntil(Date.now()+60000)}/>:<AgendaPage snapshot={snapshot} onInteraction={()=>setCalendarHoldUntil(Date.now()+60000)}/>;
     if (page === "weather") return <WeatherPage snapshot={snapshot} />;
-    if (page === "todos") return <TodosPage snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot}/>;
+    if (page === "todos") return snapshot.user_panels?.length?<UserPanels snapshot={snapshot} mode="todos"/>:<TodosPage snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot}/>;
     if (page === "ambient") return <AmbientPage snapshot={snapshot} />;
     return <HomePage snapshot={snapshot} />;
   }, [snapshot, page]);

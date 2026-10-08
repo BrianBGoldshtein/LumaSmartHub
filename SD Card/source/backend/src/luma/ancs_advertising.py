@@ -38,19 +38,21 @@ class ANCSSolicitation(ServiceInterface):
         self.released = True
 
 
-def reconnect_adapter(objects: dict, address: str) -> str | None:
-    """Only solicit while the selected trusted bond exists and is absent."""
-    if not address:
+def reconnect_adapter(objects: dict, address: str | tuple[str, ...]) -> str | None:
+    """One advertisement while any registered trusted bond is absent."""
+    addresses = (address,) if isinstance(address, str) else address
+    if not addresses:
         return None
+    wanted = {item.casefold() for item in addresses if isinstance(item, str) and item}
     for obj in objects.values():
         device = obj.get('org.bluez.Device1', {})
         values = {key: value.value for key, value in device.items()}
-        if values.get('Address', '').casefold() != address.casefold():
+        if values.get('Address', '').casefold() not in wanted:
             continue
         if not all(values.get(key) is True for key in ('Paired', 'Bonded', 'Trusted')):
-            return None
+            continue
         if values.get('Connected') is True:
-            return None
+            continue
         adapter = values.get('Adapter')
         candidate = objects.get(adapter, {})
         powered = candidate.get('org.bluez.Adapter1', {}).get('Powered')

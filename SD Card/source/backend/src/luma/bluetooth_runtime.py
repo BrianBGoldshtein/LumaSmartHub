@@ -213,8 +213,9 @@ async def subscribe_ancs(source, data=None) -> bool:
 
 
 class BluetoothRuntime:
-    def __init__(self, service: LumaService):
+    def __init__(self, service: LumaService, *, coordinator=None, profile_id='primary'):
         self.service = service
+        self.coordinator, self.profile_id = coordinator, profile_id
         self.status = "Not configured"
         self.scene_presence = ScenePresence()
         self.scene_authorized = None
@@ -247,9 +248,38 @@ class BluetoothRuntime:
         self.last_service_recovery_at = datetime.now(UTC).isoformat()
         self.service_recovery_attempts += 1
         self.status = "Refreshing stalled iPhone Bluetooth services"
-        await recover_stalled_services(manager, device, device_props, phone_path,
-                                       adapter=adapter,
-                                       address_is_current=lambda: self.service.settings.phone_address == address)
+        async def recover():
+            await recover_stalled_services(manager, device, device_props, phone_path,
+                                          adapter=adapter,
+                                          address_is_current=lambda: self.service.settings.phone_address == address)
+        if self.coordinator:
+            # This appliance uses one adapter. Serialize this phone's repair
+            # with other outgoing jobs, never restart the adapter or peers.
+            await self.coordinator.perform(self.profile_id, 'hci0', recover)
+        else:
+            await recover()
+
+    async def _scan_phone(self, manager, adapter, phone_path, address, device):
+        async def connect():
+            return await connect_paired_phone(manager, device, phone_path,
+                address_is_current=lambda: self.service.settings.phone_address == address)
+        async def scan():
+            return await scan_for_paired_phone(manager, adapter, phone_path,
+                # A shared LE scan refreshes all registered phones, without
+                # inviting unpaired devices or granting RSSI-based presence.
+                phone_address=None if self.coordinator else address, connect=connect,
+                address_is_current=lambda: self.service.settings.phone_address == address)
+        if self.coordinator:
+            return await self.coordinator.perform(self.profile_id, 'hci0', scan, scan=True, connect=connect)
+        return await scan()
+
+    async def _connect_phone(self, manager, device, phone_path, address):
+        async def connect():
+            return await connect_paired_phone(manager, device, phone_path,
+                address_is_current=lambda: self.service.settings.phone_address == address)
+        if self.coordinator:
+            return await self.coordinator.perform(self.profile_id, 'hci0', connect)
+        return await connect()
 
     async def scene_presence_worker(self):
         """Independent fresh radio evidence; only sampled for enabled scenes."""
@@ -306,7 +336,7 @@ class BluetoothRuntime:
                         self.service.phone_disconnected()
             else:
                 self.status = "Not configured"
-            await pause(retry_seconds)
+            await pause(self.coordinator.failure_delay(self.profile_id) if self.coordinator and address else retry_seconds)
 
     async def session(self, address):
         from dbus_next import BusType, Variant
@@ -340,10 +370,7 @@ class BluetoothRuntime:
                             await prefer_le_bearer(device_props, properties)
                             self.last_reconnect_at = datetime.now(UTC).isoformat()
                             self.reconnect_attempts += 1
-                            scan_connected = await scan_for_paired_phone(manager, adapter, phone_path, phone_address=address,
-                                connect=lambda: connect_paired_phone(manager, device, phone_path,
-                                    address_is_current=lambda: self.service.settings.phone_address == address),
-                                address_is_current=lambda: self.service.settings.phone_address == address)
+                            scan_connected = await self._scan_phone(manager, adapter, phone_path, address, device)
                             objects = await asyncio.wait_for(manager.call_get_managed_objects(), 5)
                             properties = plain(objects.get(phone_path, {}).get('org.bluez.Device1', {}))
                             if scan_connected and not properties.get('Connected'):
@@ -367,8 +394,7 @@ class BluetoothRuntime:
                 self.status = "Reconnecting to paired iPhone"
                 self.last_reconnect_at = datetime.now(UTC).isoformat()
                 self.reconnect_attempts += 1
-                await connect_paired_phone(manager, device, phone_path,
-                    address_is_current=lambda: self.service.settings.phone_address == address)
+                await self._connect_phone(manager, device, phone_path, address)
             try:
                 objects = await wait_for_trusted_connection(manager, phone_path)
             except BluetoothStatusError as exc:
@@ -401,7 +427,7 @@ class BluetoothRuntime:
                 objects = await wait_for_trusted_connection(manager, phone_path, timeout=20)
                 objects,chars=await wait_for_ancs(manager,phone_path,initial=objects)
             source = await interface(chars[SOURCE], "org.bluez.GattCharacteristic1")
-            has_details = DATA in chars and CONTROL in chars
+            has_details = self.profile_id == 'primary' and DATA in chars and CONTROL in chars
             data = await interface(chars[DATA], "org.bluez.GattCharacteristic1") if has_details else None
             control = await interface(chars[CONTROL], "org.bluez.GattCharacteristic1") if has_details else None
             source_props = await interface(chars[SOURCE], "org.freedesktop.DBus.Properties")
@@ -443,6 +469,8 @@ class BluetoothRuntime:
                 self.service.phone_seen()
                 self.scene_authorized = (address, monotonic())
                 self.remote_authorized.heartbeat(address)
+                if self.coordinator:
+                    self.coordinator.note_authorized(self.profile_id)
                 try:
                     raw = await asyncio.wait_for(notices.get(), 5)
                 except asyncio.TimeoutError:

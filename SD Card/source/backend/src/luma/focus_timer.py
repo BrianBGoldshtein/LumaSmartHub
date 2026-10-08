@@ -19,15 +19,16 @@ def _date(value):
 
 
 class FocusTimer:
-    def __init__(self, storage, *, clock=time.monotonic):
+    def __init__(self, storage, *, clock=time.monotonic, cache_namespace='timer'):
         self.storage, self.clock = storage, clock
+        self.cache_namespace = cache_namespace
         self.trusted = False
         self.end = None
         self.chime_until = None
         self.note = ''
         self.data = {'version': 1, 'status': 'idle', 'id': None, 'label': 'Timer', 'duration': 0,
                      'remaining': 0, 'deadline': None, 'saved_at': None, 'trusted': False}
-        raw = storage.get_cache('timer', 'active')
+        raw = storage.get_cache(self.cache_namespace, 'active')
         try:
             if not raw:
                 return
@@ -64,7 +65,7 @@ class FocusTimer:
     def _save(self, now):
         self.data['remaining'] = self.remaining()
         self.data['saved_at'] = now.isoformat()
-        self.storage.set_cache('timer', 'active', dict(self.data))
+        self.storage.set_cache(self.cache_namespace, 'active', dict(self.data))
 
     def _complete(self, now, *, sound=False):
         self.end = None

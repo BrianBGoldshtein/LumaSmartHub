@@ -2,6 +2,7 @@ export type Theme = "luma-glass" | "hearth" | "neon-grid";
 export type Page = "home" | "agenda" | "weather" | "todos" | "ambient" | "countdowns" | "transit";
 
 export interface CalendarEvent {
+  profile_id?: string;
   id: string;
   calendar_id: string;
   summary: string;
@@ -74,6 +75,10 @@ export interface Settings {
 }
 
 export interface Snapshot {
+  users?: {profile_id:string;nickname:string;role:'primary'|'secondary'}[];
+  user_panels?: UserPanel[];
+  personal_timers?: (import('./timerState').TimerState & {profile_id:string;owner:string;owner_present:boolean})[];
+  primary_privacy_redacted?: boolean;
   voice_notice?: {id:number;remaining_ms:number};
   agenda?: {date:string;start:string;end:string;wake:string|null;sleep:string|null;stale:boolean;events:CalendarEvent[]}|null;
   countdowns?: import('./countdownState').CountdownView[];
@@ -99,4 +104,17 @@ export interface Snapshot {
   todos: CalendarEvent[];
   notifications: Notification[];
   privacy_redacted: boolean;
+}
+
+export interface UserPanel {
+  profile_id:string;
+  nickname:string;
+  configured:boolean;
+  calendar:CalendarEvent[];
+  ongoing:CalendarEvent[];
+  agenda:NonNullable<Snapshot['agenda']>;
+  todos:CalendarEvent[];
+  todo_controls:{can_update:boolean;stale:boolean};
+  google:{authorized:boolean;last_synced:string|null;error:string|null;reconnect_required:boolean};
+  departure?:import('./departureState').Departure|null;
 }

@@ -85,7 +85,38 @@ class LumaService:
         # or the saved settings database. No recognized speech is retained.
         self._unknown_command_until = 0.0
         self._unknown_command_id = 0
+        self.profiles = self.profile_calendars = self.user_bluetooth = self.personal_timers = None
         self._sync_sleep(datetime.now(UTC))
+
+    def attach_users(self, profiles, bluetooth, calendars):
+        """Activate account projections and actual ANCS presence as one unit.
+
+        Legacy flat fields remain primary-only for old callers. The wall uses
+        user_panels; a guest connection can never unlock flat primary data.
+        """
+        from .personal_timers import PersonalTimers
+        self.profiles, self.user_bluetooth, self.profile_calendars = profiles, bluetooth, calendars
+        self.personal_timers = PersonalTimers(profiles)
+
+    def present_user_ids(self, *, wall=False):
+        if self.user_bluetooth is None:
+            return set()
+        return self.user_bluetooth.present_ids(wall=wall)
+
+    def primary_private_visible(self, now=None, *, briefing=False):
+        now = now or datetime.now(UTC)
+        self._sync_sleep(now)
+        full = self.state.privacy == PrivacyLevel.FULL and (briefing or self.state.display_power == DisplayPower.ON) and (not self.display_state or
+            (not self.display_state['awaiting_clock'] and (briefing or self.display_state['mode'] == 'day')))
+        pin_valid = self.state.pin_unlocked_until and self.state.pin_unlocked_until > now
+        return bool(full and (self.user_bluetooth is None or pin_valid or 'primary' in self.present_user_ids(wall=True)))
+
+    def calendar_is_fresh(self, now):
+        legacy_fresh = bool(not self.calendar_sync_error and self.calendar_synced_at and
+                            timedelta(0) <= now - self.calendar_synced_at <= timedelta(minutes=10))
+        if self.profile_calendars is not None:
+            return bool(legacy_fresh and not self.profile_calendars.account('primary').status['error'])
+        return legacy_fresh
 
     @property
     def settings(self):
@@ -169,12 +200,22 @@ class LumaService:
             self.publish('display.updated')
         if self.timer.tick(now, trusted=trusted):
             self.publish('timer.updated')
+        if self.personal_timers and self.personal_timers.tick(now, trusted=trusted):
+            self.publish('user.timer.updated')
+
+    def claim_timer_chime(self):
+        muted = self.timer_muted()
+        room = self.timer.claim_chime(muted=muted)
+        personal = self.personal_timers.claim_chime(muted=muted) if self.personal_timers else False
+        return room or personal
 
     def _persist_runtime(self) -> None:
         self.storage.set_cache("runtime", "state", self.state)
 
     def replace_events(self, events: list[CalendarEvent], now: datetime | None = None) -> None:
         self.events = events
+        if self.profile_calendars is not None:
+            self.profile_calendars.account('primary').events = events
         self.storage.set_cache("calendar", "events", events)
         self._sync_sleep(now or datetime.now(UTC))
         self.publish("calendar.updated")
@@ -216,7 +257,7 @@ class LumaService:
         """Consume a new local alert once, even if muted or audio is unavailable."""
         now = now or datetime.now(UTC)
         view = self.snapshot(now)
-        audible = (not view['privacy_redacted'] and
+        audible = (self.primary_private_visible(now) and
                    view['state']['display_power'] == 'on' and
                    self.settings.notification_chime_enabled and
                    self.settings.notification_chime_volume > 0 and self.settings.volume > 0)
@@ -230,8 +271,7 @@ class LumaService:
                     return {'play': True, 'volume': self.settings.notification_chime_volume}
         # Claim the reminder even during privacy/night/zero volume so it never
         # announces an old time-to-leave warning after a reconnect or wake.
-        fresh = bool(not self.calendar_sync_error and self.calendar_synced_at and
-                     timedelta(0) <= now - self.calendar_synced_at <= timedelta(minutes=10))
+        fresh = self.calendar_is_fresh(now)
         reminder = self.departures.snapshot(self.events, self.settings, now,
                                             private=False, fresh=fresh)
         new_departure = self.departures.claim_chime(reminder, now)
@@ -298,8 +338,23 @@ class LumaService:
     def snapshot(self, now: datetime | None = None, *, briefing=False) -> dict[str, Any]:
         now = now or datetime.now(UTC)
         self._sync_sleep(now)
-        full = self.state.privacy == PrivacyLevel.FULL and (not self.display_state or
-               (not self.display_state['awaiting_clock'] and (briefing or self.display_state['mode']=='day')))
+        full = self.primary_private_visible(now, briefing=briefing)
+        present = self.present_user_ids()
+        day_visible = not self.state.forced_private and (briefing or self.state.display_power == DisplayPower.ON) and (not self.display_state or
+            (not self.display_state['awaiting_clock'] and (briefing or self.display_state['mode'] == 'day')))
+        panels = self.profile_calendars.wall_panels(now) if self.profile_calendars and day_visible else []
+        panels = [panel for panel in panels if panel['configured']]
+        any_private = full or bool(panels)
+        state_view = to_primitive(self.state)
+        if self.user_bluetooth is not None:
+            state_view['privacy'] = 'full' if any_private else 'private'
+        settings_view = to_primitive(self.settings)
+        if self.profiles is not None and not full:
+            # Calendar identifiers/selections also belong to the absent primary.
+            from .profiles import personal_settings
+            settings_view.update(personal_settings({}))
+        roster = [{'profile_id': user.id, 'nickname': user.nickname, 'role': user.role}
+                  for user in self.profiles.list() if user.id in present] if self.profiles else []
         selected = set(self.settings.visible_calendar_ids)
         visible = visible_events(self.events, now=now, calendar_ids=selected,
                                  sleep_calendar_ids=set(self.settings.sleep_calendar_ids),
@@ -316,8 +371,7 @@ class LumaService:
             weather["stale"] = self.weather.stale or age > timedelta(hours=2) or age < timedelta(0)
             weather["nudge"] = weather_nudge(self.weather, self.settings, now)
             weather["hourly"] = [hour for hour in weather["hourly"] if datetime.fromisoformat(hour["time"]) >= now.replace(minute=0, second=0, microsecond=0)]
-        calendar_fresh = bool(not self.calendar_sync_error and self.calendar_synced_at
-                              and timedelta(0) <= now - self.calendar_synced_at <= timedelta(minutes=10))
+        calendar_fresh = self.calendar_is_fresh(now)
         return {
             "server_time": now.isoformat(),
             "voice_notice": {"id": self._unknown_command_id,
@@ -328,8 +382,11 @@ class LumaService:
             "transit": self.transit.snapshot(now,private=not full,
                 quiet=bool(self.display_state and (self.display_state['mode']!='day' or self.display_state['awaiting_clock']))),
             "display": self.display_state,
-            "settings": to_primitive(self.settings),
-            "state": to_primitive(self.state),
+            "settings": settings_view,
+            "state": state_view,
+            "users": roster,
+            "user_panels": panels,
+            "personal_timers": self.personal_timers.snapshot(self.present_user_ids(wall=True) if day_visible else set()) if self.personal_timers else [],
             "weather": weather,
             "calendar": to_primitive(visible),
             "agenda": day_agenda(self.events, self.settings, now, fresh=calendar_fresh) if full else None,
@@ -338,9 +395,10 @@ class LumaService:
                             key=lambda item: (item["completed"], item["due_date"], item["summary"].casefold(), item["id"])),
             "todo_controls": {"can_update": bool(full and self.todo_write_authorized and self.settings.todo_calendar_id and self.settings.todo_completed_color_id
                                                    and any(event.calendar_writable for event in todos)),
-                              "stale": self.calendar_sync_error or self.calendar_synced_at is None or now - self.calendar_synced_at > timedelta(minutes=10)},
+                              "stale": not calendar_fresh},
             "notifications": to_primitive(notifications),
-            "privacy_redacted": not full,
+            "privacy_redacted": not any_private,
+            "primary_privacy_redacted": not full,
             "timer": self.timer.snapshot(private=not full),
             "departure": self.departures.snapshot(self.events,self.settings,now,private=not full,fresh=calendar_fresh),
         }
@@ -349,13 +407,17 @@ class LumaService:
         """Questions include earlier-today events, but never bypass privacy."""
         now = now or datetime.now(UTC)
         snapshot = self.snapshot(now)
+        # Until a specific voice account has been chosen, never let the fact
+        # that a guest has a visible panel authorize the primary's flat data.
+        if self.user_bluetooth is not None and snapshot['primary_privacy_redacted']:
+            snapshot['privacy_redacted'] = True
         start = now.astimezone(ZoneInfo(self.settings.timezone)).replace(hour=0, minute=0, second=0, microsecond=0)
         events = visible_events(self.events, now=start, calendar_ids=set(self.settings.visible_calendar_ids),
                                 sleep_calendar_ids=set(self.settings.sleep_calendar_ids),
                                 sleep_title=self.settings.sleep_event_title) if not snapshot['privacy_redacted'] else []
         snapshot['voice_calendar'] = {
             'authorized': authorized,
-            'fresh': bool(not self.calendar_sync_error and self.calendar_synced_at and timedelta(0) <= now-self.calendar_synced_at <= timedelta(minutes=10)),
+            'fresh': self.calendar_is_fresh(now),
             'events': to_primitive([event for event in events if not event.self_declined]),
         }
         snapshot['voice_todos'] = to_primitive(sorted(

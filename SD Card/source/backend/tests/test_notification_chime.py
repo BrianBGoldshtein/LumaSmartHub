@@ -10,6 +10,7 @@ from luma.device_agent import apply_notification_chime
 from luma.models import CalendarEvent, PhoneNotification
 from luma.voice_speech import VoicePlaybackError, notification_cue_pcm
 from luma import voice_speech
+from synthetic_presence import authorize_primary
 
 
 def notice(now, key='one'):
@@ -21,7 +22,7 @@ def test_new_phone_notice_claimed_once_and_not_replayed_on_refresh_or_restart(tm
     app = create_app(data_dir=tmp_path)
     service = app.state.luma
     now = datetime.now(UTC)
-    service.phone_seen(now)
+    authorize_primary(service, now)
     service.receive_notification(notice(now))
     client = TestClient(app)
     claim = lambda: client.post('/api/v1/device/notification-chime').json()
@@ -38,7 +39,7 @@ def test_privacy_mute_and_expired_phone_notices_are_consumed(tmp_path):
     now = datetime.now(UTC)
     service.receive_notification(notice(now))
     assert service.claim_notification_chime(now)['play'] is False
-    service.phone_seen(now)
+    authorize_primary(service, now)
     assert service.claim_notification_chime(now)['play'] is False
     service.receive_notification(notice(now, 'two'))
     service.update_settings({'notification_chime_enabled': False}, now)
@@ -60,7 +61,7 @@ def test_departure_cue_survives_restart_without_replay(tmp_path):
     now = datetime.now(UTC)
     service.update_settings({'departure_enabled': True,
                              'departure_calendar_ids': ['personal']}, now)
-    service.phone_seen(now)
+    authorize_primary(service, now)
     event = CalendarEvent('meeting', 'personal', 'Meeting',
                           now+timedelta(minutes=25), now+timedelta(hours=1))
     service.replace_events([event], now)
@@ -68,7 +69,7 @@ def test_departure_cue_survives_restart_without_replay(tmp_path):
     assert service.claim_notification_chime(now)['play'] is True
     assert service.claim_notification_chime(now)['play'] is False
     restored = create_app(data_dir=tmp_path).state.luma
-    restored.phone_seen(now)
+    authorize_primary(restored, now)
     restored.calendar_synced_at = now
     assert restored.claim_notification_chime(now)['play'] is False
 
@@ -83,7 +84,7 @@ def test_departure_during_private_standby_is_not_replayed_when_phone_returns(tmp
     service.replace_events([event], now)
     service.calendar_synced_at = now
     assert service.claim_notification_chime(now)['play'] is False
-    service.phone_seen(now)
+    authorize_primary(service, now)
     assert service.claim_notification_chime(now)['play'] is False
 
 
@@ -93,7 +94,7 @@ def test_sleep_and_screen_off_silence_new_alerts_without_later_replay(tmp_path):
     service.update_settings({'departure_enabled': True,
                              'departure_calendar_ids': ['personal'],
                              'sleep_calendar_ids': ['sleep']}, now)
-    service.phone_seen(now)
+    authorize_primary(service, now)
     meeting = CalendarEvent('meeting', 'personal', 'Meeting',
                             now+timedelta(minutes=25), now+timedelta(hours=1))
     sleep = CalendarEvent('night', 'sleep', 'Sleep',

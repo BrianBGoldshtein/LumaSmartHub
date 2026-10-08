@@ -166,7 +166,7 @@ test("Pong's ball-only pace rises 12% without changing paddle tempo",()=>{
   assert.equal(game.receiverSpeed,255*PONG_TEMPO);
   assert.equal(PONG_MAX_SPEED,380*PONG_TEMPO*PONG_BALL_TEMPO);
 });
-test("Pong paddle contacts cannot retrace the incoming path",()=>{
+test("oblique Pong contacts reflect rather than reversing both velocity components",()=>{
   const game=new RallyGame(()=>.5);game.x=644;game.y=215.2;game.vx=200;game.vy=62;
   game.right=230;game.rightVelocity=0;game.reactionDelay=.2;game.shotOffset=0;
   const retrace=-Math.atan2(game.vy,Math.abs(game.vx));
@@ -174,11 +174,58 @@ test("Pong paddle contacts cannot retrace the incoming path",()=>{
   assert.ok(game.vx<0 && game.rallies===1);
   assert.ok(Math.abs(Math.atan2(game.vy,Math.abs(game.vx))-retrace)>=.199);
 });
+test("Pong flat paddle faces preserve the reflected angle at every impact offset",()=>{
+  for(const side of [-1,1])for(const angle of [-1,-.6,-.25,0,.25,.6,1])for(const offset of [-49,-25,0,25,49]){
+    const game=new RallyGame(()=>.5),dt=1/240;
+    game.vx=side*180;game.vy=180*Math.tan(angle);
+    game.x=side<0?55.1:644.9;game.y=230+offset-game.vy*dt;
+    game.left=game.right=230;game.leftVelocity=game.rightVelocity=0;game.reactionDelay=.2;
+    const incomingX=game.vx,incomingY=game.vy,incomingSpeed=Math.hypot(incomingX,incomingY);
+    game.step(dt);
+    assert.equal(game.rallies,1);
+    const outgoingSpeed=Math.hypot(game.vx,game.vy);
+    assert.ok(Math.abs(game.vx/outgoingSpeed+incomingX/incomingSpeed)<1e-12);
+    assert.ok(Math.abs(game.vy/outgoingSpeed-incomingY/incomingSpeed)<1e-12);
+    assert.ok(Math.abs(outgoingSpeed-Math.min(PONG_MAX_SPEED,incomingSpeed*1.025))<1e-9);
+    assert.ok(side<0?game.x>55:game.x<645,"ball separates from the rendered paddle face");
+  }
+});
+test("Pong moving paddles cannot arbitrarily reverse the ball's vertical direction",()=>{
+  for(const side of [-1,1])for(const velocity of [-170,170])for(const incomingY of [-65,65]){
+    const game=new RallyGame(()=>.5);game.x=side<0?55.1:644.9;
+    game.y=230;game.vx=side*200;game.vy=incomingY;game.left=game.right=230;
+    game.leftVelocity=side<0?velocity:0;game.rightVelocity=side>0?velocity:0;
+    game.reactionDelay=.2;game.step(1/240);
+    assert.equal(game.rallies,1);
+    assert.ok(Math.abs(game.vy/Math.abs(game.vx)-incomingY/200)<1e-12);
+  }
+});
+test("Pong misses still score rather than reflecting off an absent paddle",()=>{
+  for(const side of [-1,1]){
+    const game=new RallyGame(()=>.5);game.x=side<0?55.1:644.9;
+    game.y=310;game.vx=side*200;game.vy=65;game.left=game.right=100;game.reactionDelay=10;
+    game.step(1/240);assert.equal(game.rallies,0);assert.equal(Math.sign(game.vx),side);
+    for(let frame=0;frame<100 && !game.pause;frame++)game.step(1/240);
+    assert.equal(game.score[side<0?1:0],1);assert.ok(game.pause>0);
+  }
+});
+test("Pong wall reflection preserves overshoot and changes only vertical direction",()=>{
+  for(const side of [-1,1]){
+    const game=new RallyGame(()=>.5);game.x=350;game.y=side<0?10.1:449.9;
+    game.vx=200;game.vy=side*80;game.step(1/240);
+    assert.equal(game.vx,200);assert.equal(game.vy,-side*80);
+    assert.ok(Math.abs(game.y-(side<0?10+.23333333333333334:450-.23333333333333334))<1e-9);
+  }
+});
 test("Pong produces varied legal rallies and real points during sustained seeded play",()=>{
   for(const seed of [7,83,191]){
     const game=new RallyGame(pongRandom(seed)),angles=new Set<number>();let hits=0,points=0;
-    // Observe the same amount of play after the shared tempo slowdown.
-    for(let i=0;i<Math.ceil(36000/PONG_TEMPO);i++){
+    // With physical reflection, new shot angles come from fresh serves and
+    // wall reflections, not random steering at each flat paddle contact.
+    // Keep the original point/hit cadence check, then observe a second equal
+    // window to verify varied serves without manufacturing angle changes.
+    const window=Math.ceil(36000/PONG_TEMPO);let midpointPoints=0;
+    for(let i=0;i<window*2;i++){
       const before=game.rallies,score=game.score[0]+game.score[1],left=game.left,right=game.right;
       game.step(1/240);
       assert.ok(game.left===left || game.right===right);
@@ -188,9 +235,15 @@ test("Pong produces varied legal rallies and real points during sustained seeded
       assert.ok(Math.abs(game.leftVelocity)<=280*PONG_TEMPO+.001 && Math.abs(game.rightVelocity)<=280*PONG_TEMPO+.001);
       if(game.rallies>before){hits++;angles.add(Math.round(Math.atan2(game.vy,Math.abs(game.vx))*100));}
       if(game.score[0]+game.score[1]>score)points++;
+      if(i===window-1){
+        assert.ok(hits>=10,`seed ${seed}: enough actual returns in the original window`);
+        assert.ok(points>=2,`seed ${seed}: genuine misses retain their original cadence`);
+        midpointPoints=points;
+      }
     }
     assert.ok(hits>=10,`seed ${seed}: enough actual paddle returns`);
     assert.ok(angles.size>=8,`seed ${seed}: varied shot angles`);
     assert.ok(points>=2,`seed ${seed}: rallies end through genuine misses`);
+    assert.ok(points-midpointPoints>=2,`seed ${seed}: play does not lock into a later endless loop`);
   }
 });

@@ -88,6 +88,8 @@ elif [[ "${VERSION}" == "0.2.8" ]]; then
   QUALIFY_FROM="0.2.7"
 elif [[ "${VERSION}" == "0.2.9" ]]; then
   QUALIFY_FROM="0.2.8"
+elif [[ "${VERSION}" == "0.2.10" ]]; then
+  QUALIFY_FROM="0.2.9"
 fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"

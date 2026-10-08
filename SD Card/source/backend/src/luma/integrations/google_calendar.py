@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 from threading import RLock
 
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -27,6 +28,20 @@ TASK_WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 CLIENT_CONFIG_KEY = "google_client_config"
 TOKEN_KEY = "google_credentials"
 OAUTH_STATE_KEY = "google_oauth_state"
+
+
+def calendar_failure_status(error: Exception) -> dict[str, Any]:
+    """Classify structured SDK errors without exposing tokens/provider text."""
+    rejected = isinstance(error, RefreshError) and any(
+        isinstance(arg, dict) and arg.get("error") == "invalid_grant"
+        for arg in error.args
+    )
+    unauthorized = isinstance(error, HttpError) and error.resp.status == 401
+    if rejected or unauthorized:
+        return {"error": "Google sign-in needs renewal. Use Reconnect Google; showing saved events.",
+                "error_kind": "authorization", "reconnect_required": True}
+    return {"error": "Calendar sync unavailable; showing saved events. Try again when the connection is available.",
+            "error_kind": "unavailable", "reconnect_required": False}
 
 
 class GoogleCalendarClient:

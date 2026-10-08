@@ -194,24 +194,21 @@ export class RallyGame {
         else [this.right,this.rightVelocity]=smoothPaddle(this.right,this.rightVelocity,aim(645),h,this.receiverSpeed,52,408,PONG_ACCELERATION,5*PONG_TEMPO);
       }
       const oldX=this.x;this.x+=this.vx*h;this.y+=this.vy*h;
-      if(this.y<10){this.y=10;this.vy=Math.abs(this.vy);}if(this.y>450){this.y=450;this.vy=-Math.abs(this.vy);}
+      if(this.y<10){this.y=20-this.y;this.vy=Math.abs(this.vy);}if(this.y>450){this.y=900-this.y;this.vy=-Math.abs(this.vy);}
       const hitLeft=this.vx<0 && oldX>=55 && this.x<=55 && Math.abs(this.y-this.left)<52;
       const hitRight=this.vx>0 && oldX<=645 && this.x>=645 && Math.abs(this.y-this.right)<52;
       if(hitLeft || hitRight){
-        const offset=(this.y-(hitLeft?this.left:this.right))/42,speed=Math.min(PONG_MAX_SPEED,Math.hypot(this.vx,this.vy)*1.025);
-        const spin=(hitLeft?this.leftVelocity:this.rightVelocity)*.0012/PONG_TEMPO;
-        let angle=Math.max(-1,Math.min(1,offset*.85+spin));
-        // Keep trajectories readable and avoid an endless nearly-flat exchange.
-        if(Math.abs(angle)<.14)angle=(angle<0?-1:angle>0?1:this.vy<0?-1:1)*.14;
-        // A hit must not send the ball almost exactly back along its arrival
-        // path. Preserve impact/spin physics unless the angle would retrace.
-        const retrace=-Math.atan2(this.vy,Math.abs(this.vx));
-        if(Math.abs(angle-retrace)<.2){
-          const direction=angle>=retrace?1:-1;
-          const deflected=retrace+direction*.2;
-          angle=deflected>=-1&&deflected<=1?deflected:retrace-direction*.2;
-        }
-        this.vx=(hitLeft?1:-1)*speed*Math.cos(angle);this.vy=speed*Math.sin(angle);this.x=hitLeft?55:645;this.rallies++;
+        // Flat vertical faces reflect the horizontal component, not the
+        // vertical one. Offset/random angle steering could flip vy and send
+        // the ball back along its arrival path even on a clean face contact.
+        // Preserve the established gradual speed gain/cap without changing
+        // the reflected angle. Tangential paddle movement does not rotate a
+        // flat, frictionless collision normal.
+        const speed=Math.hypot(this.vx,this.vy),scale=Math.min(PONG_MAX_SPEED,speed*1.025)/speed;
+        this.vx=-this.vx*scale;this.vy*=scale;
+        // Reflect the substep's penetration too: never visibly stick to or
+        // pass through the paddle before the next frame.
+        this.x=2*(hitLeft?55:645)-this.x;this.rallies++;
         this.prepareReturn();
       }
       if(this.x< -10 || this.x>710){const winner=this.x<0?1:0;this.score[winner]++;this.matchOver=Math.max(...this.score)>=11 && Math.abs(this.score[0]-this.score[1])>=2;this.serve(winner===0?1:-1);this.pause=this.matchOver?3:1;break;}

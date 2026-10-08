@@ -47,6 +47,51 @@ class PendingPhone(ServiceInterface):
         self.stopped.set()
 
 
+class BusyPhone(PendingPhone):
+    @method()
+    async def Connect(self):
+        from dbus_next import DBusError
+        self.pending.set()  # A different request is already using the device.
+        raise DBusError('org.bluez.Error.InProgress', 'Connection already in progress')
+
+
+@pytest.mark.asyncio
+async def test_busy_bluez_reply_does_not_disconnect_the_other_pending_request():
+    if not shutil.which('dbus-daemon'):
+        pytest.skip('private D-Bus transport requires dbus-daemon')
+    from dbus_next.aio import MessageBus
+    result = subprocess.run(['dbus-daemon', '--session', '--fork', '--print-address=1',
+                             '--print-pid=1'], capture_output=True, text=True, check=True, timeout=5)
+    address, pid = result.stdout.strip().splitlines()
+    owner = client = None
+    phone = BusyPhone()
+    try:
+        owner = await MessageBus(bus_address=address).connect()
+        client = await MessageBus(bus_address=address).connect()
+        owner.export('/phone', phone)
+        intro = await client.introspect(owner.unique_name, '/phone')
+        proxy = client.get_proxy_object(owner.unique_name, '/phone', intro)
+        device = proxy.get_interface('org.bluez.Device1')
+        properties = proxy.get_interface('org.freedesktop.DBus.Properties')
+        async def snapshot():
+            return {'/phone': {'org.bluez.Device1': await properties.call_get_all('org.bluez.Device1')}}
+        manager = SimpleNamespace(call_get_managed_objects=snapshot)
+        with pytest.raises(BluetoothStatusError, match='did not finish'):
+            await connect_paired_phone(manager, device, '/phone', timeout=2)
+        assert phone.pending.is_set() and not phone.stopped.is_set()
+        assert phone.disconnect_calls == 0
+        current = await properties.call_get_all('org.bluez.Device1')
+        assert all(current[key].value for key in ('Paired', 'Bonded', 'Trusted'))
+    finally:
+        if client:
+            client.disconnect()
+            await client.wait_for_disconnect()
+        if owner:
+            owner.disconnect()
+            await owner.wait_for_disconnect()
+        os.kill(int(pid), signal.SIGTERM)
+
+
 @pytest.mark.asyncio
 async def test_timeout_reaches_pending_bluez_server_as_explicit_disconnect():
     if not shutil.which('dbus-daemon'):

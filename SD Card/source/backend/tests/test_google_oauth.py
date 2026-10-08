@@ -163,6 +163,13 @@ def test_local_browser_callback_completes_and_returns_to_setup(tmp_path):
     app = create_app(data_dir=tmp_path)
     browser = TestClient(app, base_url="http://127.0.0.1:8742")
     assert browser.post("/api/v1/google/config", json=CONFIG).status_code == 200
+    app.state.luma.update_settings({"visible_calendar_ids": ["work"]})
+    from google.auth.exceptions import RefreshError
+    with patch.object(app.state.google, "authorized", return_value=True), patch.object(
+        app.state.google, "fetch_events", side_effect=RefreshError("synthetic", {"error": "invalid_grant"})
+    ):
+        assert browser.post("/api/v1/google/sync").status_code == 502
+    assert browser.get("/api/v1/google/status").json()["reconnect_required"] is True
     authorization = browser.post("/api/v1/google/authorize").json()
     assert set(authorization) == {"url"}
     query = parse_qs(urlsplit(authorization["url"]).query)
@@ -181,7 +188,33 @@ def test_local_browser_callback_completes_and_returns_to_setup(tmp_path):
         response = browser.get("/api/v1/google/callback", params={"state": query["state"][0], "code": "synthetic-code"}, follow_redirects=False)
     assert response.status_code == 303 and response.headers["location"] == "/?setup=google"
     assert browser.get("/api/v1/google/status").json()["authorized"] is True
+    assert browser.get("/api/v1/google/status").json()["reconnect_required"] is False
     assert browser.get("/api/v1/state").json()["privacy_redacted"] is True
+
+
+def test_real_sdk_refresh_rejection_reports_renewal_and_keeps_original_grant(tmp_path):
+    app = create_app(data_dir=tmp_path)
+    app.state.luma.update_settings({"visible_calendar_ids": ["work"]})
+    saved = json.dumps({"token": "synthetic-expired", "refresh_token": "synthetic-refresh",
+                        "client_id": "synthetic-client", "client_secret": "synthetic-secret",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "expiry": "2020-01-01T00:00:00Z", "scopes": ["https://www.googleapis.com/auth/calendar.readonly"]})
+    app.state.google.storage.set_secret(TOKEN_KEY, saved)
+    def reject(session, request, **kwargs):
+        assert request.url == "https://oauth2.googleapis.com/token"
+        response = requests.Response()
+        response.request = request
+        response.status_code = 400
+        response._content = b'{"error":"invalid_grant","error_description":"synthetic-private-detail"}'
+        return response
+    browser = TestClient(app)
+    with patch.object(requests.Session, "send", reject):
+        response = browser.post("/api/v1/google/sync")
+    assert response.status_code == 502
+    assert "Reconnect Google" in response.text
+    assert "synthetic-private-detail" not in response.text
+    assert browser.get("/api/v1/google/status").json()["reconnect_required"] is True
+    assert app.state.google.storage.get_secret(TOKEN_KEY) == saved
 
 
 def test_api_launcher_does_not_log_oauth_callback_urls_or_trust_proxy_headers():

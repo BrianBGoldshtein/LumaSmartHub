@@ -426,7 +426,8 @@ def create_app(
             voice_output_status.update(last_tone_error=event['error'],
                                        last_tone_route=event['route'])
     google_sync_lock = asyncio.Lock()
-    google_status: dict[str, Any] = {"last_synced": None, "error": None}
+    google_status: dict[str, Any] = {"last_synced": None, "error": None,
+                                   "error_kind": None, "reconnect_required": False}
     device_status: dict[str, Any] = {"last_seen": None, "controls": {}}
     portal_request: dict[str, Any] = {"id": None, "expires": 0}
     keyboard_request: dict[str, Any] = {"id": None, "expires": 0, "visible": False}
@@ -439,6 +440,15 @@ def create_app(
         service.tick()
 
     pairing = PairingFlow(save_paired_phone)
+
+    def google_failed(error: Exception) -> str:
+        from .integrations.google_calendar import calendar_failure_status
+        failure = calendar_failure_status(error)
+        # A later timeout cannot establish that a rejected grant recovered.
+        # Clear this evidence only after successful consent or event sync.
+        if not google_status["reconnect_required"] or failure["reconnect_required"]:
+            google_status.update(failure)
+        return google_status["error"]
 
     async def sync_google() -> dict[str, Any]:
         async with google_sync_lock:
@@ -453,15 +463,16 @@ def create_app(
             now = datetime.now(UTC)
             try:
                 fetched = await asyncio.to_thread(google.fetch_events, ids, now - timedelta(days=7), now + timedelta(days=7), settings.timezone)
-            except Exception:
-                google_status["error"] = "Calendar sync unavailable; showing saved events."
+            except Exception as error:
+                google_failed(error)
                 service.calendar_sync_error = True
                 service.publish('calendar.stale')
                 raise
             service.calendar_synced_at = now
             service.calendar_sync_error = False
             service.replace_events(fetched)
-            google_status.update(last_synced=now.isoformat(), error=None)
+            google_status.update(last_synced=now.isoformat(), error=None,
+                                 error_kind=None, reconnect_required=False)
             return {"count": len(fetched)}
 
     async def calendar_worker() -> None:
@@ -1655,8 +1666,8 @@ def create_app(
     def calendar_event_colors():
         try:
             return google.event_colors()
-        except Exception:
-            raise HTTPException(502, "Could not load Google event colors. Your saved choice is unchanged.") from None
+        except Exception as error:
+            raise HTTPException(502, google_failed(error)) from None
 
     @app.post("/api/v1/google/config", dependencies=[secured])
     def calendar_config(payload: dict[str, Any]) -> dict[str, bool]:
@@ -1678,6 +1689,7 @@ def create_app(
         try:
             google.finish_authorization(str(request.url), state)
             service.todo_write_authorized = google.task_write_authorized()
+            google_status.update(error=None, error_kind=None, reconnect_required=False)
         except Exception:
             # A kiosk has no browser Back button. Return to the themed setup
             # instead of stranding a cancelled/expired sign-in on raw JSON.
@@ -1690,15 +1702,15 @@ def create_app(
     def calendars() -> list[dict[str, Any]]:
         try:
             return google.list_calendars()
-        except Exception as exc:
-            raise HTTPException(502, "Could not load Google calendars. Check the connection and sign-in.") from exc
+        except Exception as error:
+            raise HTTPException(502, google_failed(error)) from None
 
     @app.post("/api/v1/google/sync", dependencies=[secured])
     async def calendar_sync() -> dict[str, Any]:
         try:
             return await sync_google()
-        except Exception as exc:
-            raise HTTPException(502, "Could not sync Google Calendar. Saved events are retained.") from exc
+        except Exception:
+            raise HTTPException(502, google_status["error"] or "Could not sync Google Calendar. Saved events are retained.") from None
 
     @app.post('/api/v1/todos/complete', dependencies=[Depends(local_only)])
     async def complete_task(payload: TaskCompletionRequest):

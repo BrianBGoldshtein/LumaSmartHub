@@ -100,6 +100,24 @@ async def test_explicit_scan_disables_competing_bluez_autoconnect():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('name', [
+    'org.bluez.Error.InProgress', 'org.bluez.Error.Failed',
+    'org.bluez.Error.NotReady', 'org.bluez.Error.AlreadyConnected',
+])
+async def test_terminal_connect_rejection_never_cancels_someone_elses_operation(name):
+    from dbus_next import DBusError
+    manager = SimpleNamespace(call_get_managed_objects=AsyncMock(return_value=paired_snapshot()))
+    device = SimpleNamespace(call_connect=AsyncMock(side_effect=DBusError(name, 'PRIVATE_PHONE_TEXT')),
+                             call_disconnect=AsyncMock())
+    with pytest.raises(BluetoothStatusError, match='did not finish') as caught:
+        await connect_paired_phone(manager, device, '/phone')
+    assert 'PRIVATE_PHONE_TEXT' not in str(caught.value)
+    device.call_disconnect.assert_not_awaited()
+    assert all(manager.call_get_managed_objects.return_value['/phone']['org.bluez.Device1'][key].value
+               for key in ('Paired', 'Bonded', 'Trusted'))
+
+
+@pytest.mark.asyncio
 async def test_runtime_scan_connect_failure_does_not_immediately_issue_second_connect(monkeypatch):
     import dbus_next.aio
     import luma.bluetooth_runtime as module

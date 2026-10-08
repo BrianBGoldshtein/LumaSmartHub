@@ -116,7 +116,7 @@ async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: floa
 
 async def connect_paired_phone(manager, device, phone_path: str, *,
                                address_is_current=lambda: True, timeout: float = 15) -> None:
-    """One bounded request; cancel BlueZ's pending operation on failure.
+    """One bounded request; cancel only our unfinished D-Bus wait.
 
     Cancelling a Python D-Bus wait does NOT cancel the radio operation.
     Device1.Disconnect is BlueZ's documented cancellation mechanism. Re-read
@@ -139,15 +139,18 @@ async def connect_paired_phone(manager, device, phone_path: str, *,
     try:
         await asyncio.wait_for(device.call_connect(), timeout)
     except (Exception, asyncio.CancelledError) as exc:
-        # Handle timeout, InProgress and shutdown without abandoning a
-        # selected-phone request inside BlueZ. Avoid logging addresses/errors.
+        # A terminal BlueZ error (especially InProgress) does not establish
+        # ownership of its pending radio operation. Disconnecting then can
+        # cancel an incoming/manual connection or another caller's request.
+        # Only a timeout/cancellation of this wait requires explicit cleanup.
+        cancel_pending = isinstance(exc, (asyncio.TimeoutError, asyncio.CancelledError))
         fresh = None
         with suppress(Exception):
             fresh = await current_properties()
         if fresh is not None and selected_bond(fresh):
             if fresh.get('Connected') is True and not isinstance(exc, asyncio.CancelledError):
                 return
-            if fresh.get('Connected') is not True:
+            if fresh.get('Connected') is not True and cancel_pending:
                 with suppress(Exception):
                     await asyncio.wait_for(device.call_disconnect(), 5)
         if isinstance(exc, asyncio.CancelledError):

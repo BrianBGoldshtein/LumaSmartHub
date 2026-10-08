@@ -1,5 +1,10 @@
 from datetime import UTC, datetime, timedelta
+from dataclasses import asdict
 from unittest.mock import MagicMock, patch
+import pytest
+import httplib2
+from google.auth.exceptions import RefreshError
+from googleapiclient.errors import HttpError
 
 from fastapi.testclient import TestClient
 
@@ -112,3 +117,56 @@ def test_sync_worker_runs_on_startup(tmp_path):
         with TestClient(app) as client:
             client.post("/api/v1/google/sync")
         assert fetch.call_count >= 2
+
+
+@pytest.mark.parametrize("route,method", [("sync", "post"), ("calendars", "get"), ("event-colors", "get")])
+def test_rejected_grant_exposes_reconnect_without_deleting_saved_state(tmp_path, route, method):
+    from luma.integrations.google_calendar import TOKEN_KEY
+    app = create_app(data_dir=tmp_path)
+    service = app.state.luma
+    service.update_settings({"visible_calendar_ids": ["work"], "sleep_calendar_ids": ["sleep"]})
+    event = CalendarEvent("saved", "work", "Saved title", NOW, NOW + timedelta(hours=1))
+    service.replace_events([event], NOW)
+    app.state.google.storage.set_secret(TOKEN_KEY, "synthetic-saved-refresh-token")
+    saved_settings = asdict(service.settings)
+    rejected = RefreshError("private provider description", {"error": "invalid_grant", "error_description": "private detail"})
+    target = {"sync": "fetch_events", "calendars": "list_calendars", "event-colors": "event_colors"}[route]
+    client = TestClient(app)
+    with patch.object(app.state.google, target, side_effect=rejected):
+        response = getattr(client, method)(f"/api/v1/google/{route}")
+    assert response.status_code == 502
+    assert "Reconnect Google" in response.json()["detail"]
+    assert "private" not in response.text
+    status = client.get("/api/v1/google/status").json()
+    assert status["authorized"] is True  # Stored grant retained, not proof of validity.
+    assert status["reconnect_required"] is True
+    assert status["error_kind"] == "authorization"
+    assert service.events == [event]
+    assert asdict(service.settings) == saved_settings
+    assert app.state.google.storage.get_secret(TOKEN_KEY) == "synthetic-saved-refresh-token"
+    with patch.object(app.state.google, "fetch_events", side_effect=OSError("private timeout")):
+        assert client.post("/api/v1/google/sync").status_code == 502
+    assert client.get("/api/v1/google/status").json()["reconnect_required"] is True
+    with patch.object(app.state.google, "fetch_events", return_value=[event]):
+        assert client.post("/api/v1/google/sync").status_code == 200
+    recovered = client.get("/api/v1/google/status").json()
+    assert recovered["error"] is None and recovered["error_kind"] is None
+    assert recovered["reconnect_required"] is False
+
+
+@pytest.mark.parametrize("error,renew", [
+    (RefreshError("private", {"error": "invalid_grant"}), True),
+    (HttpError(httplib2.Response({"status": "401"}), b'{"error":{"message":"private"}}'), True),
+    (HttpError(httplib2.Response({"status": "403"}), b'{"error":{"message":"private"}}'), False),
+    (HttpError(httplib2.Response({"status": "429"}), b'{"error":{"message":"private"}}'), False),
+    (HttpError(httplib2.Response({"status": "503"}), b'{"error":{"message":"private"}}'), False),
+    (RefreshError("invalid_grant private text without structured rejection"), False),
+    (RefreshError("private", {"error": "temporarily_unavailable"}), False),
+    (OSError("private invalid_grant string is not evidence"), False),
+])
+def test_google_failure_classifies_only_structured_authorization_evidence(error, renew):
+    from luma.integrations.google_calendar import calendar_failure_status
+    result = calendar_failure_status(error)
+    assert result["reconnect_required"] is renew
+    assert result["error_kind"] == ("authorization" if renew else "unavailable")
+    assert "private" not in result["error"]

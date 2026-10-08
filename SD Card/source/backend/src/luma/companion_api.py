@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from urllib.parse import parse_qs
 
 import httpx
 from fastapi import Depends, HTTPException, Request
@@ -19,6 +20,9 @@ from .serde import to_primitive
 from .tailscale_setup import tailscale_request
 from .pi_connect_setup import qr_data
 from .companion_google import CompanionGoogle
+from .companion_profiles import own_operation
+from .profiles import PRIMARY_ID, ProfileError
+from .focus_timer import TIMER_COMMANDS
 
 
 SETTINGS_KEYS = frozenset({
@@ -106,11 +110,29 @@ def _shape(payload, required, optional=frozenset()):
 
 
 def install_companion_api(app, service, storage, bluetooth, local_only, google_connected=None):
-    auth = CompanionAuth(storage, bluetooth.companion_presence)
+    profiles = app.state.profiles
+    auth = CompanionAuth(storage, bluetooth.companion_presence, profiles=profiles)
     app.state.companion = auth
     app.state.bluetooth = bluetooth
-    web_google=CompanionGoogle(auth,app.state.google)
+    web_google=CompanionGoogle(auth,app.state.google,client_storage=storage)
     app.state.companion_google=web_google
+    web_accounts = {PRIMARY_ID: web_google}
+    app.state.companion_google_accounts = web_accounts
+
+    def user_web_google(uid):
+        profiles.get(uid)
+        for removed in set(web_accounts) - {user.id for user in profiles.list()}:
+            web_accounts.pop(removed).cancel_pending()
+        if uid not in web_accounts:
+            web_accounts[uid] = CompanionGoogle(auth, app.state.profile_calendars.account(uid).google,
+                                               client_storage=storage)
+        return web_accounts[uid]
+
+    def primary_preview():
+        result = preview_view(service)
+        result.update(profile_id=PRIMARY_ID, nickname=profiles.get(PRIMARY_ID).nickname, role='primary')
+        result['timer'] = service.personal_timers.for_user(PRIMARY_ID).snapshot()
+        return result
 
     def denied(error):
         return HTTPException(403, str(error))
@@ -118,18 +140,18 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
     @app.post("/api/v1/companion/local", dependencies=[Depends(local_only)])
     async def local(request: Request):
         payload = await _body(request, 1024)
-        _shape(payload, {"action", "pin"}, {"device_id", "comparison_code"})
+        _shape(payload, {"action", "pin"}, {"device_id", "comparison_code", "profile_id", "policy"})
         try:
             action = payload["action"]
             if action == "issue":
-                _shape(payload, {"action", "pin"})
+                _shape(payload, {"action", "pin"}, {"profile_id"})
                 auth._pin(payload["pin"])  # Reject before privileged transport lookup.
                 status = await tailscale_request({"action": "status"})
                 url = status.get("command_url")
                 if not isinstance(url, str) or not url.endswith("/command"):
                     raise HTTPException(409, "Enable Luma’s private Tailscale HTTPS connection first.")
                 origin = private_origin(url.removesuffix("/command"))
-                ticket = auth.issue_ticket(payload["pin"], origin)
+                ticket = auth.issue_ticket(payload["pin"], origin, profile_id=payload.get("profile_id", PRIMARY_ID))
                 url=origin + "/remote/#enroll=" + ticket
                 result = {"url":url, "qr":await qr_data(url), "expires_in_seconds":300}
             elif action == "pending":
@@ -146,10 +168,23 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                 _shape(payload, {"action", "pin", "device_id"})
                 auth.revoke(payload["pin"], payload["device_id"])
                 result = {"revoked": True}
+            elif action == "remote_policy":
+                _shape(payload, {"action", "pin", "policy"})
+                auth._pin(payload["pin"])
+                # Serialize the stored policy/revocation with in-flight proofs
+                # and Google token commits. Reenable never restores old grants.
+                with auth.lock:
+                    profiles.set_remote_policy(payload['policy'])
+                    auth.clear_ephemeral()
+                    for account in web_accounts.values():
+                        account.cancel_pending()
+                result = {'policy': profiles.remote_policy()}
             else:
                 raise HTTPException(422, "Remote request is invalid.")
         except CompanionDenied as error:
             raise denied(error) from None
+        except ProfileError:
+            raise HTTPException(422, 'User or remote policy is invalid.') from None
         except (ValueError, TypeError):
             raise HTTPException(503, "Private connection setup is unavailable.") from None
         return JSONResponse(result, headers={"Cache-Control":"no-store", "Referrer-Policy":"no-referrer"})
@@ -184,8 +219,21 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
         payload=await _body(request,20000)
         _shape(payload,{'origin','identity','query'})
         try:
-            await asyncio.to_thread(web_google.finish,payload['origin'],payload['identity'],payload['query'])
-            if google_connected:google_connected()
+            query = payload['query']
+            if not isinstance(query, str) or len(query) > 8192:
+                raise ValueError
+            states = parse_qs(query, keep_blank_values=True, max_num_fields=32).get('state', [])
+            if len(states) != 1:
+                raise ValueError
+            candidates = [(uid, account) for uid, account in web_accounts.items() if states[0] in account.pending]
+            if len(candidates) != 1:
+                raise ValueError
+            uid, account = candidates[0]
+            await asyncio.to_thread(account.finish,payload['origin'],payload['identity'],query)
+            if uid == PRIMARY_ID and google_connected:
+                google_connected()
+            app.state.profile_calendars.account(uid).status.update(error=None, error_kind=None, reconnect_required=False)
+            service.publish('user.google.connected', {'profile_id': uid})
             connected=True
         except Exception:
             # Fixed completion only, never log/reflect the code or SDK error.
@@ -210,14 +258,27 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                 except CompanionDenied as error:
                     raise denied(error) from None
             method, path = payload["method"], payload["path"]
-            if (method, path) == ("GET", "/remote/api/preview"):
-                result, status_code = preview_view(service), 200
+            own_web = user_web_google(initial.profile_id)
+            if initial.role != 'primary' and path not in {'/remote/api/google/authorize'}:
+                value = {} if method == 'GET' else parse_object(body)
+                async with asyncio.timeout(45):
+                    result = await own_operation(service, initial, method, path, value, recheck)
+                if path == '/remote/api/google/status':
+                    result = {**result, **own_web.status(payload['origin'])}
+                status_code = 200
+            elif path == '/remote/api/command' and parse_object(body).get('name') in TIMER_COMMANDS:
+                result = await own_operation(service, initial, method, path, parse_object(body), recheck)
+                status_code = 200
+            elif (method, path) == ("GET", "/remote/api/preview"):
+                result, status_code = primary_preview(), 200
             elif (method, path) == ("GET", "/remote/api/settings"):
                 result, status_code = settings_view(service), 200
             elif path=='/remote/api/google/web-client':
                 value=parse_object(body)
                 try:
                     result=await asyncio.to_thread(web_google.set_client,value,payload['origin'],recheck)
+                    for account in web_accounts.values():
+                        account.cancel_pending()
                 except CompanionDenied:
                     raise
                 except ValueError:
@@ -226,7 +287,7 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
             elif path=='/remote/api/google/authorize':
                 value=parse_object(body);_shape(value,{'task_updates'})
                 try:
-                    result=await asyncio.to_thread(web_google.begin,payload['device_id'],payload['origin'],payload['identity'],initial,task_updates=value['task_updates'])
+                    result=await asyncio.to_thread(own_web.begin,payload['device_id'],payload['origin'],payload['identity'],initial,task_updates=value['task_updates'])
                 except CompanionDenied:
                     raise
                 except ValueError:
@@ -268,13 +329,17 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                 result, status_code = response.json(), response.status_code
                 if path=='/remote/api/google/status':result={**result,**web_google.status(payload['origin'])}
                 elif path == "/remote/api/settings": result = settings_view(service)
-                elif path == "/remote/api/command": result = {"result":result["result"], "preview":preview_view(service)}
-                elif path == "/remote/api/todos/complete": result = preview_view(service)
+                elif path == "/remote/api/command": result = {"result":result["result"], "preview":primary_preview()}
+                elif path == "/remote/api/todos/complete": result = primary_preview()
             recheck()
+            if len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode()) > 1024 * 1024:
+                raise HTTPException(503, 'Remote response is too large.')
             return JSONResponse(result, status_code=status_code, headers={"Cache-Control":"no-store"})
         except CompanionDenied as error:
             raise denied(error) from None
         except HTTPException:
             raise
+        except PermissionError:
+            raise HTTPException(403, 'Connect this user’s authorized phone and Google account first.') from None
         except (ValueError, TypeError, KeyError, TimeoutError, httpx.HTTPError):
             raise HTTPException(503, "Hub operation unavailable. Refresh before trying again.") from None

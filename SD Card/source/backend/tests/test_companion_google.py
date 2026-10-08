@@ -89,6 +89,15 @@ def test_disconnect_during_provider_exchange_prevents_token_commit(rig,remote_go
     assert remote.storage.get_secret(TOKEN_KEY)=='OLD_TOKENS'
 
 
+def test_cancelling_pending_also_prevents_inflight_primary_consent_commit(rig,remote_google):
+    remote,flow,_,_,_=remote_google
+    query=begin(rig,remote_google)
+    flow.fetch_token.side_effect=lambda **_:remote.cancel_pending()
+    with pytest.raises(ValueError):remote.finish(ORIGIN,IDENTITY,query)
+    assert remote.storage.get_secret(TOKEN_KEY)=='OLD_TOKENS'
+    assert remote.pending=={}
+
+
 def test_wrong_identity_does_not_consume_matching_owner_attempt(rig,remote_google):
     remote,flow,_,_,_=remote_google;query=begin(rig,remote_google)
     with pytest.raises(ValueError):remote.finish(ORIGIN,'other@example.test',query)

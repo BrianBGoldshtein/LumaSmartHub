@@ -24,15 +24,26 @@ TOKEN_URI='https://oauth2.googleapis.com/token'
 
 
 class CompanionGoogle:
-    def __init__(self,auth,google,*,clock=monotonic,flow_factory=Flow.from_client_config):
+    def __init__(self,auth,google,*,clock=monotonic,flow_factory=Flow.from_client_config,client_storage=None):
         self.auth,self.google,self.storage=auth,google,google.storage
+        # Shared application registration is not a shared Google account.
+        # Only tokens/pending consent belong to the selected account store.
+        self.client_storage=client_storage if client_storage is not None else self.storage
         self.clock,self.flow_factory=clock,flow_factory
         self.pending={}
+        self.consent_epoch=0
+
+    def cancel_pending(self):
+        # Includes consent already exchanging a code outside auth.lock: its
+        # local row cannot commit tokens after a policy/setup invalidation.
+        with self.auth.lock:
+            self.consent_epoch+=1
+            self.pending.clear()
 
     def status(self,origin):
         redirect=private_origin(origin)+CALLBACK
         try:
-            config=json.loads(self.storage.get_secret(WEB_CLIENT_KEY) or 'null')
+            config=json.loads(self.client_storage.get_secret(WEB_CLIENT_KEY) or 'null')
             configured=bool(config and redirect in config['web']['redirect_uris'])
         except (ValueError,TypeError,KeyError):configured=False
         return {'web_configured':configured,'redirect_uri':redirect}
@@ -56,8 +67,8 @@ class CompanionGoogle:
         with self.google._oauth_lock:
             with self.auth.lock:
                 recheck()
-                self.storage.set_secret(WEB_CLIENT_KEY,json.dumps(config,separators=(',',':')))
-                self.pending.clear()
+                self.client_storage.set_secret(WEB_CLIENT_KEY,json.dumps(config,separators=(',',':')))
+                self.cancel_pending()
         return self.status(origin)
 
     def begin(self,device,origin,identity,initial,*,task_updates=False):
@@ -66,7 +77,7 @@ class CompanionGoogle:
             with self.auth.lock:
                 self.auth.still_authorized(device,origin,identity,initial)
                 if not self.status(origin)['web_configured']:raise ValueError('Configure the optional Google Web application client first.')
-                config=json.loads(self.storage.get_secret(WEB_CLIENT_KEY))
+                config=json.loads(self.client_storage.get_secret(WEB_CLIENT_KEY))
                 now=self.clock();self.pending={key:row for key,row in self.pending.items() if row['expires']>now}
                 # Each browser gets one attempt, with at most eight attempts.
                 self.pending={key:row for key,row in self.pending.items() if row['device']!=device}
@@ -79,7 +90,8 @@ class CompanionGoogle:
                 target=urlsplit(url)
                 if target.scheme!='https' or target.netloc!='accounts.google.com' or len(url)>8192:raise ValueError('Google sign-in is unavailable.')
                 self.pending[state]={'device':device,'origin':origin,'identity':identity,'initial':initial,
-                    'verifier':verifier,'scopes':scopes,'config':config,'expires':now+900}
+                    'verifier':verifier,'scopes':scopes,'config':config,'expires':now+900,
+                    'consent_epoch':self.consent_epoch}
                 return {'url':url,'expires_in_seconds':900}
 
     def finish(self,origin,identity,query):
@@ -111,6 +123,7 @@ class CompanionGoogle:
             # refresh/Desktop consent; revoke/disconnect before commit wins.
             with self.auth.lock:
                 self.auth.still_authorized(row['device'],origin,identity,row['initial'])
-                if self.clock()>=row['expires'] or json.loads(self.storage.get_secret(WEB_CLIENT_KEY) or 'null')!=row['config']:
+                if (row['consent_epoch']!=self.consent_epoch or self.clock()>=row['expires']
+                        or json.loads(self.client_storage.get_secret(WEB_CLIENT_KEY) or 'null')!=row['config']):
                     raise ValueError('Sign-in expired or configuration changed.')
                 self.storage.set_secret(TOKEN_KEY,json.dumps(saved))

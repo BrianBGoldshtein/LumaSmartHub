@@ -1,6 +1,6 @@
 # Luma 0.3.0 iPhone remote plan
 
-Status: development, not published. 0.2.11 is already signed, qualified and pushed. This release adds a private, minimal phone window into Luma and remote configuration without changing the wall dashboard or weakening its presence gate.
+Status: [0.3.0 Beta published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.0). This release adds a private, minimal phone window into Luma and remote configuration without changing the wall dashboard or weakening its presence gate. Software qualification passed; real iPhone and Pi acceptance remain with the owner.
 
 ## Product and setup
 
@@ -50,7 +50,17 @@ Store the optional web client on the Pi only, accept upload over authenticated H
 
 Release gate: remote enrollment, settings, Google management and update workflow must function together with privacy enforced server-side. A static mobile mockup or authentication-only scaffold is not a completed 0.3.0 release.
 
-## Working checkpoint
+## Published release qualification
+
+The release tag points to main commit **99081bb0972d77d03afaf4860b25d7e5cdb514c9**. [Exact-main CI succeeded](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37773771304). The guarded publisher passed **1,697 backend tests, 189 frontend tests and 43 image/recovery/packaging tests**, both production builds, offline signing and exact signed installation/health-failure rollback. It also loaded the pinned accepted 0.2.11 verifier/installer and passed switch and rollback with those same signed bytes. Synthetic SQLite settings, Google/browser grants and saved games survived both paths with integrity checks. Dependencies and storage schema 1 are unchanged; no signing private key was uploaded.
+
+Published artifact `luma-update-0.3.0.lup`: **1,831,758 bytes**, **81 files**. SHA-256: `0a70da6a201c5848ca30cc69af9a0fd3fe320b14f9603a201f1f4cb9300c8dcd`. Signed source digest: `50506652cd3fe43e39256dd41d3a0a00ded24316cb90eea12adc17a913ec34ef`. Luma's production GitHub fetcher checked the stable/main metadata, downloaded the release, verified its signature/checksum/payload and confirmed byte-for-byte equality with the qualified archive. The release headline is **Luma 0.3.0 Beta**; stable metadata is required by the existing updater and does not imply v1 acceptance.
+
+The clean main build also passed the real Chromium/TLS remote workflow: enrollment with native WebCrypto, settings/calendar saves, task revisions, timers, explicit update confirmation and matching terminal version, hidden/offline/disconnect clearing, reload and revocation, and all themes at 320/390px without horizontal overflow. Its account, ANCS and installer responses were synthetic. Private D-Bus signal tests and the hardened gateway namespace smoke passed; neither used the owner's radio, tailnet or account. The existing wall bundle warning and dependency warnings remain disclosed.
+
+Build-host evidence is retained in `/home/luma-build/luma-030-release.1Wvmksze`: `publish-log.txt`, `browser-result.txt` and the signed archive. Owner setup and acceptance are in [IPHONE_REMOTE.md](IPHONE_REMOTE.md). Test actual Safari/Home Screen enrollment, Bluetooth lock/reconnect, Google Web consent/task changes, timer controls and hardware update preservation before treating this as physically accepted. The software development/publication goal is complete; these are on-device acceptance checks, not proof supplied by source tests.
+
+## Historical development checkpoints
 
 October 8: owner confirmed **Safari/Home Screen over private Tailscale HTTPS**. Development is on `codex/v030-iphone-remote`; no 0.3.0 release has been published or installed on the owner's Pi. 0.2.11 publication evidence remains in V0211_WORKING_NOTES.md.
 
@@ -78,4 +88,4 @@ The hardened dynamic-user gateway smoke passes using the production restrictions
 
 Final polish adds deterministic opaque PNG Home Screen icons from the existing code-native Luma mark, rejects symlinked entry/assets, and sets nosniff. Phone settings now cover timer defaults, weather warnings, night/chime levels and leaving preferences. Timer duration limits follow the selected unit; stale task edits are disabled. Latest frontend count is **189**, targeted gateway/private-D-Bus tests **32**, packaging **43**; expanded browser report `/home/luma-build/luma-030-mobile.ns5qyHTm` passes. The previous full backend count is 1,696; one added gateway regression makes a fresh complete run necessary. The 0.2.10 and 0.2.11 `update_agent.py` sources are identical. The publisher additionally pins the accepted 0.2.11 tag SHA and runs its exact legacy verifier/installer against the same signed 0.3.0 bytes.
 
-Next: qualify the exact signed 0.2.11-to-0.3.0 update and rollback with settings/grants/games retained; final full suites and exact-commit CI; publish Beta only when software gates pass. Final owner acceptance must cover Safari/Home Screen installation, real phone disconnect/reconnect, Web-client consent, remote command/task behavior and an actual hardware update. The goal remains active. [Release notes](V030_RELEASE_NOTES.md) remain a candidate until publication evidence is recorded.
+The pending publication gates described in these historical checkpoints are now satisfied by the published release qualification above. Real Safari/Home Screen installation, phone disconnect/reconnect, Web-client consent, remote command/task behavior and an actual hardware update remain owner acceptance checks. [Release notes](V030_RELEASE_NOTES.md) contain the install steps.

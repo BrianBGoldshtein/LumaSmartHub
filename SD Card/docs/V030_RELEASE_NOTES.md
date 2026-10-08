@@ -1,6 +1,6 @@
 # Beta — Luma 0.3.0
 
-Private iPhone remote for the existing Luma Pi. Application update, not a replacement OS image or hardware-accepted v1. Publication remains gated by exact-commit CI and offline-signed archive qualification.
+Private iPhone remote for the existing Luma Pi. [0.3.0 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.0) after exact-commit CI, offline signing, installation and rollback qualification. This is an application update, not a replacement OS image or hardware-accepted v1.
 
 ## New
 
@@ -16,9 +16,9 @@ No public Funnel, arbitrary API proxy, cloud AI, new database schema, dependency
 
 ## Install and enroll
 
-Once this Beta is published: on the hub, **Settings → Luma software → Check for updates → review 0.3.0 → Install**. Keep power/internet connected and verify the installed version. No SD reflash is needed. The accepted 0.2.11 updater performs the first install; its archive format is also unchanged from 0.2.10.
+On the hub, **Settings → Luma software → Check for updates → review 0.3.0 → Install**. Keep power/internet connected and verify the installed version. No SD reflash is needed. The accepted 0.2.11 updater was qualified against this exact signed package; its verifier/installer source is also unchanged from 0.2.10.
 
-Then keep Tailscale connected on the phone and its selected Bluetooth connection authorized. On Luma, enable the private HTTPS connection if needed, open **Settings → iPhone remote**, enter your PIN and create a QR. Enroll the intended Safari/Home Screen window, compare the codes and approve on the hub. See [complete iPhone setup](IPHONE_REMOTE.md), including optional Google Web-client consent and revocation.
+Then keep Tailscale connected on the phone and its selected Bluetooth connection authorized. On Luma, enable the private HTTPS connection if needed, open **Settings → iPhone remote**, enter your PIN and create a QR. Enroll the intended Safari/Home Screen window, compare the codes and approve on the hub. See [complete iPhone setup](https://github.com/BrianBGoldshtein/LumaSmartHub/blob/main/SD%20Card/docs/IPHONE_REMOTE.md), including optional Google Web-client consent and revocation.
 
 ## What still needs owner testing
 

@@ -1,16 +1,18 @@
 # Luma development status — 2026-10-08
 
-## Next Beta — 0.3.0 candidate, not published
+## Current published Beta — 0.3.0
 
-Owner confirmed the private Safari/Home Screen remote approach. Implementation is on `codex/v030-iphone-remote`: themed mobile preview/settings/software controls, PIN-approved browser enrollment/revocation, live ANCS-gated signed requests, optional separate Google Web consent and no private offline cache. See [saved plan and evidence](docs/V030_PLAN.md), [iPhone setup](docs/IPHONE_REMOTE.md) and [candidate notes](docs/V030_RELEASE_NOTES.md). Browser action/privacy checks and hardened gateway smoke pass; exact final CI/signing/legacy-updater switch and rollback remain before publication. Do not flash or reset a working phone bond.
+Owner confirmed the private Safari/Home Screen remote approach. [0.3.0 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.0) from main commit **99081bb0972d77d03afaf4860b25d7e5cdb514c9**: themed mobile preview/settings/software controls, PIN-approved browser enrollment/revocation, live ANCS-gated signed requests, optional separate Google Web consent and no private offline cache. Exact-main CI, **1,697 backend / 189 frontend / 43 packaging tests**, production builds, browser/privacy checks, hardened gateway smoke and exact signed switch/health-failure rollback passed. The same archive passed the accepted 0.2.11 verifier/installer; GitHub's download passed the production fetcher and matched the locally qualified bytes.
 
-## Current published Beta — 0.2.11
+Asset: **1,831,758 bytes**, 81 files, SHA-256 **0a70da6a201c5848ca30cc69af9a0fd3fe320b14f9603a201f1f4cb9300c8dcd**. See [saved plan and qualification evidence](docs/V030_PLAN.md), [iPhone setup](docs/IPHONE_REMOTE.md) and [release notes](docs/V030_RELEASE_NOTES.md). Install from **Settings → Luma software → Check for updates**; no flash or bond reset. Real Safari/Home Screen enrollment, Bluetooth disconnect/reconnect, Google consent and an actual Pi update remain owner acceptance checks. No physical acceptance is claimed.
+
+## Previous published Beta — 0.2.11
 
 Owner is running 0.2.10 and successfully renewed Google via a fresh-window recovery. [0.2.11 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.11), adding uncached/versioned dashboard navigation, themed Google recovery with bounded requests, preloaded/CPU-bounded Kristin sentence streaming, truthful thinking/playback phases, and numeric-only voice output timings. Exact source commit **68ca52aea57997fef83f8ea7368751c43f989963** passed CI and the guarded publisher: **1,558 backend / 173 frontend / 43 packaging tests**, production build, signed install/switch and health-failure rollback from 0.2.10. The production GitHub fetcher verified the downloaded signature and byte-for-byte equality with the qualified archive. Artifact: **1,305,560 bytes**, SHA-256 **e2f16250ef624c9df4e7ab2b921c387b84843ccaaa0d673e90c8836950fa9cb4**. Full evidence and remaining owner checks are in [V0211_WORKING_NOTES.md](docs/V0211_WORKING_NOTES.md). No OS reflash, account reset or bond changes are required. This app updater restarts application services, not the operating system; older documentation that promised automatic reboot was incorrect.
 
 Install through Settings → Luma software → Check for updates → review **0.2.11 Beta** → Install. Keep power connected. Check output latency/audibility, Google recovery and saved settings on the actual Pi; native-host timing is not Pi evidence. An older loaded 0.2.10 page may need the documented fresh-URL recovery once during migration.
 
-Next: plan and develop the owner's minimal themed iPhone remote/preview companion for 0.3.0. Require phone-specific PIN-controlled enrollment/revocation and Bluetooth-gated private synchronization. The expanded goal is not complete when 0.2.11 alone ships.
+The planned 0.3.0 iPhone remote is now published as recorded above. The following 0.2.x sections are historical checkpoints, not current release instructions.
 
 ## Current Beta — 0.2.10 published
 

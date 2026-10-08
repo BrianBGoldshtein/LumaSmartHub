@@ -13,18 +13,18 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.2.11 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.11).
+Latest: [Luma 0.3.0 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.0).
 On an existing Luma Pi, use **Settings → Luma software → Check for updates**;
-do not reflash its SD card. This release adds fresh dashboard/Google recovery,
-warm sentence-streamed Kristin output and truthful playback timing. It restarts
-application services, not the operating system. Saved settings, Google links,
-game state and the working phone bond are retained; voice/wake assets are unchanged.
-[0.2.11 changes and checks](SD%20Card/docs/V0211_RELEASE_NOTES.md).
-The next development target is **0.3.0**, a secure,
-phone-specific iPhone preview/settings remote with Bluetooth-gated synchronization.
-The candidate now implements the private Safari/Home Screen remote; it is not
-published yet. [Setup and privacy model](SD%20Card/docs/IPHONE_REMOTE.md) and
-[release qualification checkpoint](SD%20Card/docs/V030_PLAN.md).
+do not reflash its SD card. This release adds a themed private **Safari/Home Screen
+remote** for previews, timers, settings, calendars, optional Google sign-in and
+software updates. Enroll through the hub's PIN-protected QR; private requests
+require the selected iPhone's live authorized Bluetooth notification connection.
+No Mac, native companion app, public port or private offline cache is needed.
+The update preserves saved settings, Google links, games and the working phone
+bond; it restarts application services, not the operating system.
+[iPhone setup](SD%20Card/docs/IPHONE_REMOTE.md),
+[0.3.0 changes and owner checks](SD%20Card/docs/V030_RELEASE_NOTES.md) and
+[release qualification evidence](SD%20Card/docs/V030_PLAN.md).
 
 ## What it does
 

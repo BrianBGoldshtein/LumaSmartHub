@@ -1,6 +1,6 @@
 # Private iPhone remote — 0.3.0
 
-Development instructions: 0.3.0 is not published yet. Do not reflash your card or reset a working phone bond for this feature. After the signed Beta release is available, install it from the hub's normal GitHub updater.
+[0.3.0 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.0). On the hub, use **Settings → Luma software → Check for updates → review 0.3.0 → Install** and keep power connected. Confirm the installed version before enrolling. Do not reflash your card or reset a working phone bond.
 
 ## What you need
 
@@ -44,6 +44,6 @@ On the hub, **Settings → iPhone remote → Manage enrolled browsers** requires
 
 If locked, first verify Tailscale is connected, the correct private URL is open, and the selected iPhone has authorized Bluetooth notifications. If the key was cleared, enroll again. Do not repeatedly replay an uncertain task change or update: check the hub/Google state first. Pi Connect remains the recovery tool.
 
-## Owner acceptance after publication
+## Owner acceptance
 
 Test Safari and, separately, Home Screen installation; all three themes; timer start/pause/resume/cancel; calendar selections and task completion in Google; disconnect/reconnect and revoked-browser lockout; optional actual Google Web consent; and a real signed update with saved settings retained. Build-host tests do not prove iOS storage, the Pi radio, live Google consent or a physical update.

@@ -46,7 +46,7 @@ APP_ROOT = Path("/opt/luma")
 RELEASES_ROOT = Path("/opt/luma-releases")
 PUBLIC_KEY = Path("/etc/luma/luma-update-ed25519.pub")
 SYSTEM_SOCKET_UNITS = ("luma-backup.socket", "luma-pi-connect-setup.socket")
-SYSTEM_SERVICE_UNITS = ("luma-api.service", "luma-backup.service", "luma-pi-connect-setup.service")
+SYSTEM_SERVICE_UNITS = ("luma-api.service", "luma-backup.service", "luma-pi-connect-setup.service", "luma-shortcut-gateway.service")
 SYSTEM_UNITS = (*SYSTEM_SOCKET_UNITS, *SYSTEM_SERVICE_UNITS)
 # Chromium keeps the already-loaded update progress surface visible while the
 # API is swapped and health-checked. Only helpers with release-bound binaries

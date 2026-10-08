@@ -1,0 +1,1 @@
+{"name":"Luma private remote","short_name":"Luma","start_url":"/remote/","scope":"/remote/","display":"standalone","background_color":"#101820","theme_color":"#101820","icons":[{"src":"/remote/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import importlib.util
 import os
 from pathlib import Path
 import re
@@ -21,7 +22,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "source/backend/src"))
 
-from luma.update_agent import UpdateError, apply_bundle, verify_bundle  # noqa: E402
+from luma import update_agent as current_updater  # noqa: E402
+from luma.storage import Storage  # noqa: E402
 
 
 class Controller:
@@ -35,20 +37,20 @@ class Controller:
         self.actions.append("start")
 
 
-def tree(destination: Path, current_version: str) -> tuple[Path, Path, Path, Path]:
+def tree(destination: Path, current_version: str, baseline: Path = ROOT) -> tuple[Path, Path, Path, Path]:
     """Create a credential-free stand-in with the installed dependency/schema contract."""
     releases = destination / "luma-releases"
     current = releases / current_version
     (current / "backend/src/luma").mkdir(parents=True)
     (current / "frontend").mkdir()
-    project = (ROOT / "source/backend/pyproject.toml").read_text(encoding="utf-8")
+    project = (baseline / "source/backend/pyproject.toml").read_text(encoding="utf-8")
     project, count = re.subn(r'(?m)^version = "[^"]+"$',
                              f'version = "{current_version}"', project, count=1)
     if count != 1:
         raise ValueError("source version marker was not found")
     (current / "backend/pyproject.toml").write_text(project, encoding="utf-8")
     (current / "backend/src/luma/storage.py").write_bytes(
-        (ROOT / "source/backend/src/luma/storage.py").read_bytes())
+        (baseline / "source/backend/src/luma/storage.py").read_bytes())
     (current / "frontend/index.html").write_text("previous display", encoding="utf-8")
     (current / ".luma-release.json").write_text(
         json.dumps({"version": current_version}), encoding="utf-8")
@@ -92,16 +94,25 @@ def assert_readable_by_luma(candidate: Path) -> None:
             parent = parent.parent
 
 
-def check(bundle: Path, key: Path, current_version: str, *, healthy: bool) -> None:
+def check(bundle: Path, key: Path, current_version: str, *, healthy: bool,
+          updater=current_updater, baseline: Path=ROOT) -> None:
     with tempfile.TemporaryDirectory(prefix="luma-real-bundle-") as scratch:
-        app, releases, current, saved = tree(Path(scratch), current_version)
+        app, releases, current, saved = tree(Path(scratch), current_version, baseline)
+        # Synthetic SQLite credentials/keys, never owner's state. A normal
+        # update must retain these; backup-restore revocation is separate.
+        storage=Storage(saved.parent/'luma.db')
+        settings=storage.load_settings();settings.brightness=42
+        settings.phone_address='AA:BB:CC:DD:EE:FF';storage.save_settings(settings)
+        secrets={'google_tokens':'SYNTHETIC_GOOGLE', 'companion_browser_grants_v1':'SYNTHETIC_BROWSER'}
+        for name,value in secrets.items():storage.set_secret(name,value)
+        storage.set_cache('games','snake',{'score':123})
         controller = Controller()
         phases: list[str] = []
-        version = verify_bundle(bundle, key)["version"]
+        version = updater.verify_bundle(bundle, key)["version"]
         if healthy:
             previous_umask = os.umask(update_umask())
             try:
-                candidate = apply_bundle(bundle, app_root=app, releases_root=releases,
+                candidate = updater.apply_bundle(bundle, app_root=app, releases_root=releases,
                                          public_key_path=key, controller=controller,
                                          health_check=lambda selected: selected == version,
                                          progress=phases.append)
@@ -123,11 +134,11 @@ def check(bundle: Path, key: Path, current_version: str, *, healthy: bool) -> No
             assert_readable_by_luma(candidate)
         else:
             try:
-                apply_bundle(bundle, app_root=app, releases_root=releases,
+                updater.apply_bundle(bundle, app_root=app, releases_root=releases,
                              public_key_path=key, controller=controller,
                              health_check=lambda _selected: False,
                              progress=phases.append)
-            except UpdateError as error:
+            except updater.UpdateError as error:
                 if "health check" not in str(error):
                     raise
             else:
@@ -138,6 +149,9 @@ def check(bundle: Path, key: Path, current_version: str, *, healthy: bool) -> No
                 raise AssertionError("the failed update did not restore the previous release")
         if saved.read_bytes() != b"settings survive both outcomes\n":
             raise AssertionError("the update changed durable owner state")
+        if (storage.load_settings()!=settings or any(storage.get_secret(name)!=value for name,value in secrets.items())
+                or storage.get_cache('games','snake')!={'score':123} or not storage.integrity_check()):
+            raise AssertionError('the update changed synthetic SQLite settings, grants or games')
         print(f"{version}: {'switch' if healthy else 'rollback'} passed; "
               f"phases={','.join(phases)}")
 
@@ -148,14 +162,23 @@ def main() -> None:
     parser.add_argument("--public-key", type=Path,
                         default=ROOT / "source/system/luma-update-ed25519.pub")
     parser.add_argument("--current-version", default="0.2.3")
+    parser.add_argument('--legacy-delivery',type=Path,
+                        help='Exact prior SD Card source: use its verifier/installer and dependency/schema contract')
     args = parser.parse_args()
     if not sys.platform.startswith("linux"):
         parser.error("the atomic switch requires Linux")
-    version = verify_bundle(args.bundle, args.public_key)["version"]
+    updater=current_updater;baseline=ROOT
+    if args.legacy_delivery:
+        baseline=args.legacy_delivery.resolve(strict=True)
+        source=baseline/'source/backend/src/luma/update_agent.py'
+        if source.is_symlink() or not source.is_file():parser.error('legacy updater source is missing or linked')
+        spec=importlib.util.spec_from_file_location('qualified_legacy_updater',source)
+        updater=importlib.util.module_from_spec(spec);spec.loader.exec_module(updater)
+    version = updater.verify_bundle(args.bundle, args.public_key)["version"]
     if tuple(map(int, version.split("."))) <= tuple(map(int, args.current_version.split("."))):
         parser.error("bundle must be newer than the synthetic installed version")
-    check(args.bundle, args.public_key, args.current_version, healthy=True)
-    check(args.bundle, args.public_key, args.current_version, healthy=False)
+    check(args.bundle, args.public_key, args.current_version, healthy=True,updater=updater,baseline=baseline)
+    check(args.bundle, args.public_key, args.current_version, healthy=False,updater=updater,baseline=baseline)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .models import AssistantPhase, Command, CommandName, Orientation, Theme
+from .models import AssistantPhase, Command, CommandName, Orientation, Theme, Page
 from .voice import parse_local_command
 from .briefing import morning_briefing
 from .voice_library import LIBRARY, answer_query
@@ -62,6 +62,7 @@ from .pi_connect_setup import pi_connect_request
 from .pairing import PairingFlow
 from .shortcut_protocol import command_token, read_command
 from .focus_timer import TIMER_COMMANDS
+from .companion_api import install_companion_api, remote_guard
 
 
 class CommandRequest(BaseModel):
@@ -314,7 +315,14 @@ class MicGainRequest(BaseModel):
     gain: int = Field(strict=True, ge=0, le=63)
 
 
+class CycleEntry(BaseModel):
+    model_config={'extra':'forbid'}
+    page:Page
+    seconds:int=Field(strict=True,ge=5,le=600)
+
+
 class SettingsPatch(BaseModel):
+    cycle:list[CycleEntry]|None=Field(default=None,min_length=1,max_length=7)
     night_clock_enabled: bool | None = Field(default=None, strict=True)
     night_brightness: int | None = Field(default=None, strict=True, ge=0, le=100)
     notification_chime_enabled: bool | None = Field(default=None, strict=True)
@@ -578,11 +586,13 @@ def create_app(
     app.state.weather = weather
     app.state.network = network
     app.state.pairing = pairing
+    app.state.google_sync_lock = google_sync_lock
 
     def authorize(
         request: Request,
         x_luma_token: Annotated[str | None, Header()] = None,
     ) -> None:
+        remote_guard(request)
         host = request.client.host if request.client else None
         origin = request.headers.get("origin")
         if origin and origin != f"{request.url.scheme}://{request.headers.get('host')}":
@@ -605,6 +615,10 @@ def create_app(
     install_scene_api(app,service,local_only,bluetooth)
     install_backup_api(app,service,storage,local_only)
     install_update_api(app,local_only)
+    def companion_google_connected():
+        service.todo_write_authorized=google.task_write_authorized()
+        google_status.update(error=None,error_kind=None,reconnect_required=False)
+    install_companion_api(app,service,storage,bluetooth,local_only,companion_google_connected)
     install_keyword_api(app,keyword_runtime,local_only)
 
     def keyword_install_idle():
@@ -1724,8 +1738,9 @@ def create_app(
             raise HTTPException(502, google_status["error"] or "Could not sync Google Calendar. Saved events are retained.") from None
 
     @app.post('/api/v1/todos/complete', dependencies=[Depends(local_only)])
-    async def complete_task(payload: TaskCompletionRequest):
+    async def complete_task(payload: TaskCompletionRequest, request: Request):
         async with google_sync_lock:
+            remote_guard(request)
             from .calendar_logic import todo_events
             now = datetime.now(UTC)
             if service.snapshot(now)['privacy_redacted']:
@@ -1793,6 +1808,8 @@ def create_app(
     @app.patch("/api/v1/settings", dependencies=[secured])
     async def patch_settings(patch: SettingsPatch, request: Request) -> dict[str, Any]:
         updates = patch.model_dump(exclude_unset=True)
+        if patch.cycle is not None and len({row.page for row in patch.cycle})!=len(patch.cycle):
+            raise HTTPException(422,'Each cycle page may appear only once.')
         if {"phone_address", "voice_enabled", "timer_focus_minutes", "timer_break_minutes",
             "notification_chime_enabled", "notification_chime_volume",
             "weather_nudges_enabled", "weather_rain_percent", "weather_gust_mph", "weather_hot_f", "weather_cold_f", "night_clock_enabled", "night_brightness",
@@ -1807,6 +1824,7 @@ def create_app(
             if {'todo_calendar_id', 'todo_completed_color_id', 'timezone', 'visible_calendar_ids', 'sleep_calendar_ids', 'sleep_event_title',
                 'departure_calendar_ids','departure_enabled','departure_include_virtual','departure_prep_minutes','departure_travel_minutes'} & updates.keys():
                 async with google_sync_lock:
+                    remote_guard(request)
                     service.update_settings(updates)
             else:
                 service.update_settings(updates)
@@ -1860,6 +1878,7 @@ def create_app(
 
     @app.post("/api/v1/commands", dependencies=[secured])
     async def command(payload: CommandRequest, request: Request) -> dict[str, Any]:
+        remote_guard(request)
         if payload.name.value in TIMER_COMMANDS:
             local_only(request)  # Remote timers use the smaller Shortcut protocol.
         try:

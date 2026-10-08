@@ -61,7 +61,7 @@ export function TailscaleSetup({demo}:{demo:boolean}) {
       <button disabled={busy} onClick={()=>void run("enable")}>{connection.command_url?"Reconfigure private commands":"Enable private commands"}</button>
     </>}
     {connection.command_url && <><p>Use this HTTPS address in your Apple Shortcut, with the Shortcut token in All settings → Connections:</p><code className="setup-token">{connection.command_url}</code></>}
-    <p className="setup-note">No public sharing, remote settings or remote SSH. VPN connectivity never reveals your calendar: nearby-phone / PIN privacy still applies. Campus Wi-Fi must be online first.</p>
+    <p className="setup-note">No public sharing or remote SSH. The optional iPhone remote below requires separate PIN-approved browser enrollment and live authorized Bluetooth; Tailscale alone never reveals private details. Campus Wi-Fi must be online first.</p>
     {message && <p className="setup-message" role="status">{message}</p>}
   </section>;
 }

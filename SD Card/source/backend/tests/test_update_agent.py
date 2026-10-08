@@ -355,6 +355,9 @@ def test_systemd_updater_leaves_kiosk_running_while_api_is_switched():
     assert ['systemctl', 'stop', 'luma-pi-connect-setup.service'] in calls
     assert ['systemctl', 'start', 'luma-pi-connect-setup.socket'] in calls
     assert ['systemctl', 'start', 'luma-pi-connect-setup.service'] in calls
+    assert ['systemctl', 'stop', 'luma-shortcut-gateway.service'] in calls
+    assert ['systemctl', 'start', 'luma-shortcut-gateway.service'] in calls
+    assert calls.index(['systemctl', 'start', 'luma-api.service']) < calls.index(['systemctl', 'start', 'luma-shortcut-gateway.service'])
     assert calls.index(['systemctl', 'start', 'luma-pi-connect-setup.socket']) < calls.index(
         ['systemctl', 'start', 'luma-pi-connect-setup.service'])
 

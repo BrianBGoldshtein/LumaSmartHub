@@ -234,6 +234,7 @@ async def serve():
         raise RuntimeError("Start through luma-update.socket")
     listener = socket.socket(fileno=3)
     refresh_connect_broker_after_027_upgrade()
+    refresh_gateway_after_030_upgrade()
     await _serve_listener(listener, UpdateBroker(refresh_service=_restart_service,status_path=STATUS_PATH))
 
 
@@ -286,6 +287,45 @@ def refresh_connect_broker_after_027_upgrade(*, status_path: Path = STATUS_PATH,
         return True
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
         log.exception('Could not refresh Pi Connect helper after 0.2.7 switch')
+        return False
+
+
+def refresh_gateway_after_030_upgrade(*,status_path:Path=STATUS_PATH,app_root:Path=APP_ROOT,
+                                      releases_root:Path=RELEASES_ROOT,runner=subprocess.run)->bool:
+    """Reload an already owner-enabled gateway after the first 0.3.0 switch.
+
+    The old 0.2.x installer stops the API, whose Requires dependency stops the
+    gateway. It cannot know the new active-unit allowlist. The new root broker
+    starts after success and may restart this one previously opted-in service.
+    It never enables a disabled gateway or changes Serve/Funnel/network config.
+    """
+    saved=ProgressStore(status_path).read()
+    if not saved or saved['state']!='installed' or saved['target_version']!='0.3.0':return False
+    try:
+        if releases_root.is_symlink() or not releases_root.is_dir() or not app_root.is_symlink():return False
+        root=releases_root.resolve(strict=True);current=app_root.resolve(strict=True)
+        if not current.is_relative_to(root):return False
+        metadata=current/'.luma-release.json'
+        if metadata.is_symlink() or json.loads(metadata.read_text()).get('version')!='0.3.0':return False
+        marker=root/'.luma-gateway-refreshed-0.3.0'
+        if marker.exists() or marker.is_symlink():return False
+        enabled=runner(['/usr/bin/systemctl','is-enabled','luma-shortcut-gateway.service'],capture_output=True,text=True,timeout=8)
+        if enabled.returncode!=0 or enabled.stdout.strip()!='enabled':return False
+        runner(['/usr/bin/systemctl','--no-block','restart','luma-shortcut-gateway.service'],check=True,timeout=8,
+               stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        temporary=root/f'.luma-gateway-refreshed-{secrets.token_hex(8)}.tmp'
+        try:
+            descriptor=os.open(temporary,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0),0o600)
+            with os.fdopen(descriptor,'wb') as stream:
+                stream.write(b'Owner-enabled gateway refreshed after 0.3.0 upgrade\n');stream.flush();os.fsync(stream.fileno())
+            os.replace(temporary,marker)
+            directory=os.open(root,os.O_RDONLY|getattr(os,'O_DIRECTORY',0))
+            try:os.fsync(directory)
+            finally:os.close(directory)
+        finally:temporary.unlink(missing_ok=True)
+        return True
+    except (OSError,ValueError,TypeError,AttributeError,subprocess.SubprocessError):
+        log.error('Could not refresh owner-enabled private gateway after 0.3.0 switch')
         return False
 
 

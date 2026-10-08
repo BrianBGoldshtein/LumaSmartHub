@@ -104,6 +104,12 @@ class Storage:
         now = datetime.now(UTC).isoformat()
         payload = json.dumps(to_primitive(settings), separators=(",", ":"), sort_keys=True)
         with self.transaction() as connection:
+            old = connection.execute("SELECT payload FROM settings WHERE id=1").fetchone()
+            if old and json.loads(old["payload"]).get("phone_address") != settings.phone_address:
+                # Selecting/forgetting another bond must not resurrect grants
+                # when the previous phone is later selected again.
+                connection.execute("DELETE FROM secrets WHERE key IN (?, ?)",
+                                   ("companion_browser_grants_v1", "companion_google_oauth_state_v1"))
             connection.execute(
                 "UPDATE settings SET payload = ?, updated_at = ? WHERE id = 1",
                 (payload, now),
@@ -207,8 +213,22 @@ class Storage:
             if test.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone() != (str(SCHEMA_VERSION),):
                 raise ValueError("unsupported backup schema")
             settings_from_dict(json.loads(test.execute("SELECT payload FROM settings WHERE id=1").fetchone()[0]))
-            # SQLite's backup API handles the destination WAL; copying the .db alone does not.
-            with closing(self.connect()) as destination:
-                test.backup(destination)
+            # Prepare/scrub before the atomic destination backup. A historical
+            # backup must never resurrect a revoked phone-browser grant, even
+            # if power fails during restore. Normal app updates do not restore
+            # this database, so their enrolled browsers are retained.
+            handle, prepared_path = tempfile.mkstemp(prefix=".luma-restore-", suffix=".db", dir=self.path.parent)
+            os.close(handle)
+            try:
+                with closing(sqlite3.connect(prepared_path)) as prepared:
+                    test.backup(prepared)
+                    prepared.execute("DELETE FROM secrets WHERE key IN (?, ?)",
+                                     ("companion_browser_grants_v1", "companion_google_oauth_state_v1"))
+                    prepared.commit()
+                    # SQLite backup handles the live destination WAL.
+                    with closing(self.connect()) as destination:
+                        prepared.backup(destination)
+            finally:
+                Path(prepared_path).unlink(missing_ok=True)
         finally:
             test.close()

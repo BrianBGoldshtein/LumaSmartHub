@@ -5,6 +5,7 @@ import {VoiceSetup} from "./VoiceSetup";
 import {NetworkSetup} from "./NetworkSetup";
 import {BluetoothSetup} from "./BluetoothSetup";
 import {TailscaleSetup} from "./TailscaleSetup";
+import {CompanionSetup} from "./CompanionSetup";
 import {PiConnectSetup} from "./PiConnectSetup";
 import {TouchField,TouchInputProvider} from "./TouchField";
 import {UpdateSetup} from "./UpdateSetup";
@@ -86,6 +87,7 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
     <PiConnectSetup demo={demo}/>
     <UpdateSetup demo={demo}/>
     <TailscaleSetup demo={demo}/>
+    <CompanionSetup demo={demo} pinConfigured={pinConfigured}/>
     <BluetoothSetup demo={demo} pinConfigured={pinConfigured}/>
     <NotificationSoundSetup demo={demo}/>
     <VoiceSetup demo={demo}/>

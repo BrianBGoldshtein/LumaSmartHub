@@ -1,4 +1,4 @@
-"""Dormant command-only gateway. Never proxy the local UI/API to a network.
+"""Opt-in private commands and restricted companion ingress.
 
 No service is enabled by the installer. A chosen, qualified private HTTPS
 transport is still required; this loopback listener alone is not phone setup.
@@ -15,13 +15,15 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 
 from .shortcut_protocol import command_token, read_command
+from .companion_gateway import install_companion_gateway
 
 UPSTREAM = "http://127.0.0.1:8742/api/v1/shortcut-command"
 
 
-def create_gateway(*, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
+def create_gateway(*, transport: httpx.AsyncBaseTransport | None = None, frontend_dir=None) -> FastAPI:
     # Transport injection is for offline tests only, never a request parameter.
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
+    install_companion_gateway(app, transport,frontend_dir=frontend_dir)
     requests: deque[float] = deque()
 
     @app.middleware("http")

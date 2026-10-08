@@ -35,6 +35,7 @@ htmlcov/
 node_modules/
 .pnpm-store/
 dist/
+remote-build/
 coverage/
 playwright-report/
 test-results/

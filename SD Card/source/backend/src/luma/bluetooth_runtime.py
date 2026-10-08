@@ -11,6 +11,7 @@ from .integrations.ancs import SERVICE, SOURCE, DATA, CONTROL, AttributeResponse
 from .service import LumaService
 from .scene_presence import ScenePresence, evidence
 from .ancs_advertising import ANCSReconnectAdvertising
+from .companion_presence import AuthorizedPhoneSession
 
 SERVICE_CHANGED = '00002a05-0000-1000-8000-00805f9b34fb'
 
@@ -217,6 +218,7 @@ class BluetoothRuntime:
         self.status = "Not configured"
         self.scene_presence = ScenePresence()
         self.scene_authorized = None
+        self.remote_authorized = AuthorizedPhoneSession()
         self.last_discovery = -60.0
         self.last_reconnect_at: str | None = None
         self.reconnect_attempts = 0
@@ -228,6 +230,10 @@ class BluetoothRuntime:
     @property
     def advertising_status(self):
         return self.advertiser.status
+
+    def companion_presence(self):
+        return self.remote_authorized.snapshot(self.service.settings.phone_address,
+                                              phone_connected=self.service.state.phone_connected)
 
     async def reconnect_advertising_worker(self):
         await self.advertiser.run()
@@ -401,6 +407,8 @@ class BluetoothRuntime:
             source_props = await interface(chars[SOURCE], "org.freedesktop.DBus.Properties")
             data_props = await interface(chars[DATA], "org.freedesktop.DBus.Properties") if has_details else None
             phone_props = await interface(phone_path, "org.freedesktop.DBus.Properties")
+            phone_props.on_properties_changed(self.remote_authorized.properties_changed)
+            manager.on_interfaces_removed(self.remote_authorized.interfaces_removed)
             notices = asyncio.Queue(maxsize=64)
             fragments = asyncio.Queue(maxsize=64)
 
@@ -411,13 +419,15 @@ class BluetoothRuntime:
                     queue.put_nowait(bytes(changed["Value"].value))
 
             source_props.on_properties_changed(lambda name, changed, invalidated: enqueue(notices, changed))
+            source_props.on_properties_changed(self.remote_authorized.source_properties_changed)
             if data_props:
                 data_props.on_properties_changed(lambda name, changed, invalidated: enqueue(fragments, changed))
             # Never unlock on RSSI, an advertisement or a merely connected
             # device: Notification Source must authorize its subscription.
             has_details = await subscribe_ancs(source, data)
+            self.remote_authorized.begin(address, phone_path, chars[SOURCE])
             self.status = "Authorized ANCS session" if has_details else "Authorized iPhone; notification details unavailable"
-            while self.service.settings.phone_address == address:
+            while self.service.settings.phone_address == address and self.remote_authorized.generation:
                 props = plain(await asyncio.wait_for(phone_props.call_get_all("org.bluez.Device1"), 5))
                 if not trusted_link(props):
                     self.status = "iPhone Bluetooth link or services disconnected"
@@ -427,8 +437,12 @@ class BluetoothRuntime:
                 if chars[SOURCE] not in current:
                     self.status = "iPhone notification service disappeared"
                     break
+                if plain(current[chars[SOURCE]].get('org.bluez.GattCharacteristic1', {})).get('Notifying') is not True:
+                    self.status = "iPhone notification subscription ended"
+                    break
                 self.service.phone_seen()
                 self.scene_authorized = (address, monotonic())
+                self.remote_authorized.heartbeat(address)
                 try:
                     raw = await asyncio.wait_for(notices.get(), 5)
                 except asyncio.TimeoutError:
@@ -458,6 +472,7 @@ class BluetoothRuntime:
                     continue
         finally:
             self.scene_authorized = None
+            self.remote_authorized.clear()
             with suppress(Exception):
                 bus.disconnect()
 

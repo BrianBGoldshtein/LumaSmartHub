@@ -7,7 +7,7 @@ from importlib.metadata import version as package_version
 import secrets
 from time import monotonic
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -58,7 +58,7 @@ def install_update_api(app, local_only):
 
     @app.post("/api/v1/updates/install", status_code=202,
               dependencies=[Depends(local_only)])
-    async def install_update(payload: InstallRequest):
+    async def install_update(payload: InstallRequest, request: Request):
         nonlocal candidate
         async with candidate_lock:
             row = candidate
@@ -69,6 +69,9 @@ def install_update_api(app, local_only):
             bundle = row["bundle"]
             version = row["version"]
         try:
+            check = request.scope.get("luma_companion_check")
+            if check is not None:
+                check()
             accepted = await update_request({"action": "install",
                                              "bundle": base64.b64encode(bundle).decode("ascii")})
         except UpdateError as error:

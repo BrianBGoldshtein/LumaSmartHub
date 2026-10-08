@@ -92,6 +92,8 @@ elif [[ "${VERSION}" == "0.2.10" ]]; then
   QUALIFY_FROM="0.2.9"
 elif [[ "${VERSION}" == "0.2.11" ]]; then
   QUALIFY_FROM="0.2.10"
+elif [[ "${VERSION}" == "0.3.0" ]]; then
+  QUALIFY_FROM="0.2.11"
 fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"
@@ -194,6 +196,21 @@ printf 'Qualifying the exact signed application archive against switch and rollb
 python3 "${DELIVERY_ROOT}/source/tools/qualify-update-bundle.py" "${OUTPUT}" \
   --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
   --current-version "${QUALIFY_FROM}"
+if [[ "${VERSION}" == "0.3.0" ]]; then
+  # The first remote install is performed by the already-deployed 0.2.11
+  # verifier/installer, not this release's new active-gateway allowlist.
+  LEGACY_SHA="68ca52aea57997fef83f8ea7368751c43f989963"
+  [[ "$(git -C "${REPO_ROOT}" rev-parse 'refs/tags/v0.2.11^{}')" == "${LEGACY_SHA}" ]] || die "the accepted 0.2.11 tag changed"
+  LEGACY_ROOT="$(mktemp -d "$(dirname -- "${OUTPUT}")/luma-legacy-0211.XXXXXXXX")"
+  git -C "${REPO_ROOT}" archive "${LEGACY_SHA}" -- \
+    "SD Card/source/backend/pyproject.toml" \
+    "SD Card/source/backend/src/luma/storage.py" \
+    "SD Card/source/backend/src/luma/update_agent.py" | tar -x -C "${LEGACY_ROOT}"
+  printf 'Qualifying the same signed archive with the accepted 0.2.11 verifier/installer…\n'
+  python3 "${DELIVERY_ROOT}/source/tools/qualify-update-bundle.py" "${OUTPUT}" \
+    --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
+    --current-version "0.2.11" --legacy-delivery "${LEGACY_ROOT}/SD Card"
+fi
 RELEASE_ASSETS=("${OUTPUT}")
 if [[ -n "${KEYWORD_ASSETS_DIR}" ]]; then
   python3 "${DELIVERY_ROOT}/source/tools/build-keyword-asset.py" "${DELIVERY_ROOT}" \

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextvars import ContextVar
 import hashlib
 import secrets
 from threading import RLock
@@ -13,6 +14,21 @@ COOKIE = 'luma_primary_admin'
 LEASE_SECONDS = 300
 FRESH_SECONDS = 60
 MAX_LEASES = 32
+REQUEST_ADMIN = ContextVar('luma_request_admin', default=None)
+
+
+def require_request_admin():
+    """Recheck the original request lease; never inferred from a header/body.
+
+    Async tasks and to_thread inherit this request context. Lifespan polling
+    does not: unattended refreshes and receipt recording remain independent.
+    Call before a deliberate commit/dispatch, not inside all storage writes.
+    """
+    check = REQUEST_ADMIN.get()
+    if check is not None:
+        check()
+
+
 GLOBAL_COMMANDS = frozenset({'set_brightness', 'set_volume', 'set_theme', 'set_orientation',
                              'run_scene', 'cancel_scene', 'run_remote_scene'})
 COMMAND_PATHS = frozenset({'/api/v1/commands', '/api/v1/voice/command', '/api/v1/shortcut-command'})

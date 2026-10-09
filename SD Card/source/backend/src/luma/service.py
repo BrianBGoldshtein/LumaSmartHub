@@ -266,6 +266,8 @@ class LumaService:
         payload = to_primitive(self.settings)
         payload.update(updates)
         candidate = settings_from_dict(payload)
+        from .admin_authority import require_request_admin
+        require_request_admin()
         self.storage.save_settings(candidate)
         self.machine.settings = candidate
         if 'brightness' in updates:
@@ -322,6 +324,8 @@ class LumaService:
                 'volume': self.settings.notification_chime_volume}
 
     def execute(self, command: Command, now: datetime | None = None) -> CommandResult:
+        from .admin_authority import require_request_admin
+        require_request_admin()
         now = now or datetime.now(UTC)
         self._sync_sleep(now)
         if command.name.value == 'screen_off' and not self.settings.onboarding_completed:

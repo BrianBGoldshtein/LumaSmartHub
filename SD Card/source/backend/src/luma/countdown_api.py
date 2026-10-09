@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from .admin_authority import AdminDenied, require_request_admin
 
 
 class ManualDate(BaseModel):
@@ -86,6 +87,7 @@ def install_countdown_api(app,service,google,google_lock,local_only):
     app.state.countdown_runtime=runtime
 
     def owner_access():
+        require_request_admin()
         # First-run setup can save dates before optional phone/PIN enrollment.
         if service.settings.onboarding_completed and service.snapshot()['privacy_redacted']:
             raise HTTPException(403,'Unlock private information to configure countdowns.')
@@ -131,9 +133,11 @@ def install_countdown_api(app,service,google,google_lock,local_only):
         runtime.next_search=runtime.clock()+5
         try:
             async with google_lock:
+                owner_access()
                 result=await asyncio.to_thread(google.countdown_candidates,calendar_id=payload.calendar_id,
                     start=datetime.combine(start,time.min,zone),end=datetime.combine(end,time.min,zone),
                     timezone=service.settings.timezone,page_token=payload.page_token)
+        except AdminDenied: raise
         except Exception: raise HTTPException(502,'Could not load this date window. Saved countdowns are unchanged.') from None
         owner_access()  # Do not return private search results after a presence lease expires.
         events=[{'id':e.id,'calendar_id':e.calendar_id,'title':e.summary[:100],'start':e.start.isoformat(),
@@ -147,8 +151,10 @@ def install_countdown_api(app,service,google,google_lock,local_only):
         if len(service.countdowns.items)>=12: raise HTTPException(409,'Keep at most 12 countdowns.')
         try:
             async with google_lock:
+                owner_access()
                 result=await asyncio.to_thread(google.countdown_event,calendar_id=payload.calendar_id,
                     event_id=payload.event_id,timezone=service.settings.timezone)
+        except AdminDenied: raise
         except Exception: raise HTTPException(502,'Could not verify this event. Nothing was pinned.') from None
         owner_access()
         if result['state']!='ready' or result['event'] is None: raise HTTPException(409,'This event is no longer available.')

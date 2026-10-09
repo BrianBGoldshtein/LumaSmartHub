@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
 from .purifier_adapter import PurifierBusy, PurifierRateLimit, PurifierReconnect, PurifierUnavailable
 from .room_runtime import RoomAccessChanged, RoomRuntime
+from .admin_authority import AdminDenied, require_request_admin
 
 
 class Revision(BaseModel):
@@ -40,6 +41,7 @@ def install_room_api(app, service, local_only):
     app.state.room_runtime = runtime
 
     def owner():
+        require_request_admin()
         if not runtime.owner_allowed():
             raise HTTPException(403, 'Unlock Luma to configure or control room devices.')
 
@@ -58,6 +60,8 @@ def install_room_api(app, service, local_only):
             raise HTTPException(409, str(exc)) from None
         except PurifierUnavailable as exc:
             raise HTTPException(502, str(exc)) from None
+        except AdminDenied:
+            raise
         except Exception:
             raise HTTPException(503, 'Room-device operation could not finish. Check the reported state before trying again.') from None
         owner()

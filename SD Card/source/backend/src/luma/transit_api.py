@@ -55,6 +55,8 @@ def install_transit_api(app,service,local_only):
     runtime=TransitRuntime(service);app.state.transit_runtime=runtime
 
     def owner_access():
+        from .admin_authority import require_request_admin
+        require_request_admin()
         if service.settings.onboarding_completed and service.snapshot()['privacy_redacted']:
             raise HTTPException(403,'Unlock private information to configure transit.')
 

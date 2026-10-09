@@ -45,6 +45,8 @@ class SceneRuntime:
         except OSError: return False
 
     def owner_allowed(self):
+        from .admin_authority import require_request_admin
+        require_request_admin()
         return not self.closed and (not self.service.settings.onboarding_completed or not self.service.snapshot()['privacy_redacted'])
 
     def calendar_fresh(self):
@@ -53,6 +55,10 @@ class SceneRuntime:
                     and timedelta(0) <= self.utcnow() - at <= timedelta(minutes=10))
 
     def authorize(self, trigger):
+        from .admin_authority import AdminDenied, require_request_admin
+        if trigger.source in {'manual', 'remote'}:
+            try: require_request_admin()
+            except AdminDenied: return False
         if self.closed: return False
         if trigger.source == 'manual': return self.owner_allowed()
         if trigger.source == 'remote':

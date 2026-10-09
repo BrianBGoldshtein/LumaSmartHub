@@ -61,6 +61,8 @@ class GoogleCalendarClient:
         if not installed or not installed.get("client_id") or not installed.get("client_secret"):
             raise ValueError("Google OAuth client JSON is missing its client ID or secret")
         with self._oauth_lock:
+            from ..admin_authority import require_request_admin
+            require_request_admin()
             self.storage.set_secret(CLIENT_CONFIG_KEY, json.dumps(payload, separators=(",", ":")))
 
     def task_write_authorized(self) -> bool:
@@ -72,6 +74,8 @@ class GoogleCalendarClient:
 
     def begin_authorization(self, *, task_updates: bool = False) -> str:
         with self._oauth_lock:
+            from ..admin_authority import require_request_admin
+            require_request_admin()
             config = self._client_config()
             state, verifier = secrets.token_urlsafe(24), secrets.token_urlsafe(64)
             scopes = [CALENDAR_SCOPE] + ([TASK_WRITE_SCOPE] if task_updates or self.task_write_authorized() else [])

@@ -3,6 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from time import monotonic
+from .admin_authority import AdminDenied, require_request_admin
 
 from .purifier_adapter import (PurifierAdapter, PurifierBusy, PurifierRateLimit,
                                PurifierReconnect, PurifierUnavailable)
@@ -31,6 +32,7 @@ class RoomRuntime:
         return not self.closed and (not self.service.settings.onboarding_completed or not self.service.snapshot()['privacy_redacted'])
 
     def _check(self, revision, generation, *, owner=True):
+        if owner: require_request_admin()
         if owner and not self.owner_allowed():
             raise RoomAccessChanged('Unlock Luma to configure or control room devices.')
         if self.closed:
@@ -42,6 +44,7 @@ class RoomRuntime:
         if self.lock.locked():
             raise PurifierBusy('Another room-device operation is in progress. Nothing has been queued.')
         async with self.lock:
+            require_request_admin()
             yield
 
     def _setup_slot(self):
@@ -131,6 +134,7 @@ class RoomRuntime:
             self._setup_slot()
             try:
                 adapter = await self._ensure()
+                self._check(revision, generation)
                 result = await adapter.discover()
                 self._check(revision, generation)
             except PurifierUnavailable as exc:
@@ -168,6 +172,7 @@ class RoomRuntime:
 
     async def _selected_adapter(self):
         adapter = await self._ensure()
+        require_request_admin()
         selected = self.store.selected
         if not selected: raise ValueError('Select a purifier first.')
         if selected['id'] not in adapter.devices:
@@ -227,7 +232,7 @@ class RoomRuntime:
                 try:
                     check()
                     return self.store.selected is not None and self.store.selected['id'] == key
-                except (ValueError, RoomAccessChanged): return False
+                except (ValueError, RoomAccessChanged, AdminDenied): return False
             try:
                 result = await adapter.command(key, action, value, can_send=can_send)
             except PurifierUnavailable as exc:

@@ -698,6 +698,7 @@ def create_app(
             progress = transition(load_progress(storage), payload)
         except (ValueError, TypeError, TimeoutError):
             raise HTTPException(422, "Invalid setup step; refresh and try again") from None
+        remote_guard(request)
         storage.set_cache("onboarding", "progress", progress)
         if payload["action"] == "finish":
             service.update_settings({"onboarding_completed": True})
@@ -782,17 +783,19 @@ def create_app(
         except Exception:
             raise HTTPException(422, "Invalid private connection request") from None
         try:
+            remote_guard(request)
             result = await tailscale_request(payload)
         except ValueError as error:
             raise HTTPException(503, str(error)) from None
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     @app.post("/api/v1/pi-connect", dependencies=[Depends(local_only)])
-    async def pi_connect_setup(payload: PiConnectRequest):
+    async def pi_connect_setup(payload: PiConnectRequest, request: Request):
         try:
             result = await pi_connect_request({"action": payload.action})
         except ValueError as error:
             raise HTTPException(503, str(error)) from None
+        remote_guard(request)
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     @app.post("/api/v1/network", dependencies=[Depends(local_only)])
@@ -812,6 +815,7 @@ def create_app(
         except Exception:
             raise HTTPException(422, "Invalid Wi-Fi setup request") from None
         try:
+            remote_guard(request)
             return await network_request(payload)
         except ValueError as error:
             raise HTTPException(503, str(error)) from None
@@ -1228,6 +1232,8 @@ def create_app(
             if call_trial.status()['active'] or speaker_trial.status()['active']:
                 raise HTTPException(409, 'Finish the active voice trial before changing microphone gain.')
             before = await asyncio.to_thread(mic_hardware.status)
+            from .admin_authority import require_request_admin
+            require_request_admin()
             def path_changed(after: dict) -> bool:
                 return (not before.get('available') or not after.get('available')
                         or any(before.get(key) != after.get(key)
@@ -1917,6 +1923,7 @@ def create_app(
         if not security.verify_lan_token(command_token(request)):
             raise HTTPException(401, "Command authentication required.")
         parsed = await read_command(request)
+        remote_guard(request)
         if parsed.name == CommandName.RUN_REMOTE_SCENE:
             runtime = app.state.scene_runtime
             key = parsed.value

@@ -71,6 +71,8 @@ def apply(gain: int) -> None:
         raise ValueError("Capture gain must be a whole number from 0 to 63")
     # Verify the expected V1 card before touching any mixer controls.
     _values("Capture Volume")
+    from .admin_authority import require_request_admin
+    require_request_admin()
     for name in ROUTE_ON:
         _run("cset", f"name={name}", "on")
     _run("cset", "name=Capture Switch", "on,on")

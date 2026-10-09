@@ -45,12 +45,16 @@ def install_scene_api(app, service, local_only, bluetooth):
     app.state.scene_runtime = runtime
 
     def owner():
+        from .admin_authority import require_request_admin
+        require_request_admin()
         if not runtime.owner_allowed(): raise HTTPException(403, 'Unlock Luma to configure or run scenes.')
 
     def response(value=None):
         return JSONResponse(value if value is not None else runtime.configuration(), headers={'Cache-Control': 'no-store'})
 
     def failure(exc):
+        from .admin_authority import AdminDenied
+        if isinstance(exc, AdminDenied): raise exc
         if isinstance(exc, PermissionError): return HTTPException(403, str(exc))
         if isinstance(exc, ValueError): return HTTPException(409, str(exc))
         return HTTPException(503, 'Scene could not finish. Review its results; it will not be retried.')

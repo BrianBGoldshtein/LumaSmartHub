@@ -36,6 +36,8 @@ class SecurityManager:
             p=1,
             dklen=32,
         )
+        from .admin_authority import require_request_admin
+        require_request_admin()  # Hashing may outlive the original settings approval.
         self.storage.set_secret(PIN_SECRET_KEY, f"scrypt$16384$8$1${salt.hex()}${digest.hex()}")
         self.storage.set_cache("security", "pin_attempts", {"failures": 0, "locked_until": None})
 
@@ -83,6 +85,8 @@ class SecurityManager:
         return bool(expected and hmac.compare_digest(expected, candidate))
 
     def rotate_lan_token(self) -> str:
+        from .admin_authority import require_request_admin
+        require_request_admin()
         token = secrets.token_urlsafe(32)
         self.storage.set_secret(LAN_TOKEN_KEY, token)
         return token

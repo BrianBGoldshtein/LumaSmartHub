@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .backup_broker import backup_request
+from .admin_authority import require_request_admin
 from .countdowns import Countdowns
 from .portable_backup import MAX_PASSPHRASE_CHARS, PortableBackupError, apply_document, decrypt, encrypt, snapshot
 from .scenes import Scenes
@@ -61,6 +62,7 @@ def install_backup_api(app, service, storage, local_only):
     app.state.backup_restore_lock = restore_lock
 
     def owner():
+        require_request_admin()
         if service.settings.onboarding_completed and service.snapshot()["privacy_redacted"]:
             raise HTTPException(403, "Unlock Luma before changing portable settings.")
 
@@ -82,12 +84,14 @@ def install_backup_api(app, service, storage, local_only):
     async def scan_media():
         owner()
         result = await run_broker("scan")
+        owner()
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/backups/media", dependencies=[Depends(local_only)])
     async def list_media():
         owner()
         result = await run_broker("list")
+        owner()
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     @app.post("/api/v1/backups/export", dependencies=[Depends(local_only)])
@@ -103,6 +107,7 @@ def install_backup_api(app, service, storage, local_only):
         # Never retain the passphrase/archive in API state or log it. The broker
         # only receives authenticated encrypted bytes; only safe receipt fields
         # are returned to the screen.
+        owner()
         result = await run_broker("write", volume_id=payload.volume_id,
                                   archive=base64.b64encode(archive).decode("ascii"))
         if result.get("verified") is not True:
@@ -119,6 +124,7 @@ def install_backup_api(app, service, storage, local_only):
             document = await asyncio.to_thread(decrypt, archive, payload.passphrase)
         except (PortableBackupError, ValueError, KeyError, TypeError):
             raise HTTPException(422, "That backup could not be opened. Check the passphrase and try again.") from None
+        owner()
         trim_previews()
         preview_id = secrets.token_hex(16)
         previews[preview_id] = (monotonic() + 300, document)
@@ -157,7 +163,9 @@ def install_backup_api(app, service, storage, local_only):
             async with countdown_runtime.refresh_lock:
                 async with transit_runtime.lock:
                     scene_runtime = app.state.scene_runtime
+                    owner()
                     await scene_runtime.executor.cancel()
+                    owner()
                     try:
                         settings = apply_document(storage, document, current=service.settings)
                     except (PortableBackupError, ValueError):

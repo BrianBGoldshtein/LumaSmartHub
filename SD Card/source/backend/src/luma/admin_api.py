@@ -5,7 +5,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from .admin_authority import AdminAuthority, AdminDenied, COOKIE, FRESH_PATHS, LEASE_SECONDS, COMMAND_PATHS, needs_admin
+from .admin_authority import AdminAuthority, AdminDenied, COOKIE, FRESH_PATHS, LEASE_SECONDS, COMMAND_PATHS, needs_admin, REQUEST_ADMIN
 
 
 class AdminPin(BaseModel):
@@ -73,21 +73,28 @@ def install_admin_api(app, service, security, local_only, decode_command):
             local_only(request)  # A LAN token is not primary administration; signed remotes use the guarded loopback dispatch.
             # First local provisioning is the sole exception. Updates always
             # require a primary PIN, and adding a guest ends bootstrap access.
-            if not security.pin_is_configured() and path == '/api/v1/security/pin':
-                return await call_next(request)
-            if bootstrap() and not path.startswith('/api/v1/updates/'):
-                return await call_next(request)
             check = request.scope.get('luma_admin_check')
             if check is None:
-                token, origin = request.cookies.get(COOKIE), request_origin(request)
-                def check():
-                    admin.require_local(token, origin, fresh=path in FRESH_PATHS or method == 'DELETE')
+                if not security.pin_is_configured() and path == '/api/v1/security/pin':
+                    def check():
+                        if security.pin_is_configured(): raise AdminDenied()
+                elif bootstrap() and not path.startswith('/api/v1/updates/'):
+                    def check():
+                        if not bootstrap(): raise AdminDenied()
+                else:
+                    token, origin = request.cookies.get(COOKIE), request_origin(request)
+                    def check():
+                        admin.require_local(token, origin, fresh=path in FRESH_PATHS or method == 'DELETE')
                 request.scope['luma_admin_check'] = check
             check()
-            response = await call_next(request)
-            if method in {'GET', 'HEAD'}:
-                check()  # Do not return a slow private read after lease expiry.
-            return response
+            context = REQUEST_ADMIN.set(check)
+            try:
+                response = await call_next(request)
+                if method in {'GET', 'HEAD'}:
+                    check()  # Do not return a slow private read after lease expiry.
+                return response
+            finally:
+                REQUEST_ADMIN.reset(context)
         except AdminDenied as error:
             return JSONResponse({'detail':str(error), 'code':'admin_required', 'fresh':error.fresh},
                                 status_code=403, headers={'Cache-Control':'no-store'})

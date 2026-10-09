@@ -25,6 +25,7 @@ from .companion_profiles import own_operation
 from .profiles import PRIMARY_ID, ProfileError
 from .focus_timer import TIMER_COMMANDS
 from .admin_authority import AdminDenied, LEASE_SECONDS, FRESH_PATHS, needs_admin
+from .companion_settings import PrimarySettings
 
 
 SETTINGS_KEYS = frozenset({
@@ -126,6 +127,7 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
     app.state.companion_google=web_google
     web_accounts = {PRIMARY_ID: web_google}
     app.state.companion_google_accounts = web_accounts
+    primary_settings = PrimarySettings(app)
 
     def user_web_google(uid):
         profiles.get(uid)
@@ -291,6 +293,10 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                     result = {**result, **own_web.status(payload['origin'])}
                 status_code = 200
                 requires_admin = False  # Own-account actions are not room administration.
+            elif path == '/remote/api/hub-settings':
+                async with asyncio.timeout(45):
+                    result = await primary_settings.dispatch(payload['device_id'], parse_object(body), admin_recheck)
+                status_code = 200
             elif path.startswith('/remote/api/admin/'):
                 if path.endswith('/unlock'):
                     value = parse_object(body); _shape(value, {'pin'})

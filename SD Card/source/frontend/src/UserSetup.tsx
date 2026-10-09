@@ -1,3 +1,4 @@
+import {isRemoteSetup,setupNavigate} from './setupTransport';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowLeft,Check,Smartphone,Users,CalendarDays,ShieldCheck} from 'lucide-react';
 import {TouchField,TouchInputProvider} from './TouchField';
@@ -41,7 +42,7 @@ export function UsersSetup({demo}:{demo:boolean}){
       if(demo){setMessage('Preview only. No person or phone was changed.');return;}
       await api('users/manage','POST',value);
       setRename(null);setName('');
-      if(open){location.assign('/?setup=personal');return;}
+      if(open){setupNavigate('/?setup=personal');return;}
       await load();setMessage('Saved.');
     }catch(error){setMessage(error instanceof Error?error.message:'Please try again.');}
     finally{setBusy(false);}
@@ -57,7 +58,7 @@ export function UsersSetup({demo}:{demo:boolean}){
         </div></article>)}</div></section>
       <form onSubmit={event=>{event.preventDefault();void action(rename?{action:'rename',profile_id:rename,nickname:name}:{action:'create',nickname:name},!rename);}}>
         <section><h2>{rename?'Rename user':'Add someone'}</h2><TouchField label="Nickname" required maxLength={24} value={name} onChange={setName} disabled={busy||(!rename&&users.length>=5)} placeholder="e.g. Alex"/>
-          <p className="setup-note">Approve once here, then hand the wall screen to that person. They pair their own iPhone, optionally connect their Google account and choose what to share. You don’t need to stay nearby.</p>
+          <p className="setup-note">{isRemoteSetup()?'Approve here, then follow the guide on this phone together. They pair their own iPhone, enroll their own remote and optionally sign into Google there. Keep your primary phone authorized while using these administrator controls.':'Approve once here, then hand the wall screen to that person. They pair their own iPhone, optionally connect their Google account and choose what to share. You don’t need to stay nearby.'}</p>
           <button disabled={busy||!name.trim()||(!rename&&users.length>=5)}><Check/>{rename?'Save name':'Approve & begin guided setup'}</button>{rename&&<button type="button" disabled={busy} onClick={()=>{setRename(null);setName('');}}>Cancel</button>}
         </section></form>{message&&<p role="status" className="setup-message">{message}</p>}
     </main></div></TouchInputProvider>;
@@ -106,7 +107,8 @@ export function PersonalSetup({demo}:{demo:boolean}){
         {view.setup_stage==='remote'&&<section><h2><Smartphone/> Take Luma with you</h2><p>{view.remote_allowed?'Optional. Your own private Safari/Home Screen remote sees only your calendar and timer. Use your own Tailscale account; ask the primary user to share the Luma node with it. Never share the primary login.':'This hub uses primary-only phone remotes. Your calendars, Bluetooth presence and timer still work here.'}</p>
           {view.remote_allowed&&<><button disabled={busy} onClick={()=>void run(async()=>setQr(await api('user-self/remote/issue','POST',{})))}>Show my enrollment QR</button>{qr&&<div className="user-enrollment"><img src={qr.qr} alt="Personal phone enrollment QR"/><p>Open in your phone’s Safari. Keep both screens nearby and compare the code. This QR expires in five minutes.</p></div>}{pending&&<div className="pairing-confirmation"><output aria-label="Browser comparison code">{pending.comparison_code}</output><p>Does your phone show these same digits?</p><button disabled={busy} onClick={()=>void run(async()=>{await api('user-self/remote/approve','POST',pending);setQr(null);setPending(null);setMessage('Your phone remote is approved.');})}>Codes match · approve my remote</button></div>}</>}
         </section>}
-        {view.setup_stage==='google'&&<section><h2><CalendarDays/> Your Google account</h2><p>Optional. Sign into your own account—not the primary user’s. Luma saves its refresh token on this device, so you don’t need to sign in after ordinary power loss.</p><p>{view.google.authorized?'Google account linked.':view.google.configured?'Google Desktop sign-in is available.':'The primary user needs to import a Google Desktop client first. You can finish without Google.'}</p>
+        {view.setup_stage==='google'&&isRemoteSetup()&&<section><h2><CalendarDays/> Their Google account</h2><p>On this person’s own enrolled iPhone remote, open My calendars and sign into their Google account. Their consent and calendars are separate from yours. Return here to continue once linked.</p><p>{view.google.authorized?'Google account linked.':'Waiting for their optional Google sign-in. You can finish without it.'}</p></section>}
+        {view.setup_stage==='google'&&!isRemoteSetup()&&<section><h2><CalendarDays/> Your Google account</h2><p>Optional. Sign into your own account—not the primary user’s. Luma saves its refresh token on this device, so you don’t need to sign in after ordinary power loss.</p><p>{view.google.authorized?'Google account linked.':view.google.configured?'Google Desktop sign-in is available.':'The primary user needs to import a Google Desktop client first. You can finish without Google.'}</p>
           <button disabled={busy||!view.google.configured} onClick={()=>void run(async()=>{const result=await api<{url:string}>('user-self/google/authorize','POST',{});const url=new URL(result.url);if(url.protocol!=='https:'||url.hostname!=='accounts.google.com'||url.username||url.password)throw Error('Google sign-in URL is invalid.');location.assign(result.url);})}>{view.google.authorized?'Reconnect my Google':'Sign in with my Google'}</button>
           {!view.google.task_updates&&<button disabled={busy||!view.google.configured} onClick={()=>{if(confirm('Allow Google event-edit permission so Luma can change completion colors on your chosen task calendar? Luma restricts its task edits to that calendar.'))void run(async()=>{const result=await api<{url:string}>('user-self/google/authorize','POST',{task_updates:true});const url=new URL(result.url);if(url.protocol!=='https:'||url.hostname!=='accounts.google.com'||url.username||url.password)throw Error('Google sign-in URL is invalid.');location.assign(result.url);});}}>Enable my task updates</button>}
           {new URLSearchParams(location.search).get('google_error')==='1'&&<p role="alert">Sign-in did not finish. Your previous Google connection was kept. Try again while your authorized phone is connected.</p>}
@@ -132,3 +134,4 @@ function PersonalCalendars({view,busy,run,onSaved}:{view:Personal;busy:boolean;r
     </form>}
   </section>;
 }
+import {setupFetch as fetch} from './setupTransport';

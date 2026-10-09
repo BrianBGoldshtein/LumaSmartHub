@@ -23,7 +23,7 @@ for attempt in $(seq 1 60); do
   sleep .25
 done
 export REMOTE_QA_OUTPUT="$qaDirectory"
-if ! node remote-browser.mjs > "$qaDirectory/result.json" 2> "$qaDirectory/test-error.txt"; then
+if ! node "${REMOTE_QA_SCRIPT:-remote-browser.mjs}" > "$qaDirectory/result.json" 2> "$qaDirectory/test-error.txt"; then
   tail -n 30 "$qaDirectory/test-error.txt"
   tail -n 30 "$qaDirectory/server.log"
   printf 'QA directory: %s\n' "$qaDirectory"

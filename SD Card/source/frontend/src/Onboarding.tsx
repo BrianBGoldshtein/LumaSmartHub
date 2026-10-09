@@ -127,3 +127,4 @@ export function Onboarding({demo,locked=false}:{demo:boolean;locked?:boolean}){
     </div>
   </div></TouchInputProvider></SetupActivity.Provider>;
 }
+import {setupFetch as fetch} from './setupTransport';

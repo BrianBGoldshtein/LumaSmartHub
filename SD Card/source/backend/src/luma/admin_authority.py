@@ -33,6 +33,7 @@ GLOBAL_COMMANDS = frozenset({'set_brightness', 'set_volume', 'set_theme', 'set_o
                              'run_scene', 'cancel_scene', 'run_remote_scene'})
 COMMAND_PATHS = frozenset({'/api/v1/commands', '/api/v1/voice/command', '/api/v1/shortcut-command'})
 PUBLIC_WRITES = frozenset({
+    '/api/v1/backups/game-handoff',
     '/api/v1/admin/unlock', '/api/v1/admin/lock', '/api/v1/security/unlock',
     # These two existing local controllers validate a fresh primary PIN on
     # every operation themselves; a separate cookie would duplicate that gate.

@@ -20,6 +20,7 @@ def gateway(rig):
 def test_remote_build_only_and_private_static_delivery(tmp_path):
     remote=tmp_path/'assets';remote.mkdir()
     (remote/'remote-index.html').write_text('<h1>Luma remote</h1>')
+    (remote/'remote-settings.html').write_text('<h1>Shared settings</h1>')
     (remote/'remote-manifest.webmanifest').write_text('{"start_url":"/remote/"}')
     (remote/'remote-touch-icon.png').write_bytes(b'PNG fixture')
     (remote/'remote-index-abc123.js').write_text('/* remote only */')
@@ -41,6 +42,12 @@ def test_remote_build_only_and_private_static_delivery(tmp_path):
     assert client.get('/remote/').status_code==403
     assert client.get('/remote/',headers={**HEADERS,'Tailscale-Funnel-Request':'?1'}).status_code==403
     assert client.get('/remote/assets/remote-index-abc123.js?token=secret',headers=HEADERS).status_code==403
+    shared = client.get('/remote/settings.html', headers=HEADERS)
+    assert shared.status_code == 200
+    assert shared.headers['x-frame-options'] == 'SAMEORIGIN'
+    assert "frame-ancestors 'self'" in shared.headers['content-security-policy']
+    assert client.get('/remote/settings.html').status_code == 403
+    assert client.get('/remote/manifest.webmanifest', headers=HEADERS).headers['x-frame-options'] == 'DENY'
 
 
 def test_even_the_static_entry_cannot_follow_a_symlink(tmp_path):
@@ -165,3 +172,16 @@ def test_upstream_failures_are_bounded_not_reflected(kind):
     response=g.get('/remote/api/bootstrap',headers=HEADERS)
     assert response.status_code==503
     assert 'PRIVATE_UPSTREAM_ERROR' not in response.text
+def test_polling_budget_isolated_by_verified_serve_identity(monkeypatch):
+    from luma import companion_gateway
+    now = [1.0]
+    monkeypatch.setattr(companion_gateway, 'monotonic', lambda: now[0])
+    async def provider(request):
+        return httpx.Response(200, json={'origin': ORIGIN, 'identityDigest': 'a'*64})
+    client = TestClient(create_gateway(transport=httpx.MockTransport(provider)), client=('127.0.0.1',1), base_url=ORIGIN)
+    for _ in range(180):
+        now[0] += .2
+        assert client.get('/remote/api/bootstrap', headers=HEADERS).status_code == 200
+    assert client.get('/remote/api/bootstrap', headers=HEADERS).status_code == 429
+    assert client.get('/remote/api/bootstrap', headers={**HEADERS, 'Tailscale-User-Login':'secondary@example.test'}).status_code == 200
+    assert client.get('/remote/api/bootstrap', headers={**HEADERS, 'Origin':'https://evil.test'}).status_code == 403

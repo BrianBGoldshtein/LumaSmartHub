@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import {isRemoteSetup} from './setupTransport';
 import {useSetupActivity} from "./setupActivity";
 import { ArrowLeft, Check, CloudSun, Settings, ShieldCheck, Smartphone } from "lucide-react";
 import {VoiceSetup} from "./VoiceSetup";
@@ -37,6 +38,8 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
   const [busy,setBusy]=useState(false);
   const [diagnostics,setDiagnostics]=useState<Record<string,unknown>>();
   const [ready,setReady]=useState(demo),[retry,setRetry]=useState(0);
+  const [activePanel,setActivePanel]=useState('');
+  const advanced=(id:string,title:string,child:ReactNode)=>!isRemoteSetup()?child:<details className="remote-settings-disclosure" open={activePanel===id}><summary onClick={event=>{event.preventDefault();setActivePanel(activePanel===id?'':id);}}>{title}</summary>{activePanel===id&&child}</details>;
   useSetupActivity(busy);
   useEffect(()=>{
     if(demo) return;
@@ -58,7 +61,7 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
   return <TouchInputProvider><div className={section?"setup-embedded":`app theme-${theme} setup-page`}>{!section && <a className="setup-back" href={setupLink(demo,theme)}><ArrowLeft/> Dashboard</a>}<Panel className={section?"device-setup":"setup-content device-setup"}>
     {!section && <><Settings size={40}/><h1>Your space.</h1><p>Set up once. Saved on your Luma.</p><a href={setupLink(demo,theme,"onboarding")}>Open guided setup →</a>
     {demo && <p className="setup-note">Preview only — no device settings will change.</p>}
-    <DeviceTemperaturePanel demo={demo}/><FanControlPanel demo={demo} request={coolingRequest}/><NetworkSetup demo={demo}/></>}
+    <DeviceTemperaturePanel demo={demo}/>{advanced('fan','USB cooling',<FanControlPanel demo={demo} request={coolingRequest}/>)}{advanced('network','Wi-Fi & appliance network',<NetworkSetup demo={demo}/>)}</>}
     {(!section || section==="space") && <form onSubmit={event=>{event.preventDefault();void run(async()=>{
       const locationCoordinates=coordinates(form.latitude,form.longitude);
       if(demo){setMessage("Preview settings checked. Nothing was saved to a device.");onSaved?.();return;}
@@ -89,16 +92,17 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
         <button disabled={busy} onClick={()=>setConfirmTokenReset(false)}>Cancel</button>
       </>}
     </section>
-    <PiConnectSetup demo={demo}/>
-    <UpdateSetup demo={demo}/>
-    <TailscaleSetup demo={demo}/>
-    <CompanionSetup demo={demo} pinConfigured={pinConfigured}/>
-    <BluetoothSetup demo={demo} pinConfigured={pinConfigured}/>
-    <NotificationSoundSetup demo={demo}/>
-    <VoiceSetup demo={demo}/>
+    {advanced('connect','Raspberry Pi Connect',<PiConnectSetup demo={demo}/>)}
+    {advanced('updates','Signed software updates',<UpdateSetup demo={demo}/>)}
+    {advanced('tailscale','Private Tailscale connection',<TailscaleSetup demo={demo}/>)}
+    {advanced('remote','iPhone remotes',<CompanionSetup demo={demo} pinConfigured={pinConfigured}/>)}
+    {advanced('bluetooth','Bluetooth pairing & forgetting',<BluetoothSetup demo={demo} pinConfigured={pinConfigured}/>)}
+    {advanced('sound','Notification sounds',<NotificationSoundSetup demo={demo}/>)}
+    {advanced('voice','Hey Luma & voice calibration',<VoiceSetup demo={demo}/>)}
     <section><h2>Device check</h2><button disabled={busy} onClick={()=>run(async()=>setDiagnostics(demo?{mode:"Preview",hardware:"Not connected",calendar:"Sample data",weather:"Sample data"}:await api("diagnostics")))}>Run diagnostics</button>{diagnostics && <pre className="setup-diagnostics">{JSON.stringify(diagnostics,null,2)}</pre>}</section>
     <a href={setupLink(demo,theme,"onboarding")}>Review guided setup →</a></>}
     {!section && <p><a href={setupLink(demo,theme,"extras")}>New: daily rhythm & extras →</a></p>}
     {message && <p className="setup-message" role="status">{message}</p>}
   </Panel></div></TouchInputProvider>;
 }
+import {setupFetch as fetch} from './setupTransport';

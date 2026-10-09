@@ -33,7 +33,7 @@ class ExportRequest(StrictModel):
     @classmethod
     def bounded_games(cls, value):
         try:
-            if len(value) > 4 or len(json.dumps(value, separators=(",", ":"), allow_nan=False)) > 100_000:
+            if len(value) > 5 or len(json.dumps(value, separators=(",", ":"), allow_nan=False)) > 100_000:
                 raise ValueError()
         except (TypeError, ValueError, OverflowError):
             raise ValueError("Saved games are too large or invalid to back up.") from None

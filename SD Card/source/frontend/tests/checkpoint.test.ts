@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {applyGameCheckpoints,readGameCheckpoints,restoreGame,saveGame,validateGameCheckpoints} from "../src/gameCheckpoint.ts";
+import {applyGameCheckpoints,readGameCheckpoints,restoreGame,saveGame,validateGameCheckpoints,pauseGameWrites} from "../src/gameCheckpoint.ts";
 import {SnakeGame,BreakerGame,RallyGame,PONG_BALL_TEMPO,PONG_TEMPO,PONG_TEMPO_VERSION} from "../src/classics.ts";
 import {BlocksGame} from "../src/blocks.ts";
 import {SpaceInvadersGame} from "../src/spaceInvaders.ts";
@@ -136,4 +136,12 @@ test("fractional Tetris gravity and score-derived difficulty survive scene reloa
   const storage=store(),game=new BlocksGame(()=>.5);game.points=3000;game.step();saveGame("blocks",game,storage);
   const restored=restoreGame("blocks",new BlocksGame(),storage);
   assert.equal(restored.fallProgress,game.fallProgress);assert.equal(restored.visualY(),game.visualY());assert.equal(restored.speedMultiplier(),2.75);
+});
+test('remote restore freezes old wall game writes through pagehide until reload',()=>{
+  const storage=store(),game=new SnakeGame(()=>.5);
+  saveGame('snake',game,storage);const previous=storage.getItem('luma-game-v1-snake');
+  pauseGameWrites(true);
+  try{game.score=900;saveGame('snake',game,storage);assert.equal(storage.getItem('luma-game-v1-snake'),previous);}
+  finally{pauseGameWrites(false);}
+  saveGame('snake',game,storage);assert.notEqual(storage.getItem('luma-game-v1-snake'),previous);
 });

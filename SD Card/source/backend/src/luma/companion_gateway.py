@@ -21,7 +21,7 @@ from .companion_api import parse_object
 HUB = "http://127.0.0.1:8742/api/v1/companion/"
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; "
        "font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; "
-       "frame-ancestors 'none'; form-action 'self'")
+       "frame-src 'self'; frame-ancestors 'none'; form-action 'self'")
 
 
 def _single(request: Request, name: str, *, required=True):
@@ -67,15 +67,26 @@ async def request_body(request, *, limit=65536):
 
 
 def install_companion_gateway(app, transport=None, *, frontend_dir=None):
-    calls: deque[float] = deque()
-    asset_calls: deque[float] = deque()
+    calls: dict[str, deque[float]] = {}
+    asset_calls: dict[str, deque[float]] = {}
     # A separate production build contains only remote UI and bundled fonts.
     # Do not serve the wall entry, its animation code, source maps or API paths.
     root=(Path(frontend_dir or os.environ.get('LUMA_FRONTEND_DIR','/opt/luma/frontend'))/'assets').resolve()
 
-    def budget(*,static=False):
+    def budget(request,*,static=False):
         now = monotonic()
-        entries=asset_calls if static else calls
+        buckets = asset_calls if static else calls
+        # Only the already-validated, Serve-supplied identity partitions the
+        # existing budget. A secondary user's polling cannot exhaust the
+        # primary's calibration allowance. Never trust a body/device hint.
+        identity = _identity_digest(_single(request, 'Tailscale-User-Login'))
+        for key in list(buckets):
+            entries = buckets[key]
+            while entries and now - entries[0] >= 60: entries.popleft()
+            if not entries: del buckets[key]
+        if identity not in buckets and len(buckets) >= 32:
+            raise HTTPException(429,'Remote is busy. Try again shortly.',headers={'Retry-After':'5'})
+        entries = buckets.setdefault(identity, deque())
         while entries and now - entries[0] >= 60: entries.popleft()
         # Every authorized read requires a challenge plus the signed request.
         # Opening Settings/Calendars loads preview, settings and three catalog
@@ -108,27 +119,30 @@ def install_companion_gateway(app, transport=None, *, frontend_dir=None):
                     410:"This review expired. Check again.",
                     501:"This remote feature is still being prepared."}.get(status,
                     "Hub operation unavailable. Refresh before trying again.")
-                value = {"detail":message}
+                if status == 403 and isinstance(value, dict) and value.get('code') == 'admin_required' and type(value.get('fresh')) is bool:
+                    value = {'detail': 'Confirm your primary hub PIN, then review and try again.', 'code': 'admin_required', 'fresh': value['fresh']}
+                else:
+                    value = {"detail":message}
             return JSONResponse(value,status_code=status,headers={"Cache-Control":"no-store"})
         except (httpx.HTTPError,TimeoutError,ValueError,RecursionError):
             raise HTTPException(503,"Luma is restarting or unavailable. Reconnect and refresh.") from None
 
     @app.get('/remote')
     async def entry_redirect(request: Request):
-        connection_context(request);budget(static=True)
+        connection_context(request);budget(request,static=True)
         return RedirectResponse('/remote/',status_code=307,headers={'Cache-Control':'no-store'})
 
     @app.get('/remote/')
     async def entry(request: Request):
-        connection_context(request);budget(static=True)
+        connection_context(request);budget(request,static=True)
         file=root/'remote-index.html'
         if file.is_symlink() or not file.is_file() or file.stat().st_size>2*1024*1024:
             raise HTTPException(503,'Remote interface unavailable. Check the installed release.')
         return FileResponse(file,media_type='text/html')
 
     async def asset(request: Request,asset_path: str):
-        connection_context(request);budget(static=True)
-        if asset_path not in {'manifest.webmanifest','icon.svg','touch-icon.png','icon-192.png','icon-512.png'} and not re.fullmatch(
+        connection_context(request);budget(request,static=True)
+        if asset_path not in {'settings.html','manifest.webmanifest','icon.svg','touch-icon.png','icon-192.png','icon-512.png'} and not re.fullmatch(
                 r'assets/remote-[A-Za-z0-9_-]+\.(js|css|woff2?|svg|png)',asset_path):
             raise HTTPException(404,'Remote asset unavailable.')
         name=asset_path.removeprefix('assets/') if asset_path.startswith('assets/') else 'remote-'+asset_path
@@ -141,7 +155,7 @@ def install_companion_gateway(app, transport=None, *, frontend_dir=None):
 
     @app.get('/remote/google/callback')
     async def google_callback(request: Request):
-        origin,identity=connection_context(request,callback=True);budget()
+        origin,identity=connection_context(request,callback=True);budget(request)
         if len(request.url.query)>8192:raise HTTPException(413,'Sign-in callback is too large.')
         result=await send('google-callback',{'origin':origin,'identity':identity,'query':request.url.query})
         try:connected=json.loads(result.body).get('connected') is True and result.status_code==200
@@ -151,13 +165,13 @@ def install_companion_gateway(app, transport=None, *, frontend_dir=None):
 
     @app.get("/remote/api/bootstrap")
     async def bootstrap(request: Request):
-        origin,identity=connection_context(request);budget()
+        origin,identity=connection_context(request);budget(request)
         await request_body(request)
         return await send("protocol",{"action":"bootstrap","origin":origin,"identity":identity})
 
     @app.post("/remote/api/enroll")
     async def enroll(request: Request):
-        origin,identity=connection_context(request);budget()
+        origin,identity=connection_context(request);budget(request)
         value=parse_object(await request_body(request,limit=2048))
         if set(value)!={"ticket","public_key","signature"}:
             raise HTTPException(422,"Enrollment request is invalid.")
@@ -165,14 +179,14 @@ def install_companion_gateway(app, transport=None, *, frontend_dir=None):
 
     @app.post("/remote/api/challenge")
     async def challenge(request: Request):
-        origin,identity=connection_context(request);budget()
+        origin,identity=connection_context(request);budget(request)
         value=parse_object(await request_body(request,limit=2048))
         if set(value)!={"device_id","method","path","body_digest"}:
             raise HTTPException(422,"Remote request is invalid.")
         return await send("protocol",{**value,"action":"challenge","origin":origin,"identity":identity})
 
     async def signed(request: Request):
-        origin,identity=connection_context(request);budget()
+        origin,identity=connection_context(request);budget(request)
         device=_single(request,"X-Luma-Device")
         nonce=_single(request,"X-Luma-Nonce")
         signature=_single(request,"X-Luma-Proof")
@@ -196,4 +210,7 @@ def install_companion_gateway(app, transport=None, *, frontend_dir=None):
                 "X-Content-Type-Options":"nosniff",
                 "X-Frame-Options":"DENY","Content-Security-Policy":CSP,
                 "Permissions-Policy":"camera=(), microphone=(), geolocation=()"})
+            if request.url.path == '/remote/settings.html':
+                response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+                response.headers['Content-Security-Policy'] = CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
         return response

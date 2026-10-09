@@ -150,3 +150,4 @@ export function SceneSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
     {message&&<p role="status" className="setup-message">{message}</p>}
   </div>;
 }
+import {setupFetch as fetch} from './setupTransport';

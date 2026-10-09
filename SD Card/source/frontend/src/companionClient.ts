@@ -87,7 +87,7 @@ export class RemoteClient {
     const task=this.pending.then(async()=>{
       if(epoch!==this.epoch||!this.visible())throw failure(403);
       const controller=new AbortController();this.active=controller;
-      const timer=setTimeout(()=>controller.abort(),path.includes('/updates/')?50000:20000);
+      const timer=setTimeout(()=>controller.abort(),path.includes('/updates/')||path==='/remote/api/hub-settings'?50000:20000);
       const ensureVisible=()=>{if(controller.signal.aborted||epoch!==this.epoch||!this.visible())throw failure(403);};
       try{
         // Each operation makes two authenticated HTTP calls. Pace a fast

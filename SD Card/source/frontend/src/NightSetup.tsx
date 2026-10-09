@@ -35,3 +35,4 @@ export function NightSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(
     <button disabled={busy}>{busy?'Saving…':'Save night preferences'}</button>
   </form>{message && <p className="setup-message" role="status">{message}</p>}</>;
 }
+import {setupFetch as fetch} from './setupTransport';

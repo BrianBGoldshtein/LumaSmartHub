@@ -63,3 +63,4 @@ export function PiConnectSetup({demo=false}:{demo?:boolean}){
     {error&&!unavailable&&<p className="setup-message" role="alert">{error}</p>}
   </section>;
 }
+import {setupFetch as fetch} from './setupTransport';

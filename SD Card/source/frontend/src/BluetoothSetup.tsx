@@ -76,3 +76,4 @@ export function BluetoothSetup({demo,pinConfigured}:{demo:boolean;pinConfigured:
     <p className="setup-note">After pairing, enable Share System Notifications for Luma on your iPhone if offered. Your calendar stays private until Luma verifies authorized notification access. No code confirmation is needed when selecting an already bonded, trusted phone.</p>
   </section>;
 }
+import {setupFetch as fetch} from './setupTransport';

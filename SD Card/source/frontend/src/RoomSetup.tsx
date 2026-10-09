@@ -134,3 +134,4 @@ export function RoomSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDirty:(v
     {busy&&<p role="status">Checking…</p>}{message&&<p role="status">{message}</p>}
   </div>;
 }
+import {setupFetch as fetch} from './setupTransport';

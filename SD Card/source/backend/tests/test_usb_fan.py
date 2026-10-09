@@ -76,6 +76,14 @@ def test_default_and_unqualified_automatic_never_cut_power(rig):
     assert p.on and False not in p.calls
 
 
+def test_external_power_change_is_restored_and_disables_automatic(rig):
+    c,p,s=rig
+    request(c)
+    p.on=False
+    c.tick()
+    assert p.on and c.fault and c.mode=='always_on'
+
+
 def test_probe_restores_without_api_and_requires_confirmation(rig):
     c, p, s = rig
     request(c, 'probe', acknowledged=True)

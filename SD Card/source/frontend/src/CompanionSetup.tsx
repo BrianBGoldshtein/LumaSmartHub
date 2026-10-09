@@ -87,3 +87,4 @@ export function CompanionSetup({demo,pinConfigured}:{demo:boolean;pinConfigured:
     {notice&&<p role="status" className="setup-message">{notice}</p>}
   </section>;
 }
+import {setupFetch as fetch} from './setupTransport';

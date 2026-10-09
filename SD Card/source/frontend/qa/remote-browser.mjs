@@ -64,6 +64,20 @@ try{
   await click('Settings');await until(`document.body.innerText.includes('Primary settings')`);
   await value(`(()=>{const field=document.querySelector('input[type="password"]');const native=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;native.call(field,'123456');field.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await click('Unlock primary settings');await until(`document.querySelector('.themes')!==null`);
+  await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Your space.')`);
+  await value(`document.querySelector('.quick-settings').open=true`);
+  assert.equal(await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;return d.querySelector('.keyboard-toggle')===null&&d.documentElement.scrollWidth<=d.defaultView.innerWidth;})()`),true,'Shared settings fit phone and use native keyboard');
+  await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='users'`);
+  await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Your people.')`);
+  await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;const field=d.querySelector('input');const native=Object.getOwnPropertyDescriptor(d.defaultView.HTMLInputElement.prototype,'value').set;native.call(field,'Casey');field.dispatchEvent(new d.defaultView.Event('input',{bubbles:true}));})()`);
+  await value(`document.querySelector('.all-settings iframe').contentDocument.querySelector('form').requestSubmit()`);
+  await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Casey')&&document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Pair your iPhone')`);
+  await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='device'`);
+  await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Your space.')`);
+  for(const panel of ['USB cooling','Wi-Fi & appliance network','Raspberry Pi Connect','Signed software updates','Private Tailscale connection','iPhone remotes','Bluetooth pairing & forgetting','Notification sounds','Hey Luma & voice calibration']){
+    assert.equal(await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;return [...d.querySelectorAll('summary')].some(e=>e.textContent===${JSON.stringify(panel)});})()`),true,'All advanced controls available');
+  }
+  assert.equal(await value(`document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.remote-settings-disclosure[open]').length`),0,'Closed advanced panels do not poll');
   // The wall receives a published snapshot before the phone's save response.
   // Hold only that synthetic response to exercise tab clicks during this gap.
   for(const [name,theme] of [['Glass','luma-glass'],['Hearth','hearth'],['Neon','neon-grid']]){

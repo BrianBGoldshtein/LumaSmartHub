@@ -34,3 +34,4 @@ export function NotificationSoundSetup({demo}:{demo:boolean}){
     {message&&<p className="setup-message" role="status">{message}</p>}
   </section>;
 }
+import {setupFetch as fetch} from './setupTransport';

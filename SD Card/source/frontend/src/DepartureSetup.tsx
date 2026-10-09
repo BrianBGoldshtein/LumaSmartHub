@@ -59,3 +59,4 @@ export function DepartureSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDir
     <button disabled={busy}>{busy?'Saving…':'Save leave-soon preferences'}</button>
   </form>{message && <p className="setup-message" role="status">{message}</p>}</>;
 }
+import {setupFetch as fetch} from './setupTransport';

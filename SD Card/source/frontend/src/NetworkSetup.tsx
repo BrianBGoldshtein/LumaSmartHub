@@ -89,3 +89,4 @@ export function NetworkSetup({demo}:{demo:boolean}){
     <WifiHotspotSetup demo={demo}/>
   </section>;
 }
+import {setupFetch as fetch} from './setupTransport';

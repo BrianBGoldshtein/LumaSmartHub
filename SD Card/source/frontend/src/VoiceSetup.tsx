@@ -175,3 +175,4 @@ export function VoiceSetup({demo}:{demo:boolean}){
     </details>
   </section>;
 }
+import {setupFetch as fetch} from './setupTransport';

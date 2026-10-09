@@ -35,3 +35,4 @@ export function DeviceTemperaturePanel({demo}:{demo:boolean}){
   },[demo]);
   return <section className="device-temperature-panel"><TemperatureReadout reading={reading} example={demo}/><p className="setup-note">Built-in CPU temperature, not room temperature. No external probe required.</p></section>;
 }
+import {setupFetch as fetch} from './setupTransport';

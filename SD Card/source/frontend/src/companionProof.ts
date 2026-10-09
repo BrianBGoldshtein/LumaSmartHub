@@ -7,6 +7,7 @@ const token = /^[A-Za-z0-9_-]{43}$/;
 const digest = /^[0-9a-f]{64}$/;
 const privateOrigin = /^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.[a-z0-9-]{1,63}\.ts\.net$/;
 const operations = new Set([
+  'POST /remote/api/hub-settings', 'GET /remote/api/device/fan', 'POST /remote/api/device/fan',
   'GET /remote/api/admin/status', 'POST /remote/api/admin/unlock', 'POST /remote/api/admin/lock',
   'GET /remote/api/personal-settings', 'PATCH /remote/api/personal-settings',
   'GET /remote/api/setup', 'POST /remote/api/setup',

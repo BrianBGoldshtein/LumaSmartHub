@@ -3,6 +3,8 @@ import {BREAKER_LEVEL_LIMIT,BRICK_LAYOUTS,PONG_BALL_TEMPO,PONG_MAX_SPEED,PONG_TE
 import {INVADER_PLAYER_SPEED} from "./spaceInvaders.ts";
 export type GameKey="snake"|"breaker"|"rally"|"blocks"|"invaders";
 type Store=Pick<Storage,"getItem"|"setItem"|"removeItem">;
+let writesPaused=false;
+export function pauseGameWrites(value:boolean){writesPaused=value;}
 const fields:Record<GameKey,string[]>={
   snake:["body","food","head","score","best","pause","won"],
   breaker:["x","y","vx","vy","paddle","score","level","misses","best","layout","bricks","clearedPause","lost","pendingLevel"],
@@ -58,6 +60,7 @@ export function applyGameCheckpoints(value:unknown,store:Store=localStorage):voi
   catch(error){for(const key of included){try{const raw=previous[key];if(raw===null)store.removeItem(`luma-game-v1-${key}`);else store.setItem(`luma-game-v1-${key}`,raw);}catch{/* Preserve remaining saves if the browser storage is failing. */}}throw error;}
 }
 export function saveGame(key:GameKey,game:object,store?:Store){
+  if(writesPaused)return;
   try{
     const data=Object.fromEntries([...fields[key],...motionFields[key]].map(field=>[field,(game as Record<string,unknown>)[field]]));
     if(valid(key,data))(store??localStorage).setItem(`luma-game-v1-${key}`,JSON.stringify(data));

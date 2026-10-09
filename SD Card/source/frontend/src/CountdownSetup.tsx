@@ -110,3 +110,4 @@ export function CountdownSetup({demo,onDirty,onBusy,onSaved}:{demo:boolean;onDir
     </>}
   </>;
 }
+import {setupFetch as fetch} from './setupTransport';

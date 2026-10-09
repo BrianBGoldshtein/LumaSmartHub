@@ -5,6 +5,7 @@ import {setupTheme,setupLink} from "./setupTheme";
 import {TouchField,TouchInputProvider} from "./TouchField";
 import {SystemKeyboardControl} from "./SystemKeyboardControl";
 import {dashboardRefreshUrl} from "./dashboardRefresh";
+import {isRemoteSetup,setupNavigate} from './setupTransport';
 import {googleCallbackMessage,loadGoogleSetup,calendarSelection,canEditGoogleCalendars,type GoogleCalendar,type GoogleEventColor,type GoogleStatus} from "./googleSetupState";
 
 type Calendar = GoogleCalendar;
@@ -78,7 +79,7 @@ export function GoogleSetup({demo,embedded=false,onSaved}:{demo:boolean;embedded
     <p role="status">{message || "Loading saved calendar settings…"}</p>
     {message && <>
       <button onClick={()=>{setMessage("");setRetry(value=>value+1);}}>Retry calendar settings</button>
-      <button onClick={()=>location.replace(dashboardRefreshUrl(new URL(setupLink(demo,theme,"google"),location.href).href))}>Reload Google setup</button>
+      <button onClick={()=>isRemoteSetup()?location.reload():location.replace(dashboardRefreshUrl(new URL(setupLink(demo,theme,"google"),location.href).href))}>Reload Google setup</button>
     </>}
     <a href={setupLink(demo,theme,"onboarding")}>Return to guided setup</a>
   </Panel></div>;
@@ -86,10 +87,10 @@ export function GoogleSetup({demo,embedded=false,onSaved}:{demo:boolean;embedded
     {!embedded && <><CalendarDays size={40}/><h1>Google Calendar</h1><p>Your calendars. Your colors.</p></>}
     {demo && <p className="setup-note">Preview calendars — no Google account connected.</p>}
     {callbackMessage && <p role="alert" className="setup-message">{callbackMessage}</p>}
-    <SystemKeyboardControl demo={demo}/>
+    {!isRemoteSetup()&&<SystemKeyboardControl demo={demo}/>}
     {status.reconnect_required && <p role="alert" className="setup-message">Google sign-in needs renewal. Reconnect below; your saved events and calendar choices stay on Luma.</p>}
-    {!status.configured && <section><h2>Connect your account</h2><p>On the Pi, choose your Google Desktop OAuth client JSON, then sign in. The setup guide explains how to create it.</p><label className="upload-label">Choose client JSON<input aria-label="Google OAuth client JSON" type="file" accept=".json,application/json" disabled={busy} onChange={e=>{ const file=e.target.files?.[0]; if(file) void run(async()=>{await api("google/config","POST",JSON.parse(await file.text()));setStatus({...status,configured:true});}); }}/></label></section>}
-    {status.configured && <button disabled={busy} onClick={()=>run(async()=>{if(demo){setMessage("Preview only. Sign-in is available on the Pi.");return;}const result=await api("google/authorize","POST");location.assign(result.url);})}>{status.authorized ? "Reconnect Google" : "Sign in with Google"}</button>}
+    {!status.configured && <section><h2>Connect your account</h2><p>{isRemoteSetup()?'Choose a Google Web application OAuth client JSON on this phone. Add the exact authorized redirect URI below in Google Cloud before signing in. The Pi Desktop client is separate.':'On the Pi, choose your Google Desktop OAuth client JSON, then sign in. The setup guide explains how to create it.'}</p>{isRemoteSetup()&&<code className="setup-token">{status.redirect_uri}</code>}<label className="upload-label">Choose client JSON<input aria-label="Google OAuth client JSON" type="file" accept=".json,application/json" disabled={busy} onChange={e=>{ const file=e.target.files?.[0]; if(file) void run(async()=>{await api("google/config","POST",JSON.parse(await file.text()));setStatus({...status,configured:true});}); }}/></label></section>}
+    {status.configured && <button disabled={busy} onClick={()=>run(async()=>{if(demo){setMessage("Preview only. Sign-in is available on the Pi.");return;}const result=await api("google/authorize","POST");setupNavigate(result.url);})}>{status.authorized ? "Reconnect Google" : "Sign in with Google"}</button>}
     {status.authorized && !catalogReady && <section><p role="status" className="setup-note">{catalogLoading ? "Loading your calendar list… Reconnect Google remains available above." : "Calendar editing is paused until Google is available. Your saved choices are preserved."}</p>{!catalogLoading && <button disabled={busy} onClick={()=>{setMessage("");setRetry(value=>value+1);}}>Retry calendar list</button>}</section>}
     {editable && <section><h2>Agenda calendars</h2><p className="setup-note">Select all that apply. Events from these calendars appear together, with their Google colors. Sleep and leaving reminders have separate calendar selections.</p><div className="calendar-choices">{calendars.map(calendar=><label key={calendar.id}><input type="checkbox" aria-label={`Agenda calendar: ${calendar.summary}`} checked={selected.includes(calendar.id)} onChange={e=>setSelected(e.target.checked ? [...selected,calendar.id] : selected.filter(id=>id!==calendar.id))}/><i style={{background:calendar.background_color || "#a9dfce"}}/><span>{calendar.summary}</span></label>)}</div>
       <label className="todo-calendar-label">To-do calendar<select value={todo} onChange={e=>setTodo(e.target.value)}><option value="">None</option>{calendars.map(c=><option value={c.id} key={c.id}>{c.summary}</option>)}</select></label>
@@ -98,7 +99,7 @@ export function GoogleSetup({demo,embedded=false,onSaved}:{demo:boolean;embedded
         <div className="task-colors" role="radiogroup" aria-label="Completed task color">{colors.map(color=><label key={color.id}><input type="radio" name="completed-color" value={color.id} checked={completedColor===color.id} disabled={busy} onChange={()=>setCompletedColor(color.id)}/><i style={{background:color.background}}/><span>Color {color.id}</span></label>)}</div>
         {completedColor && !colors.some(color=>color.id===completedColor) && <p role="alert" className="setup-note">Your saved color is unavailable. Select an available color before updating tasks.</p>}
         <p className="setup-note">{status.task_updates?'Task-update permission granted. Each change still requires calendar write access and an unlocked hub.':'Read-only connection: color changes made in Google still sync here. To complete tasks on Luma, explicitly enable task updates below.'}</p>
-        {!status.task_updates && <><p className="setup-note">Google grants event-edit permission across calendars you can edit. Luma restricts its task controls to this selected calendar and changes only an event’s color. Save your selections before continuing to Google consent.</p><button disabled={busy || !completedColor} onClick={()=>run(async()=>{if(selection!==savedSelection){setMessage('Save calendars before enabling task updates.');return;}if(demo){setMessage('Preview only. No permissions requested.');return;}const result=await api('google/authorize-tasks','POST');location.assign(result.url);})}>Enable task updates with Google</button></>}
+        {!status.task_updates && <><p className="setup-note">Google grants event-edit permission across calendars you can edit. Luma restricts its task controls to this selected calendar and changes only an event’s color. Save your selections before continuing to Google consent.</p><button disabled={busy || !completedColor} onClick={()=>run(async()=>{if(selection!==savedSelection){setMessage('Save calendars before enabling task updates.');return;}if(demo){setMessage('Preview only. No permissions requested.');return;}const result=await api('google/authorize-tasks','POST');setupNavigate(result.url);})}>Enable task updates with Google</button></>}
         {calendars.find(c=>c.id===todo)?.access_role && !['owner','writer'].includes(calendars.find(c=>c.id===todo)!.access_role!) && <p className="setup-note">This calendar is read-only. You can view completion colors, but Google will not allow Luma to change them.</p>}
       </div>}
       <p className="setup-note">Calendar colors stay the same in every theme. Custom event colors take priority.</p>
@@ -111,3 +112,4 @@ export function GoogleSetup({demo,embedded=false,onSaved}:{demo:boolean;embedded
     {message && <p role="status" className="setup-message">{message}</p>}
   </Panel></div></TouchInputProvider>;
 }
+import {setupFetch as fetch} from './setupTransport';

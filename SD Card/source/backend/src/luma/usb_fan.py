@@ -257,6 +257,10 @@ class USBFanController:
             self.on = self.power.power_state()
             self._restore()
             self.fault = False
+        elif self.power.power_state() is not self.on:
+            # An outside change or partial switch must never leave cached
+            # "on" status suppressing the independent restoration attempt.
+            raise FanError('USB power state changed unexpectedly.')
         reason = self._guard()
         if self.fault:
             reason = 'Switching failed · automatic cooling disabled'

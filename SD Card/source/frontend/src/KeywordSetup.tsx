@@ -42,3 +42,4 @@ export function KeywordSetup({demo,disabled,onActivity}:{demo:boolean;disabled:b
     <small>One signed download, about 46 MB. Recognition stays on this Pi. Installing a model is not proof that your microphone or pronunciation passes; it does not identify you or unlock private data.</small>
   </div>;
 }
+import {setupFetch as fetch} from './setupTransport';

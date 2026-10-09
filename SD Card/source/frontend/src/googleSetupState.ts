@@ -2,7 +2,7 @@ export function googleCallbackMessage(flag:unknown):string {
   return flag==="1" ? "Sign-in didn’t finish. Try again. Your saved connection has not changed." : "";
 }
 
-export type GoogleStatus = {configured:boolean;authorized:boolean;task_updates:boolean;reconnect_required?:boolean};
+export type GoogleStatus = {configured:boolean;authorized:boolean;task_updates:boolean;reconnect_required?:boolean;web_configured?:boolean;redirect_uri?:string};
 export type GoogleCalendar = {id:string;summary:string;background_color?:string;selected?:boolean;primary?:boolean;access_role?:string};
 export type GoogleEventColor = {id:string;background:string};
 export type GoogleSettings = {visible_calendar_ids:string[];sleep_calendar_ids:string[];todo_calendar_id:string|null;todo_completed_color_id:string|null;sleep_event_title:string;theme:string};

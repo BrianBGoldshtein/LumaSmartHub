@@ -2,7 +2,7 @@
 
 ## Next draft 0.3.5
 
-Local development adds opt-in temperature-controlled USB fan power and twenty-second wall cursor hiding. Full primary-phone settings/setup parity, including secondary-user setup, is requested; sensitive remote-access approval is pending. This draft is not signed or published. See [active implementation and remaining gates](docs/V035_WORKING_NOTES.md). Published 0.3.4 below remains unchanged.
+Local development adds opt-in temperature-controlled USB fan power, twenty-second wall cursor hiding and shared primary-phone settings/setup, including guided secondary-user setup. The owner explicitly approved sensitive remote controls. Access remains primary-only, PIN-protected and tied to live phone authorization. This draft is not signed or published. See [active implementation and remaining gates](docs/V035_WORKING_NOTES.md). Published 0.3.4 below remains unchanged.
 
 ## Current published Beta — 0.3.4
 

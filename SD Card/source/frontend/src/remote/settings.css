@@ -1,0 +1,26 @@
+html,body,#root{height:auto;min-height:100%;overflow:visible;background:#172322;color:#edf7f3}
+.remote-shared-settings .app.setup-page{height:auto;min-height:100vh;padding:20px 16px 32px;overflow:visible;font-size:16px}
+.remote-shared-settings .setup-content{width:100%;max-width:none;margin:0;padding:0}
+.remote-shared-settings h1{font-size:clamp(28px,8vw,40px);line-height:1.1;margin:16px 0}
+.remote-shared-settings h2{font-size:22px;line-height:1.25}
+.remote-shared-settings h3{font-size:19px}
+.remote-shared-settings a{color:var(--accent);text-underline-offset:4px;overflow-wrap:anywhere}
+.remote-shared-settings p,.remote-shared-settings .setup-note{font-size:15px;line-height:1.5}
+.remote-shared-settings input,.remote-shared-settings select,.remote-shared-settings textarea{font-size:16px;max-width:100%;min-width:0}
+.remote-shared-settings button{font-size:15px;min-height:44px;white-space:normal}
+.remote-shared-settings section{padding:16px 0;max-width:100%}
+.remote-shared-settings pre,.remote-shared-settings code{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
+.remote-shared-settings .setup-grid{grid-template-columns:1fr}
+.remote-shared-settings .onboarding{display:block;min-height:100vh;height:auto;padding:16px}
+.remote-shared-settings .onboarding-rail{position:static;width:100%;padding:0}
+.remote-shared-settings .onboarding-main{padding:16px 0;min-width:0}
+.remote-shared-settings .onboarding-rail ol{display:flex;flex-wrap:wrap;gap:12px;padding:0}
+.remote-shared-settings .onboarding-rail li{font-size:14px;gap:6px}
+.remote-shared-settings .onboarding-rail li>span{min-width:28px;height:28px;font-size:12px}
+.remote-shared-settings .onboarding-top{gap:8px;align-items:flex-start;font-size:12px}
+.remote-shared-settings .setup-back{position:static;display:inline-flex;margin-bottom:12px}
+.remote-shared-settings .user-list article,.remote-shared-settings .user-actions{flex-wrap:wrap;min-width:0}
+.remote-shared-settings img{max-width:100%;height:auto}
+.remote-settings-disclosure{border-top:1px solid var(--line,#45605b);padding:14px 0}
+.remote-settings-disclosure>summary{font-weight:700;font-size:18px;cursor:pointer;min-height:32px}
+@media(max-width:600px){.remote-shared-settings .onboarding-layout{display:block}.remote-shared-settings .setup-actions{flex-wrap:wrap}}

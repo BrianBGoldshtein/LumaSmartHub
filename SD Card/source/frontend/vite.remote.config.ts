@@ -16,12 +16,12 @@ export default defineConfig({
         if(!/^remote-[A-Za-z0-9_-]+\.(js|css|woff2?|svg|png)$/.test(name))throw Error('Unexpected remote build asset.');
         await copyFile(resolve(source,'assets',name),resolve(target,name));
       }
-      for(const name of ['index.html','manifest.webmanifest','icon.svg'])
+      for(const name of ['index.html','settings.html','manifest.webmanifest','icon.svg'])
         await copyFile(resolve(source,name),resolve(target,'remote-'+name));
       for(const [size,name] of [[180,'touch-icon'],[192,'icon-192'],[512,'icon-512']] as const)
         await writeFile(resolve(target,`remote-${name}.png`),remoteIcon(size));
     },
   }],
   build:{outDir:'../remote-build',emptyOutDir:true,target:'es2022',sourcemap:false,assetsInlineLimit:0,
-    rolldownOptions:{output:{entryFileNames:'assets/remote-[name]-[hash].js',chunkFileNames:'assets/remote-[name]-[hash].js',assetFileNames:'assets/remote-[name]-[hash][extname]'}}},
+    rolldownOptions:{input:{index:resolve('remote/index.html'),settings:resolve('remote/settings.html')},output:{entryFileNames:'assets/remote-[name]-[hash].js',chunkFileNames:'assets/remote-[name]-[hash].js',assetFileNames:'assets/remote-[name]-[hash][extname]'}}},
 });

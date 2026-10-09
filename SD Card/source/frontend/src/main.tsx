@@ -3,6 +3,7 @@ import {fitClockFont} from './clockFit';
 import { createRoot } from "react-dom/client";
 import {WallUpdateProgress} from './WallUpdateProgress';
 import {installIdleCursor} from './idleCursor';
+import {installWallGameHandoff} from './wallGameHandoff';
 import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
 import "@fontsource/manrope/latin-600.css";
@@ -47,6 +48,8 @@ import type { CalendarEvent, Page, Snapshot, Theme, Weather } from "./types";
 import "./styles.css";
 
 const demoMode = new URLSearchParams(location.search).has("demo");
+const stopGameHandoff=demoMode?()=>{}:installWallGameHandoff();
+if(import.meta.hot)import.meta.hot.dispose(stopGameHandoff);
 const stopIdleCursor=installIdleCursor(document,document.documentElement);
 if(import.meta.hot)import.meta.hot.dispose(stopIdleCursor);
 const demoParameters = new URLSearchParams(location.search);

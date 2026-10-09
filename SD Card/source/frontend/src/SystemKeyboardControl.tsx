@@ -14,6 +14,7 @@ export function SystemKeyboardControl({demo}:{demo:boolean}) {
     }catch(error){setMessage(error instanceof Error?error.message:"Keyboard unavailable");}
     finally{setBusy(false);}
   }
+  if(isRemoteSetup())return null; // Safari supplies its own keyboard.
   return <div className="system-keyboard-control">
     <p className="setup-note">Need to type on an external sign-in page? Open the system keyboard first. Close it here when finished.</p>
     <button disabled={busy} onClick={()=>void request(true)}>Open system keyboard</button>
@@ -21,3 +22,4 @@ export function SystemKeyboardControl({demo}:{demo:boolean}) {
     {message && <p className="setup-message" role="status">{message}</p>}
   </div>;
 }
+import {isRemoteSetup} from './setupTransport';

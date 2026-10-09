@@ -1,3 +1,4 @@
+import {isRemoteSetup} from './setupTransport';
 import {useEffect,useRef,useState} from 'react';
 import {Check,CloudDownload,RefreshCw,ShieldCheck} from 'lucide-react';
 import {dashboardRefreshUrl} from './dashboardRefresh';
@@ -38,7 +39,7 @@ export function UpdateSetup({demo=false}:{demo?:boolean}){
     else if(status.state==='installed'&&status.current_version===initiated.current&&!reloading.current){
       reloading.current=true;setMessage(`Luma ${status.current_version} passed its health check. Reloading the dashboard…`);
       const freshUrl=dashboardRefreshUrl(location.href,status.current_version);
-      setCandidate(null);setTimeout(()=>location.replace(freshUrl),2500);
+      setCandidate(null);setTimeout(()=>isRemoteSetup()?location.reload():location.replace(freshUrl),2500);
     }
   },[status]);
   async function check(){setBusy(true);setMessage('');setCandidate(null);
@@ -81,3 +82,4 @@ export function UpdateSetup({demo=false}:{demo?:boolean}){
     </div>}
   </section>;
 }
+import {setupFetch as fetch} from './setupTransport';

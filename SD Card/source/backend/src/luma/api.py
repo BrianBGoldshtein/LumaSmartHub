@@ -30,6 +30,7 @@ from .transit_api import install_transit_api
 from .room_api import install_room_api
 from .scene_api import install_scene_api
 from .backup_api import install_backup_api
+from .game_handoff import install_game_handoff
 from .update_api import install_update_api
 from .multi_bluetooth import MultiPhoneBluetooth
 from .profiles import ProfileRepository
@@ -635,6 +636,7 @@ def create_app(
     install_room_api(app,service,local_only)
     install_scene_api(app,service,local_only,bluetooth)
     install_backup_api(app,service,storage,local_only)
+    install_game_handoff(app,local_only)
     from .fan_api import install_fan_api
     install_fan_api(app, storage, local_only)
     install_update_api(app,local_only)

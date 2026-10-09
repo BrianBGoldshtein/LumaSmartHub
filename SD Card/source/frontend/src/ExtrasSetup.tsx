@@ -81,3 +81,4 @@ export function ExtrasSetup({demo,embedded=false,onSaved,locked=false}:{demo:boo
     {ready && message && <p className="setup-message" role="status">{message}</p>}
   </Panel></div></TouchInputProvider>;
 }
+import {setupFetch as fetch} from './setupTransport';

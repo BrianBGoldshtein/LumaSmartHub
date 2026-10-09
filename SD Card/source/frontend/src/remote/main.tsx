@@ -1,4 +1,4 @@
-import React,{useCallback,useEffect,useRef,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Home,Settings,Download,LockKeyhole,Sun,Volume2,CalendarDays,Timer,Check,ShieldCheck} from 'lucide-react';
 import '@fontsource/manrope/500.css';
@@ -17,7 +17,7 @@ import type {Preview,RemoteSettings,PersonalSettings,PersonalSetup,UpdateStatus,
 import type {Theme} from '../types';
 import './style.css';
 import {TemperatureReadout} from '../TemperatureReadout';
-import {FanControlPanel} from '../FanControlPanel';
+import {SettingsFrame} from './SettingsFrame';
 
 // Remove the one-use fragment before loading any network resource. It remains
 // only in this document's memory, never a URL query, log or persistent store.
@@ -107,7 +107,7 @@ function RemoteApp(){
         }catch(error){if(live&&current===generation.current)failed(error);}
         finally{if(current===generation.current)pollBusy.current=false;}
       }
-      if(live)handle=window.setTimeout(poll,5000);
+      if(live)handle=window.setTimeout(poll,tab==='settings'?10000:5000);
     };void poll();return()=>{live=false;if(handle!==undefined)clearTimeout(handle);};
   },[client,epoch,tab,updateTarget,confirmPrimary]);
   async function run(action:()=>Promise<void>){
@@ -167,7 +167,7 @@ function RemoteApp(){
           <form onSubmit={event=>{event.preventDefault();unlockPrimary();}}><label>Primary PIN<input type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{4,8}" required minLength={4} maxLength={8} value={pin} onChange={event=>setPin(event.target.value.replace(/[^0-9]/g,''))} disabled={busy}/></label><button disabled={busy}>Unlock primary settings</button></form></section>}
         {primaryRemote(preview)&&(tab==='settings'||tab==='software')&&adminUnlocked&&!confirmPrimary&&<div className="buttons"><span>Primary settings unlocked · 5 minutes</span><button disabled={busy} onClick={()=>{setPin('');setConfirmPrimary(true);}}>Confirm PIN</button>
           <button disabled={busy} onClick={()=>void run(async()=>{await request('POST','/remote/api/admin/lock',{});setAdminUnlocked(false);setSettings(null);setCandidate(null);setPin('');})}>Lock settings</button></div>}
-        {primaryRemote(preview)&&tab==='settings'&&adminUnlocked&&!confirmPrimary&&(settings?<SettingsPanel key={epoch} settings={settings} busy={busy} save={save} request={request} run={run}/>:<p>Loading settings…</p>)}
+        {primaryRemote(preview)&&tab==='settings'&&adminUnlocked&&!confirmPrimary&&(settings?<><SettingsFrame request={request} theme={theme} onError={failed} onClose={()=>setTab('hub')}/><details className="quick-settings"><summary>Quick display & calendar controls</summary><SettingsPanel key={epoch} settings={settings} busy={busy} save={save} request={request} run={run}/></details></>:<p>Loading settings…</p>)}
         {primaryRemote(preview)&&tab==='software'&&adminUnlocked&&!confirmPrimary&&<section className="software"><h1>Luma software</h1><p>Current version <b>{status?.current_version??'Checking…'}</b></p>
           {status?.state&&status.state!=='idle'&&<div className="notice" role="status"><b>{status.phase??status.state}</b><p>{status.message}</p><span>{status.target_version&&`Target ${status.target_version}`}</span>{status.elapsed_seconds!==undefined&&<small>{Math.floor(status.elapsed_seconds/60)} min elapsed</small>}</div>}
           <p>Signed GitHub releases. Settings, Google sign-in and saved games stay on your Pi.</p>
@@ -244,11 +244,9 @@ function PersonalGuide({busy,request,run}:Pick<SettingsProps,'busy'|'request'|'r
   </section>;
 }
 function SettingsPanel({settings,busy,save,request,run}:SettingsProps){
-  const coolingRequest=useCallback(<T,>(method:string,path:string,body?:unknown)=>request<T>(method,'/remote/api/'+path,body),[request]);
   const [section,setSection]=useState<'appearance'|'calendars'>('appearance');
   return <><h1>Make it yours</h1><div className="segmented"><button disabled={busy} aria-pressed={section==='appearance'} onClick={()=>setSection('appearance')}>Appearance</button><button disabled={busy} aria-pressed={section==='calendars'} onClick={()=>setSection('calendars')}>Calendars</button></div>
     {section==='calendars'?<CalendarSettings settings={settings} busy={busy} save={save} request={request} run={run}/>:<>
-      <FanControlPanel request={coolingRequest}/>
       <section><h2>Theme</h2><div className="themes">{themes.map(([id,name])=><button aria-pressed={settings.theme===id} disabled={busy} key={id} onClick={()=>void save({theme:id})}>{name}</button>)}</div>
         <form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);void save({brightness:Number(values.get('brightness')),volume:Number(values.get('volume'))});}}>
           <label><Sun size={19}/> Brightness<input type="range" name="brightness" min="0" max="100" defaultValue={settings.brightness}/></label>
@@ -269,7 +267,7 @@ function SettingsPanel({settings,busy,save,request,run}:SettingsProps){
           <label>Night brightness (%)<input name="night" type="number" min="0" max="100" step="1" required defaultValue={settings.night_brightness}/></label>
           <small>Keep this near zero for a barely visible clock in darkness.</small>
           <label>Chime volume (%)<input name="chime" type="number" min="0" max="100" step="1" required defaultValue={settings.notification_chime_volume}/></label><button disabled={busy}>Save night & chime</button></form></details>
-        <p>Microphone calibration, pairing, private-network setup and browser revocation stay on the hub.</p>
+        <p>Use All hub settings below for microphone calibration, pairing, private networks, users, backups and guided setup. Calibration listens through the Pi microphone; Safari does not record audio.</p>
       </section>
       <section><h2>Timer defaults</h2><form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);
         void save({timer_focus_minutes:Number(values.get('focus')),timer_break_minutes:Number(values.get('break'))});}}>

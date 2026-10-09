@@ -14,7 +14,7 @@ The shared themed component uses existing fonts/colors and explicit warm/high te
 
 Before publication: focused and full backend/frontend tests, both production builds, packaging suite, synthetic themed wall/mobile browser checks, exact-main CI, offline signature and exact-archive install/forced rollback. The publisher also pins the deployed 0.3.2 installer to `383552f5f545551f97e6df26574f770bacdc7b1f` and qualifies the same archive with it. Production GitHub download must match the qualified bytes before readiness is reported.
 
-Hardware acceptance remains owner-led: confirm the Pi’s actual readable sensor, wall/phone samples, saved state and post-update reboot. Synthetic sensor tests do not prove hardware or Safari behavior. Publication and exact qualification evidence will be appended after these gates finish.
+Hardware acceptance remains owner-led: confirm the Pi’s actual readable sensor, wall/phone samples, saved state and post-update reboot. Synthetic sensor tests do not prove hardware or Safari behavior.
 
 ## Published qualification evidence
 

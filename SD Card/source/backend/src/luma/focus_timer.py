@@ -172,3 +172,8 @@ class FocusTimer:
     def claim_chime(self, *, muted=False):
         pending, self.chime_until = self.chime_until, None  # At most once, even across bridge retries.
         return bool(not muted and pending is not None and self.clock() <= pending and self.data['status']=='complete')
+
+    def chime_pending(self):
+        # Completion is durable; its sound opportunity is deliberately not.
+        return bool(self.data['status'] == 'complete' and self.chime_until is not None and
+                    self.clock() <= self.chime_until)

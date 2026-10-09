@@ -194,7 +194,7 @@ def test_app_priority_suppresses_and_consumes_pending_greetings(app_rig, suppres
         service.state.forced_private = True
     else:
         timer = service.timer if suppression == 'room_timer' else service.personal_timers.for_user(child.profile_id)
-        timer.data['status'] = 'complete'
+        timer._complete(now, sound=True)
     clock.return_value = 120.
     assert service.snapshot(now)['presence_transition'] is None
     assert not service.claim_notification_chime(now)['play']
@@ -209,6 +209,53 @@ def test_app_priority_suppresses_and_consumes_pending_greetings(app_rig, suppres
     clock.return_value = 180.
     assert service.snapshot(now+timedelta(minutes=1))['presence_transition'] is None
     assert not service.claim_notification_chime(now+timedelta(minutes=1))['play']
+
+
+@pytest.mark.parametrize('personal', [False, True])
+@pytest.mark.parametrize('claim', [False, True])
+def test_old_completion_cannot_suppress_future_greeting_and_alarm_never_replays(app_rig, personal, claim):
+    _, service, child, link, clock, now = app_rig
+    service.timer.clock = clock
+    timer = service.personal_timers.for_user(child.profile_id) if personal else service.timer
+    timer.clock = clock
+    timer.tick(now, trusted=True)
+    timer.execute('start_timer', {'seconds':1, 'label':'Absent owner private'}, now=now)
+    clock.return_value = 101
+    service.timer_tick(now)
+    assert service.timer_alarm_busy()
+    if claim:
+        assert service.claim_timer_chime()
+        assert not service.claim_timer_chime()
+        clock.return_value = 105.99
+        assert service.timer_alarm_busy()
+        clock.return_value = 106
+    else:
+        clock.return_value = 111.01  # The bridge never claimed the bounded opportunity.
+    assert not service.timer_alarm_busy()
+    link()
+    service.snapshot(now)
+    clock.return_value += 3
+    view = service.snapshot(now)
+    assert view['presence_transition']['arriving'] == ['Alex']
+    assert service.claim_notification_chime(now)['play']
+    assert timer.snapshot()['status'] == 'complete'  # Dismiss is still explicit.
+    assert not service.claim_timer_chime()
+
+
+def test_timer_dismiss_or_owner_removal_cannot_end_playback_reservation_early(app_rig):
+    app, service, child, _, clock, now = app_rig
+    service.timer.clock = clock
+    timer = service.personal_timers.for_user(child.profile_id)
+    timer.clock = clock
+    timer._complete(now, sound=True)
+    assert service.claim_timer_chime()
+    timer.execute('dismiss_timer', now=now)
+    app.state.profiles.remove(child.profile_id)
+    service.personal_timers.tick(now)
+    clock.return_value = 104.99
+    assert service.timer_alarm_busy()
+    clock.return_value = 105
+    assert not service.timer_alarm_busy()
 
 
 def test_untrusted_bond_is_not_an_arrival(app_rig):

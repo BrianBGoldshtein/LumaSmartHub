@@ -12,6 +12,7 @@ from luma.api import create_app
 from luma.companion_google import AUTH_URI, TOKEN_URI
 from luma.integrations.google_calendar import CLIENT_CONFIG_KEY
 from luma.models import CalendarEvent
+from luma.presence_transitions import PresenceTransitions
 
 app=create_app(data_dir=os.environ['USER_QA_DATA'],frontend_dir=os.environ['USER_QA_FRONTEND'])
 app.state.security.set_pin('123456')
@@ -53,6 +54,22 @@ app.router.lifespan_context=isolated
 
 @app.middleware('http')
 async def qa_only(request:Request,call_next):
+    if request.url.path=='/qa/wall-greeting-after-alarm':
+        uid=(await request.json())['profile_id']
+        service=app.state.luma
+        timer=service.personal_timers.for_user(uid)
+        assert timer.snapshot()['status']=='complete'
+        timer.chime_until=timer.clock()-1  # Expired sound, not a dismissed timer.
+        transition_clock=[100.0]
+        flow=PresenceTransitions(clock=lambda:transition_clock[0],startup_seconds=0)
+        names={user.id:user.nickname for user in app.state.profiles.list()}
+        present=service.present_user_ids()
+        flow.observe(names,present-{uid})
+        flow.observe(names,present)
+        transition_clock[0]=103.0
+        service.presence_transitions=flow
+        service.publish('user.transition.updated')
+        return JSONResponse({'ready':True})
     if request.url.path=='/qa/wall-complete':
         uid=(await request.json())['profile_id']
         timer=app.state.luma.personal_timers.for_user(uid)

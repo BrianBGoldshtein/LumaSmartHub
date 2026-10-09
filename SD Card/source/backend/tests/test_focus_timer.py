@@ -210,7 +210,7 @@ def test_chime_claim_and_bridge_failures_do_not_repeat():
     assert bridge.apply(snapshot,claim) is None
     claim.assert_called_once()
     play.assert_called_once()
-    assert len(chime_pcm())==24000*2*2080//1000
+    assert len(chime_pcm())==24000*2*5
 
 
 def test_timer_alarm_plays_with_display_off_but_obeys_explicit_mute():
@@ -224,3 +224,37 @@ def test_timer_alarm_plays_with_display_off_but_obeys_explicit_mute():
     snapshot['settings']['volume']=0
     assert bridge.apply(snapshot,lambda:True)=='silent'
     play.assert_called_once()
+
+
+def test_personal_only_completion_reaches_device_bridge_and_coalesces_room():
+    play, claim = Mock(), Mock(return_value=True)
+    bridge = TimerChimeBridge(play)
+    snapshot = {'timer': {'status':'idle'}, 'personal_timers': [
+        {'id':'guest1','status':'complete'}, {'id':'guest2','status':'complete'}],
+        'settings':{'volume':35}}
+    assert bridge.apply(snapshot, claim) == 'played'
+    assert bridge.apply(snapshot, claim) is None
+    claim.assert_called_once()
+    play.assert_called_once()
+    # A later completion plays once, not again for either old owner's notice.
+    snapshot['timer'] = {'id':'room','status':'complete'}
+    assert bridge.apply(snapshot, claim) == 'played'
+    assert bridge.apply(snapshot, claim) is None
+    assert play.call_count == claim.call_count == 2
+    snapshot['personal_timers'] = []
+    bridge.apply(snapshot, claim)
+    assert bridge.seen == {'room'}
+
+
+def test_pending_alarm_expires_but_completion_persists_and_restart_never_reserves(timer):
+    t, clock = timer
+    t.execute('start_timer', {'seconds':1}, now=NOW)
+    clock.return_value = 101
+    t.tick(NOW)
+    assert t.chime_pending()
+    recovered = FocusTimer(t.storage, clock=clock)
+    assert recovered.snapshot()['status'] == 'complete'
+    assert not recovered.chime_pending() and not recovered.claim_chime()
+    clock.return_value = 111.01
+    assert not t.chime_pending() and not t.claim_chime()
+    assert t.snapshot()['status'] == 'complete'

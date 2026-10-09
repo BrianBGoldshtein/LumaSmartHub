@@ -66,6 +66,10 @@ try{
   }
   await request('/qa/wall-complete',{profile_id:uid});
   await waitFor(`document.querySelector('.feature-notice span')?.textContent==='Alex · LAB alarm'`);
+  await request('/qa/wall-greeting-after-alarm',{profile_id:uid});
+  await waitFor(`document.querySelector('.presence-transition h1')?.textContent==='Alex'`);
+  await waitFor(`document.querySelector('.presence-transition')===null`);
+  assert.equal(await value(`document.querySelector('.feature-notice span')?.textContent`),'Alex · LAB alarm');
   await value(`document.querySelector('.feature-notice button').click()`);
   await waitFor(`document.querySelector('.timer-reading strong')?.textContent==='Time’s up'`);
   await value(`[...document.querySelectorAll('.feature-panel>button')].find(b=>b.textContent==='Dismiss').click()`);
@@ -78,5 +82,5 @@ try{
   await waitFor(`document.querySelector('.feature-panel')===null`);
   assert.equal(await value(`document.querySelector('[aria-label="Open Alex’s timer"]')===null`),true);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({cases:results.length,actualApprovals:true,ownTaskOnly:true,timerLifecycle:true,customSeconds:true,completionDismiss:true,disconnectClears:true,errors,results},null,2));
+  console.log(JSON.stringify({cases:results.length,actualApprovals:true,ownTaskOnly:true,timerLifecycle:true,customSeconds:true,greetingAfterAlarm:true,completionDismiss:true,disconnectClears:true,errors,results},null,2));
 }finally{socket.close();}

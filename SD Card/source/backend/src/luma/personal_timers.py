@@ -44,3 +44,6 @@ class PersonalTimers:
         for user in self.profiles.list():
             play = self.for_user(user.id).claim_chime(muted=muted) or play
         return play
+
+    def chime_pending(self) -> bool:
+        return any(self.for_user(user.id).chime_pending() for user in self.profiles.list())

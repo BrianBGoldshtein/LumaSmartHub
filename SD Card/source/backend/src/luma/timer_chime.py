@@ -6,8 +6,8 @@ import subprocess
 
 def chime_pcm():
     rate = 24000
-    sequence = ((740, 360), (0, 120), (880, 360), (0, 120),
-                (1047, 360), (0, 160), (1047, 600))
+    # Five restrained alarm-clock double beeps, not an ascending melody.
+    sequence = ((880, 180), (0, 100), (880, 180), (0, 540)) * 5
     samples = []
     for frequency, milliseconds in sequence:
         frames = rate * milliseconds // 1000
@@ -23,19 +23,22 @@ def chime_pcm():
 
 def play_chime():
     subprocess.run(['paplay','--raw','--rate=24000','--channels=1','--format=s16le'], input=chime_pcm(),
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=5)
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=8)
 
 
 class TimerChimeBridge:
     def __init__(self, play=play_chime):
-        self.play, self.seen = play, None
+        self.play, self.seen = play, set()
 
     def apply(self, snapshot, claim):
-        timer = snapshot.get('timer') or {}
-        if timer.get('status') != 'complete' or not timer.get('id') or timer['id'] == self.seen:
+        timers = [snapshot.get('timer') or {}, *(snapshot.get('personal_timers') or [])]
+        complete = {timer['id'] for timer in timers if timer.get('status') == 'complete' and timer.get('id')}
+        fresh = complete - self.seen
+        self.seen &= complete  # At most six durable completed IDs, not an unbounded history.
+        if not fresh:
             return None
         # Mark first; neither playback failure nor bridge polling replays it.
-        self.seen = timer['id']
+        self.seen |= fresh
         if not claim():
             return 'silent'
         # Sleep/display-off is not mute: the timer alarm remains audible.

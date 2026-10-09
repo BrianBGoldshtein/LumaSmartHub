@@ -63,6 +63,7 @@ class LumaService:
         self.machine = StateMachine(settings, runtime)
         self.router = CommandRouter(storage, self.machine)
         self.timer = FocusTimer(storage)
+        self._timer_alarm_until = None  # RAM-only playback reservation; never replay after restart.
         self.departures = Departures(storage)
         self.countdowns = Countdowns(storage)
         self.transit = Transit(storage)
@@ -214,8 +215,7 @@ class LumaService:
         if self.profiles is None:
             return False
         names = {user.id: user.nickname for user in self.profiles.list()}
-        alarms = self.timer.snapshot()['status'] == 'complete' or bool(self.personal_timers and
-            any(timer['status'] == 'complete' for timer in self.personal_timers.snapshot(set())))
+        alarms = self.timer_alarm_busy()
         asleep = any(end and end > now for end in
                      (self.state.scheduled_sleep_end, self.state.forced_sleep_until))
         suppressed = (not self.settings.onboarding_completed or asleep or
@@ -234,7 +234,17 @@ class LumaService:
         muted = self.timer_muted()
         room = self.timer.claim_chime(muted=muted)
         personal = self.personal_timers.claim_chime(muted=muted) if self.personal_timers else False
-        return room or personal
+        play = room or personal
+        if play:
+            # Includes absent/removed owners and survives timer dismissal while
+            # the device is playing. The completion UI is not an audio lock.
+            self._timer_alarm_until = self.timer.clock() + 5
+        return play
+
+    def timer_alarm_busy(self):
+        active = self._timer_alarm_until is not None and self.timer.clock() < self._timer_alarm_until
+        pending = self.timer.chime_pending() or bool(self.personal_timers and self.personal_timers.chime_pending())
+        return bool(active or (not self.timer_muted() and pending))
 
     def _persist_runtime(self) -> None:
         self.storage.set_cache("runtime", "state", self.state)
@@ -290,7 +300,7 @@ class LumaService:
                             self.settings.notification_chime_volume > 0 and self.settings.volume > 0)
         if self.presence_transitions.claim_chime(audible=greeting_audible):
             return {'play': True, 'volume': self.settings.notification_chime_volume}
-        audible = (self.primary_private_visible(now) and
+        audible = (not self.timer_alarm_busy() and self.primary_private_visible(now) and
                    view['state']['display_power'] == 'on' and
                    self.settings.notification_chime_enabled and
                    self.settings.notification_chime_volume > 0 and self.settings.volume > 0)

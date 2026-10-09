@@ -365,7 +365,7 @@ function App() {
       <AssistantOrb phase={snapshot.state.assistant_phase} onClick={() => setPage("home")} />
       <VoiceNotice notice={snapshot.voice_notice}/>
       <VoiceAccountChoice choice={snapshot.voice_account_choice}/>
-      {snapshot.timer?.status!=='complete' && !snapshot.personal_timers?.some(timer=>timer.status==='complete') && <PresenceTransition transition={snapshot.presence_transition}/>}
+      <PresenceTransition transition={snapshot.presence_transition}/>
       <ControlIsland snapshot={snapshot} onUpdate={setSnapshot} open={overlay==='controls'} setOpen={open=>setOverlay(open?'controls':null)} onTimer={()=>setOverlay('timer')} />
       {overlay==='timer' && <TimerPanel snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}
       {personalTimer&&snapshot.users?.some(user=>user.profile_id===personalTimer)&&<PersonalWallTimer key={personalTimer} snapshot={snapshot} profileId={personalTimer} allowed={wallAccess.includes(personalTimer)} onClose={()=>setPersonalTimer(null)}/>}

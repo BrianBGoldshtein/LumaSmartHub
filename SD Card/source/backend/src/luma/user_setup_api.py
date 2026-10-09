@@ -13,7 +13,7 @@ from .admin_api import request_origin
 from .companion_api import _body, remote_guard
 from .companion_profiles import own_operation
 from .profiles import PRIMARY_ID, ProfileError, SETUP_STAGES
-from .user_setup import COOKIE, BOUND_SECONDS, UserSetup, SetupDenied
+from .user_setup import COOKIE, BOUND_SECONDS, UserSetup, SetupDenied, wall_cookie
 from .user_setup_google import UserSetupGoogle
 from .companion_auth import CompanionDenied, private_origin
 from .tailscale_setup import tailscale_request
@@ -35,6 +35,8 @@ class Progress(BaseModel):
 def install_user_setup_api(app, service, local_only):
     setup = app.state.user_setup = UserSetup(app)
     setup.desktop = UserSetupGoogle(setup)
+    from .user_wall_api import install_user_wall_api
+    install_user_wall_api(app, service, setup, local_only)
 
     @app.exception_handler(SetupDenied)
     async def setup_denied(request, error):
@@ -107,6 +109,11 @@ def install_user_setup_api(app, service, local_only):
                     # resume after restart without asking for approval again.
                     result.set_cookie(COOKIE, token, max_age=BOUND_SECONDS, httponly=True,
                         secure=request.url.scheme == 'https', samesite='strict', path='/api/v1/user-self')
+                    # Keep independent approvals on the communal wall. Opening
+                    # another person's setup must not erase a previous user's
+                    # timer/task grant. Neither cookie grants administration.
+                    result.set_cookie(wall_cookie(user.id), token, max_age=BOUND_SECONDS, httponly=True,
+                        secure=request.url.scheme == 'https', samesite='strict', path='/api/v1/user-self/wall')
                 service.publish('user.profile.updated', {'profile_id':user.id})
                 return result
         except ProfileError as error:
@@ -137,6 +144,7 @@ def install_user_setup_api(app, service, local_only):
         with setup.lock:
             check()
             setup.profiles.set_setup(user.id, payload.stage, wall_share_approved=payload.wall_share_approved)
+        service.publish('user.settings.updated', {'profile_id':user.id})
         return response(setup.view(user.id))
 
     @app.post('/api/v1/user-self/pairing/start', dependencies=[Depends(local_only)])

@@ -72,6 +72,9 @@
 .feature-panel button,.feature-notice button { min-height:48px; padding:.65em 1em; background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:calc(var(--radius)/2); font:700 .85em var(--body); cursor:pointer; }
 .feature-panel button:disabled { opacity:.5; cursor:wait; }.feature-panel :is(button,summary,input,select):focus-visible,.timer-badge:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
 .feature-panel .feature-close { margin:0; padding:.5em; }.feature-close svg { width:1.2em; height:1.2em; }
+.feature-panel header h2{min-width:0;overflow-wrap:anywhere}.feature-panel header h2 svg,.feature-panel .feature-close{flex-shrink:0}
+.feature-panel .timer-presets button{display:flex;flex-direction:column;align-items:flex-start;min-width:0;gap:.2em}
+.feature-panel .timer-presets strong{white-space:nowrap;line-height:1.15}
 .timer-reading { display:grid; margin:2vmin 0; }.timer-reading>strong { font:700 clamp(48px,10vmin,120px)/1.15 var(--heading); font-variant-numeric:tabular-nums; }.timer-reading>span { color:var(--muted); overflow-wrap:anywhere; }
 .feature-actions { display:flex; gap:1vmin; flex-wrap:wrap; }.timer-presets { display:grid; grid-template-columns:1fr 1fr; gap:1.5vmin; margin:2vmin 0; }.timer-presets button { display:grid; margin:0; text-align:left; justify-content:start; }.timer-presets strong { font:700 1.6em var(--heading); }.timer-presets small { font-size:.5em; color:var(--muted); }
 .app .feature-panel summary { cursor:pointer; padding:1vmin 0; min-height:48px; font-size:1em; }.feature-panel .feature-note { color:var(--muted); font-size:.72em; }.feature-error,.feature-confirm { padding:1em; border:1px solid var(--accent); font-size:.85em; }.feature-panel .feature-confirm p { margin:.5em 0; }

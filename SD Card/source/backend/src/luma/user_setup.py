@@ -15,9 +15,10 @@ import secrets
 from threading import RLock
 
 from .pairing import PairingFlow
-from .profiles import PRIMARY_ID, ProfileError, personal_settings, phone_address
+from .profiles import PRIMARY_ID, ProfileError, personal_settings, phone_address, profile_id
 
 COOKIE = 'luma_personal_setup'
+WALL_COOKIE_PREFIX = 'luma_personal_wall_'
 GRANT_KEY = 'wall_setup_grant_v1'
 TOKEN = re.compile(r'[A-Za-z0-9_-]{43}\Z')
 DRAFT_SECONDS = 3600
@@ -26,7 +27,13 @@ SELF_WRITES = frozenset({f'/api/v1/user-self/{path}' for path in (
     'progress', 'settings', 'pairing/start', 'pairing/select', 'pairing/confirm', 'pairing/cancel',
     'google/authorize', 'google/sync', 'todos/complete', 'timer', 'lock',
     'remote/issue', 'remote/approve',
+    'wall/timer', 'wall/todos/complete', 'wall/lock',
 )})
+
+
+def wall_cookie(uid):
+    """A selector chooses a cookie, never an authenticated account by itself."""
+    return WALL_COOKIE_PREFIX + profile_id(uid)
 
 
 class SetupDenied(PermissionError):

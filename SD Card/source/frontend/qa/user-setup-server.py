@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import json
 import os
 from datetime import UTC, datetime, timedelta
+from dataclasses import replace
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -52,6 +53,33 @@ app.router.lifespan_context=isolated
 
 @app.middleware('http')
 async def qa_only(request:Request,call_next):
+    if request.url.path=='/qa/wall-complete':
+        uid=(await request.json())['profile_id']
+        timer=app.state.luma.personal_timers.for_user(uid)
+        original_clock=timer.clock
+        timer.clock=lambda:100.0
+        try:
+            timer.execute('start_timer',{'seconds':1,'label':'LAB alarm'})
+            timer.clock=lambda:102.0
+            timer.tick(trusted=True)
+        finally:timer.clock=original_clock
+        app.state.luma.publish('user.timer.updated')
+        return JSONResponse({'completed':True})
+    if request.url.path=='/qa/wall-tasks':
+        profiles=app.state.profiles
+        now=datetime.now(UTC)
+        for user in profiles.list():
+            profiles.update_personal(user.id,{'todo_calendar_id':'tasks','todo_completed_color_id':'5'})
+            account=app.state.profile_calendars.account(user.id)
+            account.google.task_write_authorized=lambda:True
+            account.events.append(CalendarEvent('same_task','tasks',user.nickname+' PRIVATE TASK',now-timedelta(days=1),now+timedelta(days=2),all_day=True,etag='revision',calendar_writable=True))
+            def recolor(*,event_id,color_id,expected_etag,owner=account,**kwargs):
+                original=next(row for row in owner.events if row.id==event_id)
+                return replace(original,event_color_id=color_id,etag=expected_etag+'next')
+            account.google.recolor_task=recolor
+        app.state.luma.machine.settings=profiles.storage.load_settings()
+        app.state.luma.publish('user.calendar.updated')
+        return JSONResponse({'ready':True})
     if request.url.path=='/qa/voice-initialize':
         service,profiles=app.state.luma,app.state.profiles
         profiles.rename('primary','Brian')

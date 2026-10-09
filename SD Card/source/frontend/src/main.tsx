@@ -28,6 +28,7 @@ import {AgendaPage} from './AgendaPage';
 import {UserPanels} from './UserPanels';
 import {PrimaryAdminGate} from './PrimaryAdminGate';
 import {UsersSetup,PersonalSetup} from './UserSetup';
+import {PersonalTimerComplete,PersonalWallTimer,useWallAccess} from './PersonalWallControls';
 import {PresenceTransition} from './PresenceTransition';
 import {VoiceAccountChoice} from './VoiceAccountChoice';
 import {TransitPage} from './TransitPage';
@@ -121,7 +122,7 @@ function weatherLabel(code = 0) {
   return "Rain";
 }
 
-function StatusBar({ snapshot, page, onTimer }: { snapshot: Snapshot; page: Page; onTimer:()=>void }) {
+function StatusBar({ snapshot, page, onTimer,onPersonal }: { snapshot: Snapshot; page: Page; onTimer:()=>void;onPersonal:(uid:string)=>void }) {
   return (
     <header className="status-bar">
       <div className="wordmark"><LumaGlow />luma</div>
@@ -129,7 +130,7 @@ function StatusBar({ snapshot, page, onTimer }: { snapshot: Snapshot; page: Page
         <NetworkNotice demo={demoMode} theme={snapshot.settings.theme}/>
         {snapshot.privacy_redacted && <span className="privacy-chip">Private</span>}
         <span className={`phone-dot ${snapshot.users?.length||snapshot.state.phone_connected ? "online" : ""}`} />
-        {!!snapshot.users?.length&&<div className="user-roster" aria-label="Connected users">{snapshot.users.map(user=><span key={user.profile_id}>{user.nickname}</span>)}</div>}
+        {!!snapshot.users?.length&&<div className="user-roster" aria-label="Connected users">{snapshot.users.map(user=><button key={user.profile_id} aria-label={`Open ${user.nickname}’s timer`} onClick={event=>{event.stopPropagation();onPersonal(user.profile_id);}}>{user.nickname}</button>)}</div>}
         {snapshot.timer && snapshot.timer.status!=='idle' && page!=='ambient'?<TimerBadge timer={snapshot.timer} onOpen={onTimer}/>:!snapshot.users?.length&&<span className="status-copy">{demoMode ? "Preview" : snapshot.state.phone_connected ? "Connected" : "Standby"}</span>}
       </div>
     </header>
@@ -276,9 +277,12 @@ function App() {
   const [page, setPage] = useState<Page>((demoParameters.get("page") as Page | null) || "home");
   const [error, setError] = useState<string>();
   const [overlay,setOverlay] = useState<'controls'|'timer'|'departure'|null>(null);
+  const [personalTimer,setPersonalTimer]=useState<string|null>(null);
+  const wallAccess=useWallAccess(snapshot,demoMode);
+  useEffect(()=>{if(personalTimer&&!snapshot?.users?.some(user=>user.profile_id===personalTimer))setPersonalTimer(null);},[personalTimer,snapshot?.users]);
   const [calendarHoldUntil,setCalendarHoldUntil]=useState(0);
   useDisplayFilter(snapshot,demoMode);
-  useEffect(()=>{if(snapshot?.display && snapshot.display.mode!=='day')setOverlay(null);},[snapshot?.display?.mode]);
+  useEffect(()=>{if(snapshot?.display && snapshot.display.mode!=='day'){setOverlay(null);setPersonalTimer(null);}},[snapshot?.display?.mode]);
   useEffect(()=>{
     if(!demoMode || snapshot?.display?.mode!=='waking' || !snapshot.display.ramp)return;
     const timer=setTimeout(()=>setSnapshot(current=>current?{...current,display:previewDisplay('day',current.settings.brightness)}:current),20000);
@@ -310,16 +314,17 @@ function App() {
   const pausedUntil=snapshot?.state.cycle_paused_until;
   const hasDates=visibleDates(snapshot?.countdowns,!!privateMode).length>0;
   const hasTransit=visibleTransit(snapshot?.transit,!!privateMode).length>0;
+  const anyTimerComplete=snapshot?.timer?.status==='complete'||snapshot?.personal_timers?.some(timer=>timer.status==='complete');
   useEffect(() => {
-    if (!snapshot || (demoMode && demoParameters.has("hold"))) return;
-    const pauseRemaining=Math.max(0,pausedUntil?new Date(pausedUntil).getTime()-Date.now():0,page==='agenda'?calendarHoldUntil-Date.now():0);
+    if (!snapshot || overlay || personalTimer || (demoMode && demoParameters.has("hold"))) return;
+    const pauseRemaining=Math.max(0,pausedUntil?new Date(pausedUntil).getTime()-Date.now():0,['agenda','todos'].includes(page)?calendarHoldUntil-Date.now():0);
     const base:Snapshot["settings"]["cycle"] = privateMode ? STANDBY_CYCLE : JSON.parse(cycleKey);
     const cycle=transitCycle(dateCycle(base,hasDates),hasTransit);
     if(!cycle.length) return;
     const currentIndex = Math.max(0, cycle.findIndex((item) => item.page === page));
     const timer = window.setTimeout(() => setPage(cycle[(currentIndex + 1) % cycle.length].page), pauseRemaining + cycle[currentIndex].seconds * 1000);
     return () => clearTimeout(timer);
-  }, [cycleKey, privateMode, pausedUntil, page,hasDates,hasTransit,calendarHoldUntil]);
+  }, [cycleKey, privateMode, pausedUntil, page,hasDates,hasTransit,calendarHoldUntil,overlay,personalTimer]);
 
   const content = useMemo(() => {
     if (!snapshot) return null;
@@ -331,10 +336,10 @@ function App() {
     }
     if (page === "agenda") return snapshot.user_panels?.length?<UserPanels snapshot={snapshot} mode="agenda" onInteraction={()=>setCalendarHoldUntil(Date.now()+60000)}/>:<AgendaPage snapshot={snapshot} onInteraction={()=>setCalendarHoldUntil(Date.now()+60000)}/>;
     if (page === "weather") return <WeatherPage snapshot={snapshot} />;
-    if (page === "todos") return snapshot.user_panels?.length?<UserPanels snapshot={snapshot} mode="todos"/>:<TodosPage snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot}/>;
+    if (page === "todos") return snapshot.user_panels?.length?<UserPanels snapshot={snapshot} mode="todos" wallAccess={wallAccess} onInteraction={()=>setCalendarHoldUntil(Date.now()+60000)}/>:<TodosPage snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot}/>;
     if (page === "ambient") return <AmbientPage snapshot={snapshot} />;
     return <HomePage snapshot={snapshot} />;
-  }, [snapshot, page]);
+  }, [snapshot, page,wallAccess]);
 
   const wake=async()=>{if(!snapshot)return;if(demoMode)setSnapshot({...snapshot,display:previewDisplay('waking',snapshot.settings.brightness),state:{...snapshot.state,display_power:'on'}});else setSnapshot(await sendCommand('wake'));};
   const withVoiceNotice=(view:React.ReactNode)=><>{view}<div className={`app theme-${snapshot?.settings.theme??'luma-glass'} voice-notice-layer`}><VoiceNotice notice={snapshot?.voice_notice}/></div></>;
@@ -354,7 +359,7 @@ function App() {
 
   return (
     <div className={`app theme-${snapshot.settings.theme}${page === "ambient" ? " is-ambient" : ""}`} onClick={() => {if(page === "ambient") setPage("home");}}>
-      <div className="atmosphere" /><StatusBar snapshot={snapshot} page={snapshot.privacy_redacted ? "home" : page} onTimer={()=>setOverlay('timer')} />
+      <div className="atmosphere" /><StatusBar snapshot={snapshot} page={snapshot.privacy_redacted ? "home" : page} onTimer={()=>{setPersonalTimer(null);setOverlay('timer');}} onPersonal={uid=>{setOverlay(null);if(demoMode)setOverlay('timer');else setPersonalTimer(uid);}} />
       <div className="page-stage" key={`${snapshot.privacy_redacted}-${page}`}>{content}</div>
       {!snapshot.privacy_redacted && <nav className="page-dots" aria-label="Dashboard pages">{(["home", "agenda", "weather", "todos", "ambient",...(hasDates?['countdowns']:[]),...(hasTransit?['transit']:[])] as Page[]).map((item) => <button aria-label={item} className={page === item ? "active" : ""} onClick={() => setPage(item)} key={item} />)}</nav>}
       <AssistantOrb phase={snapshot.state.assistant_phase} onClick={() => setPage("home")} />
@@ -363,10 +368,12 @@ function App() {
       {snapshot.timer?.status!=='complete' && !snapshot.personal_timers?.some(timer=>timer.status==='complete') && <PresenceTransition transition={snapshot.presence_transition}/>}
       <ControlIsland snapshot={snapshot} onUpdate={setSnapshot} open={overlay==='controls'} setOpen={open=>setOverlay(open?'controls':null)} onTimer={()=>setOverlay('timer')} />
       {overlay==='timer' && <TimerPanel snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}
+      {personalTimer&&snapshot.users?.some(user=>user.profile_id===personalTimer)&&<PersonalWallTimer key={personalTimer} snapshot={snapshot} profileId={personalTimer} allowed={wallAccess.includes(personalTimer)} onClose={()=>setPersonalTimer(null)}/>}
       {overlay==='departure' && !snapshot.privacy_redacted && snapshot.departure && <DeparturePanel key={snapshot.departure.key} snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}
-      {!overlay && snapshot.timer?.status==='complete' && <TimerComplete timer={snapshot.timer} privateMode={snapshot.privacy_redacted} onOpen={()=>setOverlay('timer')}/>}
-      {!overlay && snapshot.timer?.status!=='complete' && !snapshot.privacy_redacted && snapshot.departure && <DepartureNotice reminder={snapshot.departure} serverTime={snapshot.server_time} onOpen={()=>setOverlay('departure')}/>}
-      {!overlay && snapshot.timer?.status!=='complete' && !snapshot.departure && !snapshot.privacy_redacted && snapshot.notifications.slice(0,1).filter(item=>Date.now()-new Date(item.received_at).getTime()<45000).map(item=><aside className="phone-notice" role="status" key={item.id}><small>{item.app_name}{item.category==="incoming-call"?" · Incoming call":" · Notification"}</small><strong>{item.title}</strong>{item.body && <p>{item.body}</p>}</aside>)}
+      {!overlay&&!personalTimer && snapshot.timer?.status==='complete' && <TimerComplete timer={snapshot.timer} privateMode={snapshot.privacy_redacted} onOpen={()=>setOverlay('timer')}/>}
+      {!overlay&&!personalTimer&&snapshot.timer?.status!=='complete'&&<PersonalTimerComplete snapshot={snapshot} onOpen={setPersonalTimer}/>}
+      {!overlay&&!personalTimer&&!anyTimerComplete && !snapshot.privacy_redacted && snapshot.departure && <DepartureNotice reminder={snapshot.departure} serverTime={snapshot.server_time} onOpen={()=>setOverlay('departure')}/>}
+      {!overlay&&!personalTimer&&!anyTimerComplete && !snapshot.departure && !snapshot.privacy_redacted && snapshot.notifications.slice(0,1).filter(item=>Date.now()-new Date(item.received_at).getTime()<45000).map(item=><aside className="phone-notice" role="status" key={item.id}><small>{item.app_name}{item.category==="incoming-call"?" · Incoming call":" · Notification"}</small><strong>{item.title}</strong>{item.body && <p>{item.body}</p>}</aside>)}
     </div>
   );
 }

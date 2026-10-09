@@ -15,7 +15,8 @@ export function TimerBadge({timer,onOpen}:{timer:TimerState;onOpen:()=>void}){
   const left=useRemaining(timer);
   return <button className="timer-badge" aria-label="Open timer" onClick={event=>{event.stopPropagation();onOpen();}}><Timer/><strong>{timer.status==='complete'?'Done':timer.status==='awaiting_time'?'Check clock':timerText(left)}</strong>{timer.status==='paused' && <Pause aria-label="Paused"/>}</button>;
 }
-export function TimerPanel({snapshot,demo,onUpdate,onClose}:{snapshot:Snapshot;demo:boolean;onUpdate:(snapshot:Snapshot)=>void;onClose:()=>void}){
+export type PersonalTimerController={title:string;send:(name:string,value?:unknown)=>Promise<{timer:TimerState;accepted:boolean;message:string}>};
+export function TimerPanel({snapshot,demo,onUpdate,onClose,controller}:{snapshot:Snapshot;demo:boolean;onUpdate:(snapshot:Snapshot)=>void;onClose:()=>void;controller?:PersonalTimerController}){
   const timer=snapshot.timer || idleTimer,remaining=useRemaining(timer);
   const [amount,setAmount]=useState('25'),[unit,setUnit]=useState<'seconds'|'minutes'|'hours'>('minutes'),[label,setLabel]=useState('');
   const [pending,setPending]=useState<(TimerStartRequest & {replace_id:string})|null>(null);
@@ -28,7 +29,12 @@ export function TimerPanel({snapshot,demo,onUpdate,onClose}:{snapshot:Snapshot;d
   async function run(name:string,value?:unknown){
     setError('');setBusy(true);
     try{
-      if(demo){onUpdate({...snapshot,timer:previewTimerCommand(timer,name,value,remaining,crypto.randomUUID())});}
+      if(controller){
+        const result=await controller.send(name,value);
+        onUpdate({...snapshot,timer:result.timer});
+        if(!result.accepted)throw Error(result.message);
+      }
+      else if(demo){onUpdate({...snapshot,timer:previewTimerCommand(timer,name,value,remaining,crypto.randomUUID())});}
       else{
         const response=await fetch('/api/v1/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,value,source:'touchscreen'})});
         const data=await response.json();
@@ -48,7 +54,7 @@ export function TimerPanel({snapshot,demo,onUpdate,onClose}:{snapshot:Snapshot;d
     const count=Number(amount),multiplier=unit==='hours'?3600:unit==='minutes'?60:1;
     start({seconds:count*multiplier,label:label.trim() || 'Timer'});
   }
-  return <TouchInputProvider><div className="feature-shade" onClick={event=>event.stopPropagation()}><section ref={panel} className="feature-panel device-setup" role="dialog" aria-modal="true" aria-label="Timer controls" onKeyDown={event=>{
+  return <TouchInputProvider><div className="feature-shade" onClick={event=>event.stopPropagation()}><section ref={panel} className="feature-panel device-setup" role="dialog" aria-modal="true" aria-label={controller?.title??'Timer controls'} onKeyDown={event=>{
     if(event.key==='Escape' && !busy){event.preventDefault();onClose();}
     if(event.key==='Tab'){
       const fields=[...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),summary,[tabindex="0"]')].filter(item=>item.getClientRects().length);
@@ -57,7 +63,7 @@ export function TimerPanel({snapshot,demo,onUpdate,onClose}:{snapshot:Snapshot;d
       else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}
     }
   }}>
-    <header><h2><Timer/>Timer</h2><button className="feature-close" onClick={onClose} disabled={busy} aria-label="Close timer"><X/></button></header>
+    <header><h2><Timer/>{controller?.title??'Timer'}</h2><button className="feature-close" onClick={onClose} disabled={busy} aria-label="Close timer"><X/></button></header>
     <div className="timer-reading"><strong>{timer.status==='idle'?'Ready':timer.status==='complete'?'Time’s up':timerText(remaining)}</strong>{timer.status!=='idle' && <span>{snapshot.privacy_redacted?'Timer':timer.label}{timer.status==='paused'?' · Paused':timer.status==='awaiting_time'?' · Waiting for clock':''}</span>}</div>
     {timer.note && <p className="feature-note" role="status">{timer.note}</p>}
     {error && <p role="alert" className="feature-error">{error}</p>}

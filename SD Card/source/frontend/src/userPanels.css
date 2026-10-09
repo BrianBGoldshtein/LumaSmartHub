@@ -1,4 +1,4 @@
-.user-roster {display:flex;align-items:center;gap:1vmin;max-width:55vw;overflow:hidden;}
+.user-roster {display:flex;align-items:center;gap:1vmin;max-width:55vw;overflow-x:auto;scrollbar-width:thin;}
 .user-roster span {color:var(--ink);font:700 clamp(16px,2.2vmin,34px)/1.1 var(--heading);white-space:nowrap;}
 .user-roster span+span::before {content:'·';margin-right:1vmin;color:var(--accent);}
 .multi-users {display:flex;flex-direction:column;min-height:0;gap:1.6vmin;--user-name:clamp(24px,5vmin,64px);--user-type:clamp(24px,4.8vmin,58px);--user-time:clamp(20px,3.8vmin,44px);--user-small:clamp(17px,2.8vmin,38px);}
@@ -33,6 +33,11 @@
 .user-task.is-complete {opacity:.52;}.user-task.is-complete strong {text-decoration:line-through;}
 .user-mode-todos[data-users="1"] .user-task strong,.user-mode-todos[data-users="2"] .user-task strong,.user-mode-todos[data-users="3"] .user-task strong {font-size:clamp(28px,4.8vmin,64px);}
 .user-task-status {width:clamp(20px,8cqi,44px);flex-shrink:0;}.user-task-status i {display:block;width:1em;height:1em;border:2px solid var(--event-color);border-radius:50%;}
+.user-task-status{min-width:44px;min-height:44px;display:grid;place-items:center;border:0;padding:4px;background:transparent;color:var(--event-color)}
+.user-task-status:disabled{cursor:default;opacity:.7}.user-task-feedback{margin:0;font-size:var(--user-small);color:var(--muted)}
+.user-roster button{padding:0;border:0;background:transparent;color:var(--ink);font:700 clamp(16px,2.2vmin,34px)/1.1 var(--heading);white-space:nowrap}
+.user-roster button+button::before{content:'·';margin-right:1vmin;color:var(--accent)}
+.user-roster button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .user-task .deadline-orb {width:clamp(12px,5cqi,28px);height:clamp(12px,5cqi,28px);flex-shrink:0;}
 .user-all-day {display:flex;gap:.5vmin;max-height:22%;overflow:auto;}.user-all-day .user-next-event {flex:1;flex-shrink:0;}
 .theme-neon-grid .user-panel-grid {gap:calc(4*var(--pixel));}

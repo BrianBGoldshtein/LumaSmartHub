@@ -12,6 +12,7 @@ from contextlib import suppress
 from .backup_inventory import LinuxUSBInventory
 from .backup_media import BackupMedia, MediaError
 from .backup_envelope import MAX_ARCHIVE_BYTES
+from .usb_fan import USBFanController, validate_fan_request
 
 
 SOCKET = "/run/luma-backup.sock"
@@ -31,6 +32,8 @@ def validate_request(value):
     if not isinstance(value, dict) or not isinstance(value.get("action"), str):
         raise ValueError("Invalid removable-drive request.")
     action = value["action"]
+    if action == 'fan':
+        return validate_fan_request(value)
     allowed = {
         "scan": {"action"}, "list": {"action"},
         "write": {"action", "volume_id", "archive"},
@@ -50,12 +53,19 @@ def validate_request(value):
 
 
 class BackupBroker:
-    def __init__(self, inventory=None, media=None):
+    def __init__(self, inventory=None, media=None, fan=None):
         self.inventory = inventory or LinuxUSBInventory()
         self.media = media or BackupMedia(self.inventory.current_volumes)
+        self.fan = fan or USBFanController()
 
     def execute(self, request):
         value = validate_request(request)
+        if value['action'] == 'fan':
+            return self.fan.request(value)
+        with self.fan.media_access():
+            return self._media_execute(value)
+
+    def _media_execute(self, value):
         action = value["action"]
         if action == "scan":
             self.inventory.scan(mount=True)
@@ -121,8 +131,20 @@ async def _serve_listener(listener, broker):
                     await writer.wait_closed()
 
     server = await asyncio.start_unix_server(handle, sock=listener, limit=MAX_WIRE)
-    async with server:
-        await server.serve_forever()
+    async def fan_watchdog():
+        while True:
+            await asyncio.to_thread(broker.fan.tick)
+            await asyncio.sleep(2)
+    watchdog = asyncio.create_task(fan_watchdog()) if hasattr(broker, 'fan') else None
+    try:
+        async with server:
+            await server.serve_forever()
+    finally:
+        if watchdog:
+            watchdog.cancel()
+            with suppress(asyncio.CancelledError):
+                await watchdog
+            await asyncio.to_thread(broker.fan.close)
 
 
 async def serve():

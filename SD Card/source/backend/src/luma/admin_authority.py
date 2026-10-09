@@ -50,7 +50,7 @@ PUBLIC_WRITES = frozenset({
     '/api/v1/voice/asset/preview/result', '/api/v1/voice/asset/tone/result',
 })
 PRIVATE_READS = frozenset({'/api/v1/settings', '/api/v1/onboarding', '/api/v1/bluetooth/pairing',
-    '/api/v1/users',
+    '/api/v1/users', '/api/v1/device/fan',
     '/api/v1/google/status', '/api/v1/google/calendars', '/api/v1/google/event-colors',
     '/api/v1/security/lan-token', '/api/v1/diagnostics', '/api/v1/countdowns',
     '/api/v1/transit', '/api/v1/room', '/api/v1/scenes', '/api/v1/backups/media'})

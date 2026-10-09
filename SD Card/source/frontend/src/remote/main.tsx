@@ -1,4 +1,4 @@
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Home,Settings,Download,LockKeyhole,Sun,Volume2,CalendarDays,Timer,Check,ShieldCheck} from 'lucide-react';
 import '@fontsource/manrope/500.css';
@@ -17,6 +17,7 @@ import type {Preview,RemoteSettings,PersonalSettings,PersonalSetup,UpdateStatus,
 import type {Theme} from '../types';
 import './style.css';
 import {TemperatureReadout} from '../TemperatureReadout';
+import {FanControlPanel} from '../FanControlPanel';
 
 // Remove the one-use fragment before loading any network resource. It remains
 // only in this document's memory, never a URL query, log or persistent store.
@@ -243,9 +244,11 @@ function PersonalGuide({busy,request,run}:Pick<SettingsProps,'busy'|'request'|'r
   </section>;
 }
 function SettingsPanel({settings,busy,save,request,run}:SettingsProps){
+  const coolingRequest=useCallback(<T,>(method:string,path:string,body?:unknown)=>request<T>(method,'/remote/api/'+path,body),[request]);
   const [section,setSection]=useState<'appearance'|'calendars'>('appearance');
   return <><h1>Make it yours</h1><div className="segmented"><button disabled={busy} aria-pressed={section==='appearance'} onClick={()=>setSection('appearance')}>Appearance</button><button disabled={busy} aria-pressed={section==='calendars'} onClick={()=>setSection('calendars')}>Calendars</button></div>
     {section==='calendars'?<CalendarSettings settings={settings} busy={busy} save={save} request={request} run={run}/>:<>
+      <FanControlPanel request={coolingRequest}/>
       <section><h2>Theme</h2><div className="themes">{themes.map(([id,name])=><button aria-pressed={settings.theme===id} disabled={busy} key={id} onClick={()=>void save({theme:id})}>{name}</button>)}</div>
         <form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);void save({brightness:Number(values.get('brightness')),volume:Number(values.get('volume'))});}}>
           <label><Sun size={19}/> Brightness<input type="range" name="brightness" min="0" max="100" defaultValue={settings.brightness}/></label>

@@ -566,6 +566,7 @@ def create_app(
 
         workers = [asyncio.create_task(calendar_worker()), asyncio.create_task(weather.run()), asyncio.create_task(clock_worker()), asyncio.create_task(backup_worker()), asyncio.create_task(bluetooth.run()), asyncio.create_task(bluetooth.reconnect_advertising_worker()), asyncio.create_task(bluetooth.scene_presence_worker()), asyncio.create_task(network.run()), asyncio.create_task(timer_worker()), asyncio.create_task(app.state.countdown_runtime.run()), asyncio.create_task(app.state.transit_runtime.run()), asyncio.create_task(app.state.room_runtime.run()), asyncio.create_task(app.state.scene_runtime.run())]
         if (sys.platform == "linux" and os.environ.get("LUMA_DATA_DIR") == "/var/lib/luma"):
+            workers.append(asyncio.create_task(app.state.fan.run()))
             workers.append(asyncio.create_task(voice_asset_worker()))
             workers.append(asyncio.create_task(keyword_runtime.run()))
         try:
@@ -634,6 +635,8 @@ def create_app(
     install_room_api(app,service,local_only)
     install_scene_api(app,service,local_only,bluetooth)
     install_backup_api(app,service,storage,local_only)
+    from .fan_api import install_fan_api
+    install_fan_api(app, storage, local_only)
     install_update_api(app,local_only)
     def companion_google_connected():
         service.todo_write_authorized=google.task_write_authorized()

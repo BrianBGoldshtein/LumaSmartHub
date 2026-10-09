@@ -168,3 +168,4 @@ button:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
 .voice-notice { position:fixed; z-index:90; right:calc(var(--pad,32px) + 100px); bottom:var(--pad,32px); max-width:calc(100vw - 160px); padding:.5em .85em; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:var(--radius,16px); font:700 clamp(22px,3vw,40px)/1.1 var(--heading); pointer-events:none; }
 .theme-neon-grid .voice-notice { border-radius:0; padding:calc(3*var(--pixel)) calc(4*var(--pixel)); font-size:calc(7*var(--pixel)); }
 .voice-notice-layer { position:fixed; inset:0; z-index:90; pointer-events:none; background:transparent; }
+html.luma-cursor-idle, html.luma-cursor-idle *, html.luma-cursor-idle *::before, html.luma-cursor-idle *::after { cursor: none !important; }

@@ -41,6 +41,8 @@ COMMANDS = frozenset({"set_brightness", "set_volume", "set_theme", "show_page", 
     "good_morning", "privacy_now", "start_timer", "pause_timer", "resume_timer",
     "cancel_timer", "show_timer", "dismiss_timer"})
 UPSTREAMS = {
+    ('GET', '/remote/api/device/fan'): '/api/v1/device/fan',
+    ('POST', '/remote/api/device/fan'): '/api/v1/device/fan',
     ("PATCH", "/remote/api/settings"): "/api/v1/settings",
     ("POST", "/remote/api/command"): "/api/v1/commands",
     ("GET", "/remote/api/google/status"): "/api/v1/google/status",

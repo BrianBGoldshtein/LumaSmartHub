@@ -37,6 +37,7 @@ PHONE = re.compile(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}\Z")
 HOST = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.[a-z0-9-]{1,63}\.ts\.net\Z")
 # A request proof can never authorize an arbitrary local API path.
 OPERATIONS = frozenset({
+    ('GET', '/remote/api/device/fan'), ('POST', '/remote/api/device/fan'),
     ("GET", "/remote/api/admin/status"), ("POST", "/remote/api/admin/unlock"), ("POST", "/remote/api/admin/lock"),
     ("GET", "/remote/api/personal-settings"), ("PATCH", "/remote/api/personal-settings"),
     ("GET", "/remote/api/setup"), ("POST", "/remote/api/setup"),

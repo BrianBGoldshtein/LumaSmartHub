@@ -69,6 +69,8 @@ async def test_preview_is_own_only_for_every_other_phone_presence_combination(ap
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('method,path,value', [
+    ('GET', '/remote/api/device/fan', None),
+    ('POST', '/remote/api/device/fan', {'action':'always_on', 'pin':'123456'}),
     ('GET', '/remote/api/updates/status', None),
     ('POST', '/remote/api/updates/check', {}),
     ('POST', '/remote/api/updates/install', {'pin':'123456'}),

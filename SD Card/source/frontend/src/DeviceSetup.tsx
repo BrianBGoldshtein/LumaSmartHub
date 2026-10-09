@@ -14,6 +14,7 @@ import {coordinates} from "./touchInput";
 import {setupTheme,setupLink} from "./setupTheme";
 import {announceAdminNeeded} from './adminState';
 import {DeviceTemperaturePanel} from './TemperatureReadout';
+import {FanControlPanel} from './FanControlPanel';
 
 async function api(path:string, method="GET", body?:unknown) {
   const response=await fetch(`/api/v1/${path}`,{method,headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
@@ -21,6 +22,7 @@ async function api(path:string, method="GET", body?:unknown) {
   if(!response.ok){announceAdminNeeded(data);throw new Error(typeof data.detail === "string" ? data.detail : "Check the entered settings.");}
   return data;
 }
+const coolingRequest=<T,>(method:string,path:string,body?:unknown)=>api(path,method,body) as Promise<T>;
 
 export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space"|"privacy";onSaved?:()=>void}) {
   const [theme,setTheme]=useState(()=>setupTheme(new URLSearchParams(location.search).get("theme")));
@@ -56,7 +58,7 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
   return <TouchInputProvider><div className={section?"setup-embedded":`app theme-${theme} setup-page`}>{!section && <a className="setup-back" href={setupLink(demo,theme)}><ArrowLeft/> Dashboard</a>}<Panel className={section?"device-setup":"setup-content device-setup"}>
     {!section && <><Settings size={40}/><h1>Your space.</h1><p>Set up once. Saved on your Luma.</p><a href={setupLink(demo,theme,"onboarding")}>Open guided setup →</a>
     {demo && <p className="setup-note">Preview only — no device settings will change.</p>}
-    <DeviceTemperaturePanel demo={demo}/><NetworkSetup demo={demo}/></>}
+    <DeviceTemperaturePanel demo={demo}/><FanControlPanel demo={demo} request={coolingRequest}/><NetworkSetup demo={demo}/></>}
     {(!section || section==="space") && <form onSubmit={event=>{event.preventDefault();void run(async()=>{
       const locationCoordinates=coordinates(form.latitude,form.longitude);
       if(demo){setMessage("Preview settings checked. Nothing was saved to a device.");onSaved?.();return;}

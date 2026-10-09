@@ -97,6 +97,22 @@ async def test_remote_cycle_validation_reuses_wall_settings(rig):
 
 
 @pytest.mark.asyncio
+async def test_cooling_uses_signed_primary_admin_and_revokes_on_lock(rig):
+    app,_,device=rig
+    app.state.fan.request=AsyncMock(return_value={'available':True,'qualified':False,
+        'mode':'always_on','usb_power':'on','probe':'idle','reason':'test'})
+    response=await dispatch(rig,'GET','/remote/api/device/fan')
+    assert response.status_code==200 and response.headers['cache-control']=='no-store'
+    response=await dispatch(rig,'POST','/remote/api/device/fan',{'action':'always_on'})
+    assert response.status_code==200
+    app.state.fan.request.reset_mock()
+    app.state.admin.lock_remote(device)
+    for method,value in [('GET',None),('POST',{'action':'always_on'})]:
+        assert (await dispatch(rig,method,'/remote/api/device/fan',value)).status_code==403
+    assert not app.state.fan.request.called
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('value',[{'phone_address':None},{'audio_output':'arbitrary'},
     {'pin':'0000'},{'onboarding_completed':True},{'lan_token':'fake'}])
 async def test_remote_cannot_alter_identity_auth_or_local_hardware(rig,value):

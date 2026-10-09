@@ -5,7 +5,7 @@ qaRoot=$(cd "$(dirname "$0")" && pwd)
 frontendRoot=$(cd "$qaRoot/.." && pwd)
 backendRoot=${REMOTE_QA_BACKEND:-$(cd "$frontendRoot/../backend" && pwd)}
 pythonRuntime=${1:?Pass the qualified Linux Python executable}
-if ss -ltn | grep -Eq ':(443|19226)\b'; then
+if ss -ltn | grep -Eq ':(443|19226|18835)\b'; then
   echo 'QA ports already occupied; no processes were touched.' >&2
   exit 1
 fi

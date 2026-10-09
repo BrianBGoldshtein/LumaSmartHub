@@ -114,6 +114,8 @@ class LumaService:
     def primary_private_visible(self, now=None, *, briefing=False):
         now = now or datetime.now(UTC)
         self._sync_sleep(now)
+        if self.presence_update_busy or self.presence_update_pending>0:
+            return False
         full = self.state.privacy == PrivacyLevel.FULL and (briefing or self.state.display_power == DisplayPower.ON) and (not self.display_state or
             (not self.display_state['awaiting_clock'] and (briefing or self.display_state['mode'] == 'day')))
         pin_valid = self.state.pin_unlocked_until and self.state.pin_unlocked_until > now
@@ -183,6 +185,13 @@ class LumaService:
         state = self.display.sync(now, sleep_end=effective_end, brightness=self.settings.brightness,
                                   night_brightness=self.settings.night_brightness,
                                   night_clock=self.settings.night_clock_enabled, trusted=trusted)
+        if self.presence_update_busy or self.presence_update_pending>0:
+            # Temporary output override only: never persist a manual wake or
+            # modify the user's sleep cycle/brightness. Device handoff still
+            # requires a matching rendered frame before increasing power.
+            level=max(20,min(65,self.settings.brightness))
+            state={**state,'mode':'day','brightness':level,'day_brightness':level,
+                   'ramp':None,'awaiting_clock':False,'quiet':True}
         power = state['mode'] != 'off'
         target = int(state['night_brightness'] if state['mode']=='night-clock' else state['day_brightness'])
         state['handoff'] = self.display_handoff.prepare(power=power, brightness=target)
@@ -393,7 +402,7 @@ class LumaService:
         full = self.primary_private_visible(now, briefing=briefing)
         self._presence_tick(now)
         present = self.present_user_ids()
-        day_visible = not self.state.forced_private and (briefing or self.state.display_power == DisplayPower.ON) and (not self.display_state or
+        day_visible = not (self.presence_update_busy or self.presence_update_pending>0) and not self.state.forced_private and (briefing or self.state.display_power == DisplayPower.ON) and (not self.display_state or
             (not self.display_state['awaiting_clock'] and (briefing or self.display_state['mode'] == 'day')))
         panels = self.profile_calendars.wall_panels(now) if self.profile_calendars and day_visible else []
         panels = [panel for panel in panels if panel['configured']]

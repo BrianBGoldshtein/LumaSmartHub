@@ -1,6 +1,6 @@
 # Luma 0.3.2 visual cohesion and remote update behavior
 
-Status: development candidate on `codex/v032-visual-cohesion`; not signed or published. Keep 0.3.1 Beta as the current installable release until the remaining release gates pass.
+Status: final 0.3.2 candidate on `codex/v032-visual-cohesion`; not yet signed or published. Keep 0.3.1 Beta as the current installable release until the remaining release gates pass.
 
 ## Required behavior
 
@@ -28,13 +28,19 @@ Phone-started software installation must appear on the wall regardless of the cu
 
 The isolated production wall monitor passes simulated external installation during guided setup, malformed/outage status retention, failure dismissal, verified completion, and fresh-HTML navigation. No update, real account, radio operation or hardware reboot occurs in this browser test.
 
+## Final candidate checks
+
+The full backend development run passed 2,161 tests; two additional reboot edge cases then passed with the focused reboot/display set (12 tests). The final clean-main publisher will rerun all 2,163 backend tests. Frontend tests pass 203 cases and packaging passes 43 cases; both production UI builds pass. The latest 168-case layout run is `/tmp/luma-031-user-setup.tC5q3ATV`.
+
+The broader audit passed 120 cases across all themes and every ambient scene, plus weather, countdowns, transit, controls, presence and voice islands (`/tmp/luma-031-user-setup.UBwFckDM`). Selected rendered controls, games and primary/secondary remotes were visually reviewed. Game rules and speeds were not changed.
+
+The authenticated synthetic remote lab passed live phone theme changes reaching the separate wall browser and phone-started installation appearing on that wall (`/tmp/luma-030-mobile.B5MByQi1`). Expanded progress checks passed normal, night-clock, display-off and setup views, outage/malformed-status retention, failure restoration and completion refresh (`/tmp/luma-031-user-setup.x3yzp8L3`). Temporary physical brightness/display output and privacy redaction are covered by four backend cases; saved Sleep/brightness settings remain unchanged.
+
+Release metadata is 0.3.2. Publisher qualification now pins the deployed 0.3.1 tag to `9ca2299074d913829a41d601314082ac1fcf5ed1`, rather than falling back to the old full-image version. Synthetic preservation checks compare the entire SQLite dump, including four secondary users, Google tokens/caches, personal paused timers, grants and games.
+
 ## Remaining release gates
 
-1. Confirm actual remote settings changes refresh wall state; extend the verified guided-setup progress test to normal and night views. Review reboot handoff edge cases and require owner confirmation on the actual Pi.
-2. Finish the visual audit beyond the affected home/calendar/task layouts: weather, countdowns, transit, control islands, presence screens, games and phone remote, preserving existing behavior. Long and short content must fit without sacrificing important titles.
-3. Set 0.3.2 release metadata, extend the publisher's exact deployed baseline to the published 0.3.1 tag `9ca2299074d913829a41d601314082ac1fcf5ed1`, and add baseline-selection tests. Do not sign using the old 0.2.0 fallback.
-4. Run full backend/frontend/packaging suites, exact-main CI, offline signing, exact 0.3.1 upgrade and forced health-failure rollback qualification, then downloaded production-release verification. Preserve settings, credentials, grants, timers and games.
-5. Publish a new `0.3.2 Beta` GitHub release under the owner's standing approval. Never replace published 0.3.1 assets. Owner validates the new layout and a phone-triggered update/reboot on the Pi.
+Commit the candidate, fast-forward the authorized main beta channel, pass exact-main CI, then run the clean-main publisher with the offline signing key. Qualify the same signed archive with both current and deployed 0.3.1 installers through success and forced rollback. Publish new assets without replacing 0.3.1, and independently download/verify the production release. Owner confirmation remains required for actual Pi reboot, screen power handoff and real phone/hardware behavior.
 
 ## Resume paths
 

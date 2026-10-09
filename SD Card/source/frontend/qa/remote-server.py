@@ -4,6 +4,9 @@ Never installed on a Pi. No real provider, radio, update or protected broker.
 Start on isolated Linux with an explicit temporary data/frontend directory.
 """
 import os
+import asyncio
+from contextlib import asynccontextmanager
+import uvicorn
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,11 +20,11 @@ from luma import update_api
 
 ORIGIN='https://luma.example-tail.ts.net'
 PHONE='AA:BB:CC:DD:EE:FF'
-core=create_app(data_dir=os.environ['REMOTE_QA_DATA'])
+core=create_app(data_dir=os.environ['REMOTE_QA_DATA'],frontend_dir=os.environ['REMOTE_QA_FRONTEND'])
 service=core.state.luma;service.display_clock_trusted=lambda:True
 core.state.security.set_pin('123456')
 service.update_settings({'phone_address':PHONE,'visible_calendar_ids':['classes'],
-                         'todo_calendar_id':'tasks','todo_completed_color_id':'8'})
+                         'todo_calendar_id':'tasks','todo_completed_color_id':'8','onboarding_completed':True})
 linked=True
 def connect():
     core.state.bluetooth.remote_authorized.begin(PHONE,'/fake-phone','/fake-phone/source')
@@ -81,6 +84,24 @@ async def update_request(payload):
     return {'accepted':True,'version':'0.3.0'}
 update_api.update_request=update_request
 app=create_gateway(transport=httpx.ASGITransport(app=core,client=('127.0.0.1',1234)),frontend_dir=os.environ['REMOTE_QA_FRONTEND'])
+
+@asynccontextmanager
+async def isolated_wall(_):
+    # Same synthetic service, separate real local wall transport. Never start
+    # the hardware/provider workers in the core app's normal lifespan.
+    wall=uvicorn.Server(uvicorn.Config(core,host='127.0.0.1',port=18835,lifespan='off',access_log=False))
+    task=asyncio.create_task(wall.serve())
+    try:
+        for _ in range(100):
+            if wall.started:break
+            if task.done():await task
+            await asyncio.sleep(.02)
+        if not wall.started:raise RuntimeError('Synthetic wall did not start')
+        yield
+    finally:
+        wall.should_exit=True
+        await task
+app.router.lifespan_context=isolated_wall
 
 @app.middleware('http')
 async def qa_only(request,call_next):

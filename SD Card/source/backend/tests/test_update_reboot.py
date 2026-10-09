@@ -40,3 +40,19 @@ def test_denied_reboot_does_not_rollback_or_retry_forever(committed):
     assert not reboot_after_verified_upgrade(**committed,runner=denied)
     assert ProgressStore(committed['status_path']).read()['state']=='installed'
     assert not reboot_after_verified_upgrade(**committed,runner=lambda *args,**kwargs:pytest.fail('Retry loop'))
+
+def test_older_install_record_and_linked_marker_never_reboot(committed):
+    status=ProgressStore(committed['status_path'])
+    saved=status.read();saved['target_version']='0.3.1';status.write(saved)
+    assert not reboot_after_verified_upgrade(**committed,runner=lambda *args,**kwargs:pytest.fail('Old install'))
+    saved['target_version']='0.3.2';status.write(saved)
+    marker=committed['releases_root']/'.luma-reboot-requested-0.3.2'
+    marker.symlink_to(committed['status_path'])
+    assert not reboot_after_verified_upgrade(**committed,runner=lambda *args,**kwargs:pytest.fail('Unsafe marker'))
+    assert status.read()==saved
+
+def test_active_checkout_outside_managed_releases_never_reboots(committed,tmp_path):
+    outside=tmp_path/'outside';outside.mkdir()
+    (outside/'.luma-release.json').write_text(json.dumps({'version':'0.3.2'}))
+    committed['app_root'].unlink();committed['app_root'].symlink_to(outside,target_is_directory=True)
+    assert not reboot_after_verified_upgrade(**committed,runner=lambda *args,**kwargs:pytest.fail('Unmanaged checkout'))

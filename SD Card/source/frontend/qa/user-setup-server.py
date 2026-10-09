@@ -54,6 +54,22 @@ app.router.lifespan_context=isolated
 
 @app.middleware('http')
 async def qa_only(request:Request,call_next):
+    if request.url.path=='/qa/display-mode':
+        mode=(await request.json())['mode']
+        service=app.state.luma
+        now=datetime.now(UTC)
+        if mode=='day':
+            service.machine.state.forced_sleep_until=None
+            service.display.off(now)  # Reset only the disposable fixture.
+            service.display.wake(now)
+            service.display.data.update(mode='day',ramp=None,held_off=False)
+        elif mode=='night-clock':
+            service.machine.state.forced_sleep_until=now+timedelta(hours=8)
+            service.display.night(now,until=service.machine.state.forced_sleep_until)
+        elif mode=='off':service.display.off(now)
+        else:raise ValueError('Unknown fixture')
+        service.publish('state.updated')
+        return JSONResponse({'mode':mode})
     if request.url.path=='/qa/wall-notice-after-alarm':
         service=app.state.luma
         service.receive_notification(PhoneNotification('qa-notice','com.apple.mobilephone',

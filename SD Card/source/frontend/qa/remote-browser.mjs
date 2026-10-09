@@ -11,6 +11,12 @@ socket.onmessage=event=>{const data=JSON.parse(event.data);if(data.method==='Run
   if(data.method==='Network.responseReceived')responses.push({path:new URL(data.params.response.url).pathname,status:data.params.response.status});
   const wait=pending.get(data.id);if(!wait)return;pending.delete(data.id);data.error?wait.reject(Error(JSON.stringify(data.error))):wait.resolve(data.result);};
 const send=(method,params={})=>new Promise((resolve,reject)=>{const seq=++id;pending.set(seq,{resolve,reject});socket.send(JSON.stringify({id:seq,method,params}));});
+let wallSocket,wallId=0;const wallPending=new Map();let wallTarget;
+async function wallValue(expression){
+  const result=await new Promise((resolve,reject)=>{const seq=++wallId;wallPending.set(seq,{resolve,reject});wallSocket.send(JSON.stringify({id:seq,method:'Runtime.evaluate',params:{expression,returnByValue:true,awaitPromise:true}}));});
+  if(result.exceptionDetails)throw Error(result.exceptionDetails.text);return result.result.value;
+}
+async function wallUntil(expression){const end=Date.now()+15000;while(!await wallValue(expression)){if(Date.now()>end)throw Error('Wall timed out: '+expression);await new Promise(r=>setTimeout(r,100));}}
 async function value(expression){const result=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});
   if(result.exceptionDetails)throw Error(result.exceptionDetails.text);return result.result.value;}
 async function until(expression,timeout=18000){const deadline=Date.now()+timeout;while(!(await value(expression))){
@@ -22,6 +28,11 @@ async function click(text){
 }
 try{
   await send('Page.enable');await send('Runtime.enable');await send('Network.enable');
+  wallTarget=await(await fetch(debug+'/json/new?'+encodeURIComponent('http://127.0.0.1:18835/'),{method:'PUT'})).json();
+  wallSocket=new WebSocket(wallTarget.webSocketDebuggerUrl);
+  await new Promise((resolve,reject)=>{wallSocket.onopen=resolve;wallSocket.onerror=reject;});
+  wallSocket.onmessage=event=>{const data=JSON.parse(event.data),item=wallPending.get(data.id);if(!item)return;wallPending.delete(data.id);data.error?item.reject(Error(JSON.stringify(data.error))):item.resolve(data.result);};
+  await wallUntil(`document.querySelector('.app')!==null`);
   await send('Page.bringToFront');
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await until(`document.querySelector('.locked')!==null`);
@@ -46,6 +57,9 @@ try{
   await click('Settings');await until(`document.body.innerText.includes('Primary settings')`);
   await value(`(()=>{const field=document.querySelector('input[type="password"]');const native=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;native.call(field,'123456');field.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await click('Unlock primary settings');await until(`document.querySelector('.themes')!==null`);
+  for(const [name,theme] of [['Glass','luma-glass'],['Hearth','hearth'],['Neon','neon-grid']]){
+    await click(name);await wallUntil(`document.querySelector('.theme-${theme}')!==null`);
+  }
   await click('Calendars');await until(`document.body.innerText.includes('Agenda · select all that apply')`);
   await click('Save calendar choices');await until(`document.querySelector('.themes')!==null`);
   await click('Hub');await until(`document.querySelector('.hero')!==null`);
@@ -59,6 +73,7 @@ try{
   await click('Software');await until(`document.body.innerText.includes('Current version')&&document.body.innerText.includes('0.2.11')`);
   await click('Check for updates');await until(`document.querySelector('.release')!==null`);
   await click('Review complete · Install');await until(`document.body.innerText.includes('Synthetic services restarting')`);
+  await wallUntil(`document.querySelector('.wall-update-progress')?.textContent.includes('Updating to 0.3.0')`);
   const accepted=await value(`fetch('/qa/actions').then(r=>r.json())`);
   assert.deepEqual(accepted.actions,['task','update']);
   await value(`fetch('/qa/update-complete').then(r=>r.json())`);
@@ -141,5 +156,5 @@ try{
   await value(`fetch('/qa/revoke').then(r=>r.json())`);await until(`document.querySelector('.locked')!==null`);
   assert.ok(!(await value('document.body.innerText')).includes('Alex PRIVATE seminar'));
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,disconnectCleared:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,guestOwnCalendars:true,guestOwnTimer:true,guestNoAdminControls:true,guestNoOverflow:true,guestSetupResume:true,guestOwnSharingConsent:true,guestRevocationCleared:true,errors},null,2));
-}finally{socket.close();await fetch(debug+'/json/close/'+target.id);}
+  console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,remoteThemesAppliedToWall:true,remoteUpdateVisibleOnWall:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,disconnectCleared:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,guestOwnCalendars:true,guestOwnTimer:true,guestNoAdminControls:true,guestNoOverflow:true,guestSetupResume:true,guestOwnSharingConsent:true,guestRevocationCleared:true,errors},null,2));
+}finally{wallSocket?.close();if(wallTarget)await fetch(debug+'/json/close/'+wallTarget.id);socket.close();await fetch(debug+'/json/close/'+target.id);}

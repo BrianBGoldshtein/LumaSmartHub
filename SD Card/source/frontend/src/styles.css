@@ -1,4 +1,7 @@
 :root { font-family:Manrope,sans-serif; color:#f6f5f0; background:#000; font-synthesis:none; }
+/* Progress is safe public content and must remain legible over night/off UI.
+   The protected display handoff separately controls physical panel power. */
+body:has(.wall-update-progress) {opacity:1!important;}
 .game-frame { --game-hud-height:clamp(36px,5vmin,60px); width:min(calc(100% - 4vmin),calc((100dvh - 4vmin - var(--game-hud-height) - 1.5vmin)*var(--game-ratio))); display:flex; flex-direction:column; gap:1.5vmin; }
 .game-hud { height:var(--game-hud-height); display:flex; align-items:center; justify-content:space-between; gap:2vmin; color:var(--ink); font:700 clamp(26px,4vmin,48px)/1 var(--heading); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .game-hud strong { font:inherit; }.game-hud span { font-size:.72em; color:var(--muted); }

@@ -106,6 +106,28 @@ def check(bundle: Path, key: Path, current_version: str, *, healthy: bool,
         secrets={'google_tokens':'SYNTHETIC_GOOGLE', 'companion_browser_grants_v1':'SYNTHETIC_BROWSER'}
         for name,value in secrets.items():storage.set_secret(name,value)
         storage.set_cache('games','snake',{'score':123})
+        if tuple(map(int,current_version.split('.'))) >= (0,3,1):
+            from luma.profiles import ProfileRepository,GRANTS_KEY
+            from luma.personal_timers import PersonalTimers
+            profiles=ProfileRepository(storage)
+            guests=[profiles.create_secondary(f'Guest {index}') for index in range(1,5)]
+            timers=PersonalTimers(profiles,clock=lambda:100.0)
+            for index,user in enumerate(guests):
+                profiles.bind_phone(user.id,f'AA:BB:CC:DD:EE:{index+1:02X}')
+                profiles.set_setup(user.id,'ready',wall_share_approved=True)
+                profiles.update_personal(user.id,{'visible_calendar_ids':['synthetic-calendar'],
+                                                  'todo_calendar_id':'synthetic-tasks'})
+                account=profiles.account_storage(user.id)
+                account.set_secret('google_tokens',f'SYNTHETIC_GOOGLE_{index}')
+                account.set_cache('calendar','events',[{'marker':f'SYNTHETIC_EVENTS_{index}'}])
+                timer=timers.for_user(user.id)
+                timer.execute('start_timer',{'seconds':120,'label':f'Synthetic timer {index}'})
+                timer.execute('pause_timer')
+            storage.set_secret(GRANTS_KEY,json.dumps({'synthetic-browser':{'profile_id':guests[0].id,'marker':'SYNTHETIC_GRANT'}}))
+        # Compare every row, not just known legacy fields. Do not print any
+        # private payloads; all fixtures here are synthetic and disposable.
+        with storage.transaction() as connection:
+            before_rows='\n'.join(connection.iterdump())
         controller = Controller()
         phases: list[str] = []
         version = updater.verify_bundle(bundle, key)["version"]
@@ -152,6 +174,9 @@ def check(bundle: Path, key: Path, current_version: str, *, healthy: bool,
         if (storage.load_settings()!=settings or any(storage.get_secret(name)!=value for name,value in secrets.items())
                 or storage.get_cache('games','snake')!={'score':123} or not storage.integrity_check()):
             raise AssertionError('the update changed synthetic SQLite settings, grants or games')
+        with storage.transaction() as connection:
+            if '\n'.join(connection.iterdump())!=before_rows:
+                raise AssertionError('the update changed durable SQLite profile, token, timer or cache rows')
         print(f"{version}: {'switch' if healthy else 'rollback'} passed; "
               f"phases={','.join(phases)}")
 

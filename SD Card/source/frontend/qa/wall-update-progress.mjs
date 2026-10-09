@@ -18,6 +18,18 @@ try{
       ?Promise.resolve(new Response(JSON.stringify(window.syntheticUpdate),{headers:{'Content-Type':'application/json'}}))
       :original(input,init);
   }`});
+  for(const mode of ['day','night-clock','off']){
+    await fetch(base+'/qa/display-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+    await send('Page.navigate',{url:base+'/'});
+    await until(mode==='night-clock'?`document.querySelector('.night-clock')!==null`:mode==='off'?`document.querySelector('.sleep-screen')!==null`:`document.querySelector('.home-page,.privacy-page')!==null`);
+    await value(`window.syntheticUpdate={current_version:'0.3.1',state:'installing',phase:'copying',target_version:'0.3.2'}`);
+    await until(`document.querySelector('.wall-update-progress')!==null`);
+    assert.equal(await value(`getComputedStyle(document.body).opacity`),'1',mode+': update must remain readable');
+    await value(`window.syntheticUpdate={current_version:'0.3.1',state:'failed'}`);
+    await until(`document.querySelector('.wall-update-progress')===null`);
+    if(mode!=='day')assert.ok(Number(await value(`getComputedStyle(document.body).opacity`))<.05,'Night dimming must return');
+  }
+  await fetch(base+'/qa/display-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'day'})});
   // No demo parameter: exercise the always-mounted production observer while
   // the disposable server supplies synthetic onboarding/settings state.
   await send('Page.navigate',{url:base+'/?setup=onboarding'});
@@ -36,5 +48,5 @@ try{
   await value(`window.syntheticUpdate={current_version:'0.3.2',state:'installed',phase:'complete',target_version:'0.3.2'}`);
   await until(`document.querySelector('[aria-label="Software update in progress"]').textContent.includes('Update verified')`);
   await until(`new URL(location.href).searchParams.get('ui_release')==='0.3.2'`);
-  console.log(JSON.stringify({passed:true,scope:'Mocked progress only; no install or hardware reboot',checks:['external update during setup','progress retained through outage','failure dismissal','verified completion','cache-busting dashboard navigation']}));
+  console.log(JSON.stringify({passed:true,scope:'Mocked progress only; no install or hardware reboot',checks:['external update during normal, night-clock, display-off and setup views','night progress stays readable','progress retained through outage or malformed status','failure dismissal restores the prior view','verified completion','cache-busting dashboard navigation']}));
 }finally{socket.close();await fetch(debug+'/json/close/'+target.id);}

@@ -38,7 +38,7 @@ export function WallUpdateProgress({demo=false}:{demo?:boolean}){
   if(!status)return null;
   const theme=document.querySelector('.app')?.className.match(/theme-([\w-]+)/)?.[1]||'luma-glass';
   const elapsed=status.elapsed_seconds||0;
-  return <div className={`app theme-${theme}`} style={{position:'fixed',inset:0,zIndex:2000}}>
+  return <div className={`app theme-${theme} wall-update-progress`} style={{position:'fixed',inset:0,zIndex:2000}}>
     <div className="luma-update-overlay" role="status" aria-live="polite" aria-label="Software update in progress">
       <span className="luma-update-mark"><ShieldCheck/> Luma software</span>
       <strong>Updating to {status.target_version}</strong>

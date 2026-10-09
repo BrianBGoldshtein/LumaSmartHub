@@ -78,4 +78,6 @@
 .theme-neon-grid .multi-users:is([data-users="3"],[data-users="4"],[data-users="5"]) {--user-type:calc(7*var(--pixel));--user-time:calc(6*var(--pixel));--user-small:calc(4*var(--pixel));}
 .theme-neon-grid .multi-users:is([data-users="4"],[data-users="5"]) .user-task strong {font-size:calc(5*var(--pixel));}
 .theme-neon-grid .multi-users:is([data-users="4"],[data-users="5"]) .user-task small {font-size:calc(4*var(--pixel));}
+.theme-neon-grid .user-mode-todos:is([data-users="2"],[data-users="3"]) .user-task strong {font-size:var(--user-type);}
+.theme-neon-grid .user-task-status i {border-radius:0;border-width:var(--pixel);}
 @media(max-aspect-ratio:1/1){.user-mode-home .user-next-event{grid-template-columns:minmax(0,30%) minmax(0,1fr)}.user-mode-home .user-next-event time{font-size:var(--user-time)}}

@@ -10,6 +10,7 @@ from .focus_timer import TIMER_COMMANDS
 from .integrations.google_calendar import TaskConflict, calendar_failure_status
 from .profiles import PERSONAL_KEYS, PRIMARY_ID, ProfileError, SETUP_STAGES
 from .serde import to_primitive
+from . import thermal
 
 
 PERSONAL_ROUTES = frozenset({
@@ -38,6 +39,7 @@ def own_preview(service, uid):
         raise HTTPException(403, 'Connect this user’s authorized iPhone first.')
     user = service.profiles.get(uid)
     return {'server_time': room['server_time'], 'privacy_redacted': False,
+            'device_temperature': thermal.read_temperature(),
             'profile_id': uid, 'nickname': user.nickname, 'role': user.role,
             'weather': room['weather'], 'settings': {key: own_settings(service, uid)[key]
                 for key in ('theme', 'timezone', 'weather_location_label')},

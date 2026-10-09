@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from .companion_auth import CompanionAuth, CompanionDenied, MAX_BODY, _identity_digest, private_origin
 from .serde import to_primitive
+from . import thermal
 from .tailscale_setup import tailscale_request
 from .pi_connect_setup import qr_data
 from .companion_google import CompanionGoogle
@@ -75,6 +76,7 @@ def preview_view(service):
     result = {key: view[key] for key in ("server_time", "privacy_redacted", "weather", "timer", "departure", "todo_controls")}
     result["settings"] = {key: view["settings"][key] for key in ("theme", "timezone", "weather_location_label")}
     result["state"] = {key: view["state"][key] for key in ("active_page", "display_power", "phone_connected")}
+    result['device_temperature'] = thermal.read_temperature()
     for key in ("calendar", "ongoing", "todos"):
         result[key] = [{field: row[field] for field in EVENT_KEYS if field in row} for row in view[key]]
     return result  # Never notifications, phone address, game state or future settings.

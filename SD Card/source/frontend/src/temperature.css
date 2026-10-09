@@ -1,0 +1,9 @@
+.temperature-readout{display:flex;align-items:center;justify-content:space-between;gap:16px;color:inherit;min-width:0}
+.temperature-heading{display:flex;align-items:center;gap:10px;min-width:0;font-weight:700}
+.temperature-heading svg{flex-shrink:0;color:var(--accent)}
+.temperature-readout small{display:block;font-size:13px;font-weight:500;color:var(--muted);line-height:1.5}
+.temperature-value{flex-shrink:0;text-align:right}
+.temperature-value strong{font-family:var(--heading,var(--title));font-size:32px;line-height:1.15;font-variant-numeric:tabular-nums}
+.temperature-warm .temperature-value small,.temperature-hot .temperature-value small{color:var(--accent);font-weight:700}
+.hero .temperature-readout{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+@media(max-width:350px){.temperature-readout{gap:10px}.temperature-readout small{font-size:11px}.temperature-value strong{font-size:28px}.temperature-heading svg{width:20px}}

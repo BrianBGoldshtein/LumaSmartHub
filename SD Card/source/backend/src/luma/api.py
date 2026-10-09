@@ -38,6 +38,7 @@ from .security import SecurityManager
 from .service import LumaService
 from .storage import Storage
 from .serde import to_primitive
+from . import thermal
 from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
@@ -1865,6 +1866,10 @@ def create_app(
             "database": "ok" if storage.integrity_check() else "error",
             "version": app.version,
         }
+
+    @app.get("/api/v1/device/temperature", dependencies=[Depends(local_only)])
+    def device_temperature():
+        return JSONResponse(thermal.read_temperature(), headers={'Cache-Control': 'no-store'})
 
     @app.get("/api/v1/state", dependencies=[secured])
     async def state() -> dict[str, Any]:

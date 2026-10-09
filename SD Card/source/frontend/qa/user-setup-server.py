@@ -13,11 +13,15 @@ from luma.companion_google import AUTH_URI, TOKEN_URI
 from luma.integrations.google_calendar import CLIENT_CONFIG_KEY
 from luma.models import CalendarEvent, PhoneNotification
 from luma.presence_transitions import PresenceTransitions
+from luma import thermal
+from pathlib import Path
 
 app=create_app(data_dir=os.environ['USER_QA_DATA'],frontend_dir=os.environ['USER_QA_FRONTEND'])
 app.state.security.set_pin('123456')
 app.state.luma.update_settings({'onboarding_completed':True})
 app.state.luma.display_clock_trusted=lambda:True
+thermal.CPU_SENSOR=Path(os.environ['USER_QA_DATA'])/'synthetic-cpu-temp'
+thermal.CPU_SENSOR.write_bytes(b'56478\n')
 clock=[0.0]
 voice_clock=[100.0]
 app.state.luma.voice_accounts.clock=lambda:voice_clock[0]
@@ -54,6 +58,10 @@ app.router.lifespan_context=isolated
 
 @app.middleware('http')
 async def qa_only(request:Request,call_next):
+    if request.url.path=='/qa/temperature':
+        raw={'normal':b'56478\n','warm':b'74000\n','hot':b'82000\n','unavailable':b'bad'}[(await request.json())['state']]
+        thermal.CPU_SENSOR.write_bytes(raw)
+        return JSONResponse({'ok':True})
     if request.url.path=='/qa/display-mode':
         mode=(await request.json())['mode']
         service=app.state.luma

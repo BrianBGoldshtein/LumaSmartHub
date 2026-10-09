@@ -1,8 +1,9 @@
 import type {CalendarEvent,Weather,Theme} from '../types';
 import type {TimerState} from '../timerState';
 import type {Departure} from '../departureState';
+import type {DeviceTemperature} from '../temperatureState';
 export type Preview={profile_id:string;role:'primary'|'secondary';nickname:string;server_time:string;privacy_redacted:boolean;weather:Weather|null;timer:TimerState;
-  departure:Departure|null;todo_controls:{can_update:boolean;stale?:boolean};calendar:CalendarEvent[];ongoing:CalendarEvent[];todos:CalendarEvent[];
+  device_temperature?:DeviceTemperature;departure:Departure|null;todo_controls:{can_update:boolean;stale?:boolean};calendar:CalendarEvent[];ongoing:CalendarEvent[];todos:CalendarEvent[];
   settings:{theme:Theme;timezone:string;weather_location_label:string};state:{active_page:string;display_power:string;phone_connected:boolean}};
 export type RemoteSettings={theme:Theme;brightness:number;volume:number;timezone:string;latitude:number|null;longitude:number|null;
   weather_location_label:string;orientation:string;voice_enabled:boolean;night_clock_enabled:boolean;night_brightness:number;

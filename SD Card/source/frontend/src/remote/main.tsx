@@ -16,6 +16,7 @@ import {clockText,enrollTicket,safeColor,upcoming,updateOutcome,primaryRemote,pe
 import type {Preview,RemoteSettings,PersonalSettings,PersonalSetup,UpdateStatus,Candidate} from './state';
 import type {Theme} from '../types';
 import './style.css';
+import {TemperatureReadout} from '../TemperatureReadout';
 
 // Remove the one-use fragment before loading any network resource. It remains
 // only in this document's memory, never a URL query, log or persistent store.
@@ -189,6 +190,7 @@ function Hub({preview,busy,command,task}:{preview:Preview;busy:boolean;command:(
     <section className="hero"><span>{new Intl.DateTimeFormat(undefined,{weekday:'long',month:'short',day:'numeric',timeZone:zone}).format(new Date(preview.server_time))}</span>
       <h1>{clockText(preview.server_time,zone)}</h1><div className="weather"><b>{preview.weather?`${Math.round(preview.weather.temperature)}°`:'—'}</b><div>{preview.weather?.summary??'Weather unavailable'}<small>{preview.settings.weather_location_label}{preview.weather?.stale?' · Saved forecast':''}</small></div></div>
       {preview.weather&&<small className="attribution">{preview.weather.attribution}</small>}
+      <TemperatureReadout reading={preview.device_temperature}/>
     </section>
     <section><div className="section-title"><h2><CalendarDays size={20}/> Upcoming</h2><span>On the hub</span></div>
       {preview.privacy_redacted?<p>Hub is in private standby. Private details remain hidden.</p>:events.length?events.slice(0,8).map(event=><article className="event" key={`${event.calendar_id}:${event.id}`} style={{borderColor:safeColor(event.event_color??event.calendar_color)}}>

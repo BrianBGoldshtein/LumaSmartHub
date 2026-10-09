@@ -17,11 +17,14 @@ from luma.api import create_app
 from luma.models import CalendarEvent, WeatherSnapshot
 from luma.shortcut_gateway import create_gateway
 from luma import update_api
+from luma import thermal
 
 ORIGIN='https://luma.example-tail.ts.net'
 PHONE='AA:BB:CC:DD:EE:FF'
 core=create_app(data_dir=os.environ['REMOTE_QA_DATA'],frontend_dir=os.environ['REMOTE_QA_FRONTEND'])
 service=core.state.luma;service.display_clock_trusted=lambda:True
+thermal.CPU_SENSOR=Path(os.environ['REMOTE_QA_DATA'])/'synthetic-cpu-temp'
+thermal.CPU_SENSOR.write_bytes(b'56478\n')
 core.state.security.set_pin('123456')
 service.update_settings({'phone_address':PHONE,'visible_calendar_ids':['classes'],
                          'todo_calendar_id':'tasks','todo_completed_color_id':'8','onboarding_completed':True})

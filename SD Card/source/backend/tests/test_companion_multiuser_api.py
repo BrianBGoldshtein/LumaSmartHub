@@ -29,6 +29,26 @@ def browser(app_rig, index=1):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('index',[0,1])
+async def test_cpu_sensor_available_to_authorized_own_remote_only(app_rig,index,tmp_path,monkeypatch):
+    from luma import thermal
+    sensor=tmp_path/'temp';sensor.write_bytes(b'56478\n')
+    monkeypatch.setattr(thermal,'CPU_SENSOR',sensor)
+    rig=browser(app_rig,index)
+    response=await dispatch(rig,'GET','/remote/api/preview')
+    assert response.status_code==200 and response.json()['device_temperature']['celsius']==56.5
+    assert response.json()['profile_id']==app_rig[1][index].id
+    sensor.unlink()
+    response=await dispatch(rig,'GET','/remote/api/preview')
+    assert response.json()['device_temperature']['status']=='unavailable'
+    pending=envelope(rig,'GET','/remote/api/preview')
+    app_rig[0].state.bluetooth.runtime(app_rig[1][index].id).remote_authorized.clear()
+    async with client(rig[0]) as caller:
+        response=await caller.post('/api/v1/companion/dispatch',json=pending)
+    assert response.status_code==403 and 'device_temperature' not in response.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('index', [0, 1])
 @pytest.mark.parametrize('others', list(product([False, True], repeat=4)))
 async def test_preview_is_own_only_for_every_other_phone_presence_combination(app_rig, index, others):

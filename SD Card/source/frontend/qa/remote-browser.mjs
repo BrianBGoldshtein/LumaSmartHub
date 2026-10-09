@@ -46,6 +46,7 @@ try{
   await click('Enroll this browser');await until(`document.body.innerText.includes('Approval code:')`);
   await value(`fetch('/qa/approve').then(r=>r.json())`);await until(`document.querySelector('.hero')!==null`);
   assert.ok((await value('document.body.innerText')).includes('A very long lecture title'));
+  await until(`document.querySelector('.temperature-readout')?.textContent.includes('56.5°C')`);
   const credentialFields=await value(`new Promise((resolve,reject)=>{const r=indexedDB.open('luma-remote-key-v1',1);r.onsuccess=()=>{const db=r.result;const tx=db.transaction('credentials');const q=tx.objectStore('credentials').get('selected');q.onsuccess=()=>{resolve(Object.keys(q.result).sort());db.close();};};r.onerror=reject;})`);
   assert.deepEqual(credentialFields,['deviceId','privateKey','publicKey']);
   const layouts=[];
@@ -56,6 +57,7 @@ try{
       await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});
       const layout=await value(`({width:innerWidth,scroll:document.documentElement.scrollWidth,theme:getComputedStyle(document.querySelector('h1')).fontFamily})`);
       assert.ok(layout.scroll<=width,'Horizontal overflow');layouts.push({...layout,id:theme});
+      assert.equal(await value(`(()=>{const r=document.querySelector('.temperature-readout').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})()`),true,'Temperature fits mobile width');
       if(width===390){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`${process.env.REMOTE_QA_OUTPUT}/${theme}.png`,Buffer.from(shot.data,'base64'));}
     }
   }
@@ -117,6 +119,7 @@ try{
   await click('Enroll this browser');await until(`document.body.innerText.includes('Approval code:')`);
   await value(`fetch('/qa/approve').then(r=>r.json())`);await until(`document.querySelector('.hero')!==null`);
   assert.ok((await value('document.body.innerText')).includes('Alex PRIVATE seminar'));
+  await until(`document.querySelector('.temperature-readout')?.textContent.includes('56.5°C')`);
   assert.ok(!(await value('document.body.innerText')).includes('A very long lecture title'));
   assert.equal(await value(`[...document.querySelectorAll('nav button')].map(button=>button.textContent).join(',')`),'Hub,My calendars');
   assert.ok(!(await value('document.body.innerText')).includes('Wall controls'));
@@ -164,6 +167,7 @@ try{
   }
   await value(`fetch('/qa/revoke').then(r=>r.json())`);await until(`document.querySelector('.locked')!==null`);
   assert.ok(!(await value('document.body.innerText')).includes('Alex PRIVATE seminar'));
+  assert.equal(await value(`document.querySelector('.temperature-readout')===null`),true,'Revocation clears the sensor with the authorized preview');
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,remoteThemesAppliedToWall:true,remoteUpdateVisibleOnWall:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,disconnectCleared:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,guestOwnCalendars:true,guestOwnTimer:true,guestNoAdminControls:true,guestNoOverflow:true,guestSetupResume:true,guestOwnSharingConsent:true,guestRevocationCleared:true,errors},null,2));
 }finally{wallSocket?.close();if(wallTarget)await fetch(debug+'/json/close/'+wallTarget.id);socket.close();await fetch(debug+'/json/close/'+target.id);}

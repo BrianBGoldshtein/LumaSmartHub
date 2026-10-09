@@ -13,6 +13,7 @@ import {NotificationSoundSetup} from "./NotificationSoundSetup";
 import {coordinates} from "./touchInput";
 import {setupTheme,setupLink} from "./setupTheme";
 import {announceAdminNeeded} from './adminState';
+import {DeviceTemperaturePanel} from './TemperatureReadout';
 
 async function api(path:string, method="GET", body?:unknown) {
   const response=await fetch(`/api/v1/${path}`,{method,headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
@@ -55,7 +56,7 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
   return <TouchInputProvider><div className={section?"setup-embedded":`app theme-${theme} setup-page`}>{!section && <a className="setup-back" href={setupLink(demo,theme)}><ArrowLeft/> Dashboard</a>}<Panel className={section?"device-setup":"setup-content device-setup"}>
     {!section && <><Settings size={40}/><h1>Your space.</h1><p>Set up once. Saved on your Luma.</p><a href={setupLink(demo,theme,"onboarding")}>Open guided setup →</a>
     {demo && <p className="setup-note">Preview only — no device settings will change.</p>}
-    <NetworkSetup demo={demo}/></>}
+    <DeviceTemperaturePanel demo={demo}/><NetworkSetup demo={demo}/></>}
     {(!section || section==="space") && <form onSubmit={event=>{event.preventDefault();void run(async()=>{
       const locationCoordinates=coordinates(form.latitude,form.longitude);
       if(demo){setMessage("Preview settings checked. Nothing was saved to a device.");onSaved?.();return;}

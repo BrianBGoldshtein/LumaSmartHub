@@ -8,11 +8,12 @@ from fastapi import HTTPException
 
 from .focus_timer import TIMER_COMMANDS
 from .integrations.google_calendar import TaskConflict, calendar_failure_status
-from .profiles import PERSONAL_KEYS, PRIMARY_ID, ProfileError
+from .profiles import PERSONAL_KEYS, PRIMARY_ID, ProfileError, SETUP_STAGES
 from .serde import to_primitive
 
 
 PERSONAL_ROUTES = frozenset({
+    ('GET', '/remote/api/setup'), ('POST', '/remote/api/setup'),
     ('GET', '/remote/api/preview'), ('GET', '/remote/api/settings'),
     ('PATCH', '/remote/api/settings'), ('POST', '/remote/api/command'),
     ('GET', '/remote/api/google/status'), ('GET', '/remote/api/google/calendars'),
@@ -52,6 +53,24 @@ async def own_operation(service, principal, method, path, value, recheck):
         raise HTTPException(403, 'This feature is restricted to the primary user.')
     account = service.profile_calendars.account(uid)
     recheck()
+    if path == '/remote/api/setup':
+        if method == 'POST':
+            if (set(value) - {'stage', 'wall_share_approved'} or 'stage' not in value
+                    or not isinstance(value['stage'], str) or value['stage'] not in SETUP_STAGES
+                    or value['stage'] == 'phone'
+                    or ('wall_share_approved' in value and type(value['wall_share_approved']) is not bool)):
+                raise HTTPException(422, 'Choose your own setup step after pairing.')
+            # Original signed phone/session proof, rechecked after contention;
+            # a profile ID or setup stage is never an identity credential.
+            async with account.lock:
+                recheck()
+                service.profiles.set_setup(uid, value['stage'],
+                    wall_share_approved=value.get('wall_share_approved'))
+                service.publish('user.settings.updated', {'profile_id': uid})
+        user = service.profiles.get(uid)
+        return {'profile_id': uid, 'nickname': user.nickname,
+                'setup_stage': 'remote' if user.setup_stage == 'phone' else user.setup_stage,
+                'wall_share_approved': user.wall_share_approved}
     if path == '/remote/api/preview':
         return own_preview(service, uid)
     if path == '/remote/api/settings':

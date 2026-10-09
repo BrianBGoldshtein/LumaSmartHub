@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {fitClockFont} from './clockFit';
 import { createRoot } from "react-dom/client";
 import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
@@ -145,9 +146,28 @@ function Clock({ snapshot, large = false }: { snapshot: Snapshot; large?: boolea
   }, []);
   const parts = new Intl.DateTimeFormat("en-US", { hour:"numeric", minute:"2-digit", timeZone:snapshot.settings.timezone }).formatToParts(now);
   const digits = parts.filter(part => ["hour", "minute", "literal"].includes(part.type)).map(part=>part.value).join("").trim();
+  const clockRow=useRef<HTMLDivElement>(null);
+  useLayoutEffect(()=>{
+    const row=clockRow.current,parent=row?.parentElement;
+    if(!row||!parent)return;
+    let live=true;
+    const fit=()=>{
+      if(!live)return;
+      row.style.removeProperty('font-size');
+      const style=getComputedStyle(row),desired=parseFloat(style.fontSize);
+      const natural=row.querySelector('span')!.getBoundingClientRect().width;
+      const available=parent.clientWidth-row.querySelector('small')!.getBoundingClientRect().width-(parseFloat(style.columnGap)||0)-1;
+      const pixel=snapshot.settings.theme==='neon-grid'?Math.max(3,Math.min(8,Math.round(Math.min(innerWidth,innerHeight)*.0052))):.1;
+      const size=fitClockFont(desired,natural,available,pixel);
+      if(size<desired)row.style.fontSize=`${size}px`;
+    };
+    fit();const observer=new ResizeObserver(fit);observer.observe(parent);
+    void document.fonts.ready.then(fit);document.fonts.addEventListener('loadingdone',fit);
+    return()=>{live=false;observer.disconnect();document.fonts.removeEventListener('loadingdone',fit);};
+  },[digits,snapshot.settings.theme]);
   return (
     <div className={large ? "clock clock-large" : "clock"}>
-      <div className="clock-time"><span>{digits}</span><small>{parts.find(part=>part.type === "dayPeriod")?.value}</small></div>
+      <div className="clock-time" ref={clockRow}><span>{digits}</span><small>{parts.find(part=>part.type === "dayPeriod")?.value}</small></div>
       <div className="clock-date">{formatDay(now, snapshot.settings.timezone)}</div>
     </div>
   );
@@ -314,7 +334,7 @@ function App() {
   const pausedUntil=snapshot?.state.cycle_paused_until;
   const hasDates=visibleDates(snapshot?.countdowns,!!privateMode).length>0;
   const hasTransit=visibleTransit(snapshot?.transit,!!privateMode).length>0;
-  const anyTimerComplete=snapshot?.timer?.status==='complete'||snapshot?.personal_timers?.some(timer=>timer.status==='complete');
+  const timerAlarmBusy=!!snapshot?.timer_alarm_busy;
   useEffect(() => {
     if (!snapshot || overlay || personalTimer || (demoMode && demoParameters.has("hold"))) return;
     const pauseRemaining=Math.max(0,pausedUntil?new Date(pausedUntil).getTime()-Date.now():0,['agenda','todos'].includes(page)?calendarHoldUntil-Date.now():0);
@@ -372,8 +392,8 @@ function App() {
       {overlay==='departure' && !snapshot.privacy_redacted && snapshot.departure && <DeparturePanel key={snapshot.departure.key} snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}
       {!overlay&&!personalTimer && snapshot.timer?.status==='complete' && <TimerComplete timer={snapshot.timer} privateMode={snapshot.privacy_redacted} onOpen={()=>setOverlay('timer')}/>}
       {!overlay&&!personalTimer&&snapshot.timer?.status!=='complete'&&<PersonalTimerComplete snapshot={snapshot} onOpen={setPersonalTimer}/>}
-      {!overlay&&!personalTimer&&!anyTimerComplete && !snapshot.privacy_redacted && snapshot.departure && <DepartureNotice reminder={snapshot.departure} serverTime={snapshot.server_time} onOpen={()=>setOverlay('departure')}/>}
-      {!overlay&&!personalTimer&&!anyTimerComplete && !snapshot.departure && !snapshot.privacy_redacted && snapshot.notifications.slice(0,1).filter(item=>Date.now()-new Date(item.received_at).getTime()<45000).map(item=><aside className="phone-notice" role="status" key={item.id}><small>{item.app_name}{item.category==="incoming-call"?" · Incoming call":" · Notification"}</small><strong>{item.title}</strong>{item.body && <p>{item.body}</p>}</aside>)}
+      {!overlay&&!personalTimer&&!timerAlarmBusy && !snapshot.privacy_redacted && snapshot.departure && <DepartureNotice reminder={snapshot.departure} serverTime={snapshot.server_time} onOpen={()=>setOverlay('departure')}/>}
+      {!overlay&&!personalTimer&&!timerAlarmBusy && !snapshot.departure && !snapshot.privacy_redacted && snapshot.notifications.slice(0,1).filter(item=>Date.now()-new Date(item.received_at).getTime()<45000).map(item=><aside className="phone-notice" role="status" key={item.id}><small>{item.app_name}{item.category==="incoming-call"?" · Incoming call":" · Notification"}</small><strong>{item.title}</strong>{item.body && <p>{item.body}</p>}</aside>)}
     </div>
   );
 }

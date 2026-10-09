@@ -100,7 +100,32 @@ try{
   assert.ok(!(await value('document.body.innerText')).includes('Sleep calendars'));
   assert.equal(await value(`document.querySelector('input[type="file"]')===null`),true);
   await click('Save calendar choices');await until(`document.body.innerText.includes('Alex’s calendars')`);
+  await until(`document.querySelector('[aria-label="Your personal setup"]')?.innerText.includes('Ready when you are')`);
+  for(const title of ['Choose your calendars','Connect your Google account','Your private phone link']){
+    await click('Back');await until(`document.querySelector('[aria-label="Your personal setup"]')?.innerText.includes(${JSON.stringify(title)})`);
+  }
+  await click('Continue setup');await until(`document.body.innerText.includes('Connect your Google account')`);
+  await click('Continue · Google is optional');await until(`document.body.innerText.includes('Choose your calendars')`);
+  await click('Continue to sharing');await until(`document.body.innerText.includes('Ready when you are')`);
+  await until(`!document.querySelector('[aria-label="Your personal setup"] input').disabled`);
+  await value(`document.querySelector('[aria-label="Your personal setup"] input').click()`);
+  await until(`document.body.innerText.includes('Setup saved · Wall sharing off')`);
+  // Reload consumes a new signed request using the saved browser key. No
+  // primary PIN or pairing request is needed to resume this user's progress.
+  await send('Page.navigate',{url:base+'/remote/'});await until(`document.querySelector('.hero')!==null`);
+  await click('My calendars');await until(`document.body.innerText.includes('Setup saved · Wall sharing off')`);
+  assert.equal(await value(`document.querySelector('[aria-label="Your personal setup"] input').checked`),false);
+  for(const theme of ['luma-glass','hearth','neon-grid']){
+    await value(`fetch('/qa/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:${JSON.stringify(theme)}})}).then(r=>r.json())`);
+    await until(`document.querySelector('.theme-${theme}')!==null`);
+    for(const width of [320,390]){
+      await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});
+      assert.ok(await value(`document.documentElement.scrollWidth<=innerWidth`),'Personal guide horizontal overflow');
+      if(width===390){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`${process.env.REMOTE_QA_OUTPUT}/guest-setup-${theme}.png`,Buffer.from(shot.data,'base64'));}
+    }
+  }
   await click('Hub');await until(`document.querySelector('.hero')!==null`);
+  assert.ok((await value('document.body.innerText')).includes('Alex PRIVATE seminar'),'Own preview survives turning wall sharing off');
   await click('Start timer');await until(`document.querySelector('.timer')!==null`);
   await click('Pause');await until(`document.querySelector('.timer')?.textContent.includes('paused')`);
   await click('Cancel');await until(`document.querySelector('.timer')===null`);
@@ -116,5 +141,5 @@ try{
   await value(`fetch('/qa/revoke').then(r=>r.json())`);await until(`document.querySelector('.locked')!==null`);
   assert.ok(!(await value('document.body.innerText')).includes('Alex PRIVATE seminar'));
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,disconnectCleared:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,guestOwnCalendars:true,guestOwnTimer:true,guestNoAdminControls:true,guestNoOverflow:true,guestRevocationCleared:true,errors},null,2));
+  console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,disconnectCleared:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,guestOwnCalendars:true,guestOwnTimer:true,guestNoAdminControls:true,guestNoOverflow:true,guestSetupResume:true,guestOwnSharingConsent:true,guestRevocationCleared:true,errors},null,2));
 }finally{socket.close();await fetch(debug+'/json/close/'+target.id);}

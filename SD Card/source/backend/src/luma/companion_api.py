@@ -277,7 +277,7 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
                     fresh=(upstream in FRESH_PATHS) if fresh is None else fresh)
             own_web = user_web_google(initial.profile_id)
             personal_path = path.replace('/remote/api/personal-settings', '/remote/api/settings')
-            account_path = path in {'/remote/api/personal-settings', '/remote/api/google/status',
+            account_path = path in {'/remote/api/setup', '/remote/api/personal-settings', '/remote/api/google/status',
                 '/remote/api/google/calendars', '/remote/api/google/colors', '/remote/api/google/sync', '/remote/api/todos/complete'}
             if account_path or (initial.role != 'primary' and path not in {'/remote/api/google/authorize'}):
                 value = {} if method == 'GET' else parse_object(body)

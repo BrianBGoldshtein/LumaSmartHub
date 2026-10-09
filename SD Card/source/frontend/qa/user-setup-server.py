@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from luma.api import create_app
 from luma.companion_google import AUTH_URI, TOKEN_URI
 from luma.integrations.google_calendar import CLIENT_CONFIG_KEY
-from luma.models import CalendarEvent
+from luma.models import CalendarEvent, PhoneNotification
 from luma.presence_transitions import PresenceTransitions
 
 app=create_app(data_dir=os.environ['USER_QA_DATA'],frontend_dir=os.environ['USER_QA_FRONTEND'])
@@ -54,6 +54,11 @@ app.router.lifespan_context=isolated
 
 @app.middleware('http')
 async def qa_only(request:Request,call_next):
+    if request.url.path=='/qa/wall-notice-after-alarm':
+        service=app.state.luma
+        service.receive_notification(PhoneNotification('qa-notice','com.apple.mobilephone',
+            'Phone','A later notification','The completed timer is still visible.',datetime.now(UTC)))
+        return JSONResponse({'ready':True})
     if request.url.path=='/qa/wall-greeting-after-alarm':
         uid=(await request.json())['profile_id']
         service=app.state.luma

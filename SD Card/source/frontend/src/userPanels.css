@@ -20,10 +20,11 @@
 .user-hour time {width:var(--user-gutter);flex-shrink:0;font:700 var(--user-small)/1 var(--body);white-space:nowrap;font-variant-numeric:tabular-nums;}
 .user-hour span {flex:1;height:1px;background:var(--line);}
 .user-appointments {position:absolute;inset:0 0 0 var(--user-gutter);overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
-.user-appointment-track {height:100%;position:relative;width:max(100%,calc(var(--user-lanes)*clamp(130px,50cqi,320px)));}
-.user-appointment {position:absolute;min-width:0;min-height:0;border:0;border-left:3px solid var(--event-color);border-right:3px solid var(--bg);border-bottom:2px solid var(--bg);border-radius:var(--radius);background:color-mix(in srgb,var(--event-color) 18%,var(--bg));overflow:hidden;padding:.25vmin .6vmin;display:flex;flex-direction:column;text-align:left;}
-.user-appointment strong {font:700 var(--user-type)/1.08 var(--heading);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;flex-shrink:0;}
-.user-appointment time {font:700 var(--user-small)/1.1 var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;}
+.user-appointment-track {height:100%;position:relative;width:100%;}
+.user-appointment {position:absolute;container-type:size;min-width:0;min-height:0;border:0;border-left:3px solid var(--event-color);border-right:3px solid var(--bg);border-bottom:2px solid var(--bg);border-radius:var(--radius);background:color-mix(in srgb,var(--event-color) 18%,var(--bg));overflow:hidden;padding:.25vmin .6vmin;display:flex;flex-direction:column;text-align:left;font-size:min(var(--user-type),max(12px,calc((100cqi - var(--user-gutter))/var(--event-lanes)*.28)));}
+.user-appointment strong {font-family:var(--heading);font-weight:700;font-size:min(1em,max(12px,calc(85cqh - .8vmin)));line-height:1.08;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;flex-shrink:0;}
+.user-appointment time {font:700 min(var(--user-small),max(11px,.75em))/1.1 var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;}
+@container (max-height:80px){.user-appointment strong{-webkit-line-clamp:1}.user-appointment time{display:none}}
 .user-now {position:absolute;left:var(--user-gutter);right:0;height:2px;background:var(--accent);pointer-events:none;}
 .user-controls {display:flex;justify-content:flex-end;align-items:center;gap:1vmin;color:var(--muted);font:700 clamp(18px,2.5vmin,36px) var(--body);}
 .user-controls button {min-width:44px;min-height:44px;border:0;background:transparent;display:grid;place-items:center;}
@@ -42,5 +43,6 @@
 .user-all-day {display:flex;gap:.5vmin;max-height:22%;overflow:auto;}.user-all-day .user-next-event {flex:1;flex-shrink:0;}
 .theme-neon-grid .user-panel-grid {gap:calc(4*var(--pixel));}
 .theme-neon-grid .user-next-event,.theme-neon-grid .user-task,.theme-neon-grid .user-appointment {border-radius:0;border-left-width:var(--pixel);padding:var(--pixel) calc(2*var(--pixel));}
+.user-appointment,.theme-neon-grid .user-appointment {padding-inline:min(.6vmin,max(0px,calc((100cqi - var(--user-gutter))/var(--event-lanes)*.035)));}
 .theme-neon-grid .user-panel>header {padding-bottom:var(--pixel);border-bottom-width:var(--pixel);}
 .multi-users button:focus-visible {outline:3px solid var(--accent);outline-offset:-3px;}

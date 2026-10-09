@@ -64,6 +64,7 @@ class LumaService:
         self.router = CommandRouter(storage, self.machine)
         self.timer = FocusTimer(storage)
         self._timer_alarm_until = None  # RAM-only playback reservation; never replay after restart.
+        self._timer_alarm_tick_sample = False
         self.departures = Departures(storage)
         self.countdowns = Countdowns(storage)
         self.transit = Transit(storage)
@@ -209,6 +210,10 @@ class LumaService:
             self.publish('timer.updated')
         if self.personal_timers and self.personal_timers.tick(now, trusted=trusted):
             self.publish('user.timer.updated')
+        busy = self.timer_alarm_busy()
+        if busy != self._timer_alarm_tick_sample:
+            self._timer_alarm_tick_sample = busy
+            self.publish('timer.alarm.updated')
         self._presence_tick(now or datetime.now(UTC))
 
     def _presence_tick(self, now):
@@ -438,6 +443,7 @@ class LumaService:
             "users": roster,
             "user_panels": panels,
             "personal_timers": self.personal_timers.snapshot(self.present_user_ids(wall=True) if day_visible else set()) if self.personal_timers else [],
+            "timer_alarm_busy": self.timer_alarm_busy(),
             "weather": weather,
             "calendar": to_primitive(visible),
             "agenda": day_agenda(self.events, self.settings, now, fresh=calendar_fresh) if full else None,

@@ -35,6 +35,13 @@ test('enrollment proof binds ticket and public point without disclosing private 
   assert.equal(rows.length,5);
 });
 
+test('own setup progression uses only fixed signed paths',async()=>{
+  assert.ok(await requestBytes(device,nonce,context,'GET','/remote/api/setup',empty));
+  assert.ok(await requestBytes(device,nonce,context,'POST','/remote/api/setup',new TextEncoder().encode('{"stage":"ready"}')));
+  await assert.rejects(requestBytes(device,nonce,context,'PATCH','/remote/api/setup',empty));
+  await assert.rejects(requestBytes(device,nonce,context,'GET','/remote/api/setup?profile_id=primary',empty));
+});
+
 test('rejects noncanonical origins, arbitrary paths, oversized and unexpected GET bodies',async()=>{
   for(const origin of ['http://luma.example-tail.ts.net','https://evil.test',context.origin+'/',context.origin+':443',context.origin+'\n']){
     await assert.rejects(requestBytes(device,nonce,{...context,origin},'GET',path,empty));

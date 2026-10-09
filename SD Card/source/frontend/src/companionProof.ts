@@ -9,6 +9,7 @@ const privateOrigin = /^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.[a-z0-9-
 const operations = new Set([
   'GET /remote/api/admin/status', 'POST /remote/api/admin/unlock', 'POST /remote/api/admin/lock',
   'GET /remote/api/personal-settings', 'PATCH /remote/api/personal-settings',
+  'GET /remote/api/setup', 'POST /remote/api/setup',
   'GET /remote/api/preview', 'GET /remote/api/settings', 'PATCH /remote/api/settings',
   'POST /remote/api/command', 'GET /remote/api/google/status', 'GET /remote/api/google/calendars',
   'GET /remote/api/google/colors', 'POST /remote/api/google/sync', 'POST /remote/api/google/web-client',

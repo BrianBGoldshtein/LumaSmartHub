@@ -12,8 +12,8 @@ import type {BrowserCredential,RemoteContext} from '../companionProof';
 import type {GoogleCalendar,GoogleEventColor,GoogleStatus} from '../googleSetupState';
 import {calendarSelection} from '../googleSetupState';
 import {timerText} from '../timerState';
-import {clockText,enrollTicket,safeColor,upcoming,updateOutcome,primaryRemote} from './state';
-import type {Preview,RemoteSettings,PersonalSettings,UpdateStatus,Candidate} from './state';
+import {clockText,enrollTicket,safeColor,upcoming,updateOutcome,primaryRemote,personalSteps} from './state';
+import type {Preview,RemoteSettings,PersonalSettings,PersonalSetup,UpdateStatus,Candidate} from './state';
 import type {Theme} from '../types';
 import './style.css';
 
@@ -160,7 +160,7 @@ function RemoteApp(){
         {tab==='hub'&&<Hub preview={preview} busy={busy} command={command} task={(event)=>run(async()=>{
           setPreview(await request<Preview>('POST','/remote/api/todos/complete',{calendar_id:event.calendar_id,event_id:event.id,completed:!event.completed,etag:event.etag}));
         })}/>}
-        {tab==='personal'&&(personal?<><h1>{preview.nickname}’s calendars</h1><CalendarSettings settings={personal} busy={busy} save={savePersonal} request={request} run={run} personalOnly/></>:<p>Loading your calendar choices…</p>)}
+        {tab==='personal'&&(personal?<><h1>{preview.nickname}’s calendars</h1><PersonalGuide busy={busy} request={request} run={run}/><CalendarSettings settings={personal} busy={busy} save={savePersonal} request={request} run={run} personalOnly/></>:<p>Loading your calendar choices…</p>)}
         {primaryRemote(preview)&&(tab==='settings'||tab==='software')&&(!adminUnlocked||confirmPrimary)&&<section className="locked"><LockKeyhole/><h1>Primary settings</h1><p>Enter your primary hub PIN. Calendar choices and your timer need no administrator unlock.</p>
           <form onSubmit={event=>{event.preventDefault();unlockPrimary();}}><label>Primary PIN<input type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{4,8}" required minLength={4} maxLength={8} value={pin} onChange={event=>setPin(event.target.value.replace(/[^0-9]/g,''))} disabled={busy}/></label><button disabled={busy}>Unlock primary settings</button></form></section>}
         {primaryRemote(preview)&&(tab==='settings'||tab==='software')&&adminUnlocked&&!confirmPrimary&&<div className="buttons"><span>Primary settings unlocked · 5 minutes</span><button disabled={busy} onClick={()=>{setPin('');setConfirmPrimary(true);}}>Confirm PIN</button>
@@ -216,6 +216,30 @@ function Hub({preview,busy,command,task}:{preview:Preview;busy:boolean;command:(
 
 type SettingsProps={settings:RemoteSettings;busy:boolean;save:(patch:Partial<RemoteSettings>)=>Promise<void>;
   request:<T>(method:string,path:string,payload?:unknown)=>Promise<T>;run:(action:()=>Promise<void>)=>Promise<void>};
+function PersonalGuide({busy,request,run}:Pick<SettingsProps,'busy'|'request'|'run'>){
+  const [setup,setSetup]=useState<PersonalSetup|null>(null);
+  useEffect(()=>{let live=true;void run(async()=>{const value=await request<PersonalSetup>('GET','/remote/api/setup');if(live)setSetup(value);});
+    return()=>{live=false;};},[]);
+  if(!setup)return <section><p role="status">Loading your saved setup…</p></section>;
+  const step=personalSteps.indexOf(setup.setup_stage),last=step===personalSteps.length-1;
+  const progress=(stage:PersonalSetup['setup_stage'],sharing=setup.wall_share_approved)=>void run(async()=>{
+    setSetup(await request<PersonalSetup>('POST','/remote/api/setup',{stage,wall_share_approved:sharing}));
+  });
+  return <section aria-label="Your personal setup">
+    <small>Personal setup · {step+1} of {personalSteps.length} · Saved on Luma</small>
+    <h2>{['Your private phone link','Connect your Google account','Choose your calendars','Ready when you are'][step]}</h2>
+    <p>{['Your browser is enrolled and your iPhone is authorized. Pairing and primary approval are already complete.',
+      'Use Google sign-in below. This links only your account. Google is optional; your timer works without it.',
+      'Select every calendar you want, your all-day task calendar and a completed color. Save the choices below.',
+      'Your preferences are saved. Choose whether your calendar and tasks can appear on the shared wall when your phone is connected.'][step]}</p>
+    {last&&<label className="check"><input type="checkbox" checked={setup.wall_share_approved} disabled={busy}
+      onChange={event=>progress('ready',event.target.checked)}/> Share my calendar and tasks on the wall while I’m connected</label>}
+    {last&&<small>Others nearby may see shared details. Turning sharing off does not delete your calendars or block your own phone preview and timer.</small>}
+    <div className="buttons">{step>0&&<button disabled={busy} onClick={()=>progress(personalSteps[step-1])}>Back</button>}
+      {!last&&<button disabled={busy} onClick={()=>progress(personalSteps[step+1])}>{step===0?'Continue setup':step===1?'Continue · Google is optional':'Continue to sharing'}</button>}
+      {last&&<span role="status">Setup saved · {setup.wall_share_approved?'Wall sharing on':'Wall sharing off'}</span>}</div>
+  </section>;
+}
 function SettingsPanel({settings,busy,save,request,run}:SettingsProps){
   const [section,setSection]=useState<'appearance'|'calendars'>('appearance');
   return <><h1>Make it yours</h1><div className="segmented"><button aria-pressed={section==='appearance'} onClick={()=>setSection('appearance')}>Appearance</button><button aria-pressed={section==='calendars'} onClick={()=>setSection('calendars')}>Calendars</button></div>
@@ -284,7 +308,7 @@ function CalendarSettings({settings,busy,save,request,run,personalOnly=false}:Om
   return <section><h2>Google Calendar</h2><p>{status?.authorized?'Google linked':'Google needs renewed sign-in.'}</p>
     {status?.web_configured?<div className="buttons"><button disabled={busy} onClick={()=>consent(false)}>{status.authorized?'Reconnect Google':'Sign in with Google'}</button>
       {!status.task_updates&&<button disabled={busy} onClick={()=>{if(confirm('Allow Luma to edit event colors on your selected task calendar? Google grants event-edit scope across writable calendars; Luma restricts task edits to your selection.'))consent(true);}}>Enable task updates</button>}</div>:
-      personalOnly?<p>The primary user needs to configure Google Web sign-in first. You can skip Google and still use your timer.</p>:<details><summary>Enable Google sign-in from this phone</summary><p>Your existing Desktop client stays unchanged. In your Google Cloud project, create an OAuth client of type Web application. Add this exact authorized redirect URI, then download its JSON.</p><code className="notice">{status?.redirect_uri??`${location.origin}/remote/google/callback`}</code>
+      personalOnly?<p>{status?.authorized?'Google is connected on the hub. To renew sign-in from this phone, ask the primary user to configure Google Web sign-in.':'The primary user needs to configure Google Web sign-in first. You can skip Google and still use your timer.'}</p>:<details><summary>Enable Google sign-in from this phone</summary><p>Your existing Desktop client stays unchanged. In your Google Cloud project, create an OAuth client of type Web application. Add this exact authorized redirect URI, then download its JSON.</p><code className="notice">{status?.redirect_uri??`${location.origin}/remote/google/callback`}</code>
         <p>Keep the same consent project and Calendar API. Client JSON stays on the Pi; never publish it to GitHub.</p>
         <label>Google Web client JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={event=>{
           const input=event.currentTarget,file=input.files?.[0];input.value='';if(!file)return;

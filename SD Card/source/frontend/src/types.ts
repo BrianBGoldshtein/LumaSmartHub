@@ -80,6 +80,7 @@ export interface Snapshot {
   users?: {profile_id:string;nickname:string;role:'primary'|'secondary'}[];
   user_panels?: UserPanel[];
   personal_timers?: (import('./timerState').TimerState & {profile_id:string;owner:string;owner_present:boolean})[];
+  timer_alarm_busy?: boolean;
   primary_privacy_redacted?: boolean;
   voice_notice?: {id:number;remaining_ms:number};
   agenda?: {date:string;start:string;end:string;wake:string|null;sleep:string|null;stale:boolean;events:CalendarEvent[]}|null;

@@ -70,6 +70,9 @@ try{
   await waitFor(`document.querySelector('.presence-transition h1')?.textContent==='Alex'`);
   await waitFor(`document.querySelector('.presence-transition')===null`);
   assert.equal(await value(`document.querySelector('.feature-notice span')?.textContent`),'Alex · LAB alarm');
+  await request('/qa/wall-notice-after-alarm',{});
+  await waitFor(`document.querySelector('.phone-notice strong')?.textContent==='A later notification'`);
+  assert.equal(await value(`document.querySelector('.feature-notice span')?.textContent`),'Alex · LAB alarm');
   await value(`document.querySelector('.feature-notice button').click()`);
   await waitFor(`document.querySelector('.timer-reading strong')?.textContent==='Time’s up'`);
   await value(`[...document.querySelectorAll('.feature-panel>button')].find(b=>b.textContent==='Dismiss').click()`);

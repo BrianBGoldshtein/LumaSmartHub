@@ -13,6 +13,8 @@ export type RemoteSettings={theme:Theme;brightness:number;volume:number;timezone
   weather_rain_percent:number;weather_gust_mph:number;weather_hot_f:number;weather_cold_f:number;
   cycle:{page:string;seconds:number}[]};
 export type PersonalSettings=Pick<RemoteSettings,'theme'|'timezone'|'weather_location_label'|'visible_calendar_ids'|'todo_calendar_id'|'todo_completed_color_id'|'departure_calendar_ids'|'departure_enabled'|'departure_include_virtual'|'departure_prep_minutes'|'departure_travel_minutes'>;
+export const personalSteps=['remote','google','calendars','ready'] as const;
+export type PersonalSetup={profile_id:string;nickname:string;setup_stage:typeof personalSteps[number];wall_share_approved:boolean};
 export function primaryRemote(value:unknown):boolean{
   return !!value&&typeof value==='object'&&(value as Partial<Preview>).profile_id==='primary'&&(value as Partial<Preview>).role==='primary';
 }

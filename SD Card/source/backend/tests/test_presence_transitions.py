@@ -223,6 +223,7 @@ def test_old_completion_cannot_suppress_future_greeting_and_alarm_never_replays(
     clock.return_value = 101
     service.timer_tick(now)
     assert service.timer_alarm_busy()
+    assert service.snapshot(now)['timer_alarm_busy'] is True
     if claim:
         assert service.claim_timer_chime()
         assert not service.claim_timer_chime()
@@ -232,6 +233,7 @@ def test_old_completion_cannot_suppress_future_greeting_and_alarm_never_replays(
     else:
         clock.return_value = 111.01  # The bridge never claimed the bounded opportunity.
     assert not service.timer_alarm_busy()
+    assert service.snapshot(now)['timer_alarm_busy'] is False
     link()
     service.snapshot(now)
     clock.return_value += 3
@@ -256,6 +258,25 @@ def test_timer_dismiss_or_owner_removal_cannot_end_playback_reservation_early(ap
     assert service.timer_alarm_busy()
     clock.return_value = 105
     assert not service.timer_alarm_busy()
+
+
+def test_alarm_expiry_broadcasts_even_when_completion_remains_visible(app_rig):
+    _, service, child, _, clock, now = app_rig
+    service.timer.clock = clock
+    timer = service.personal_timers.for_user(child.profile_id)
+    timer.clock = clock
+    timer._complete(now, sound=True)
+    queue = service.subscribe()
+    service.timer_tick(now)
+    assert service.snapshot(now)['timer_alarm_busy'] is True
+    assert service.claim_timer_chime()
+    while not queue.empty():
+        queue.get_nowait()
+    clock.return_value = 105
+    service.timer_tick(now)
+    assert service.snapshot(now)['timer_alarm_busy'] is False
+    assert timer.snapshot()['status'] == 'complete'
+    assert 'timer.alarm.updated' in [queue.get_nowait()['type'] for _ in range(queue.qsize())]
 
 
 def test_untrusted_bond_is_not_an_arrival(app_rig):

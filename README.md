@@ -26,6 +26,15 @@ bond; it restarts application services, not the operating system.
 [0.3.0 changes and owner checks](SD%20Card/docs/V030_RELEASE_NOTES.md) and
 [release qualification evidence](SD%20Card/docs/V030_PLAN.md).
 
+In preparation: **0.3.1 multi-user Beta**, with one primary and up to four
+secondary profiles, separate Google information and timers, coordinated phone
+presence and guided personal setup. Secondary private remotes are optional;
+a primary-only remote policy preserves their wall/Bluetooth/timer features.
+The candidate is not yet published or ready to install. See the
+[multi-user guide](SD%20Card/docs/MULTI_USER_SETUP.md),
+[candidate changes](SD%20Card/docs/V031_RELEASE_NOTES.md) and
+[qualification progress](SD%20Card/docs/V031_WORKING_NOTES.md).
+
 ## What it does
 
 - Cycles through high-contrast, themed glance screens, with a full day agenda

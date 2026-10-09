@@ -1,6 +1,12 @@
 # Luma development status — 2026-10-08
 
-## Current published Beta — 0.3.2
+## Current published Beta — 0.3.3
+
+[0.3.3 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.3) from tagged source `59174f549adaa38d8674bb9763eb787fd0e1e0f9`. Wall Settings and authorized primary/secondary iPhone Hub previews now show the Pi’s built-in CPU temperature in Celsius. Three themes share the component; missing/stale readings become unavailable. No external probe, root command, schema/dependency change or game retuning is involved.
+
+Qualification passed **2,184 backend / 206 frontend / 43 packaging tests**, both UI builds, exact-main CI, themed wall/mobile Chromium checks and same-archive switch/forced rollback with both current and published 0.3.2 installers. Production GitHub download verification matched the qualified signed bytes. See [release notes](docs/V033_RELEASE_NOTES.md) and [qualification evidence](docs/V033_WORKING_NOTES.md). Install through Settings → Luma software; preserve the existing card. Real CPU readings and post-update screen/reboot behavior remain owner checks. If still on 0.3.1 or earlier, start from wall Settings rather than the phone for this migration.
+
+## Previous published Beta — 0.3.2
 
 [0.3.2 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.2) from signed/tagged source `383552f5f545551f97e6df26574f770bacdc7b1f`. It restores cohesive full-width tasks/Home layouts and readable hour rulers, adds independent wall progress for future phone-started updates, and requests exactly one graceful reboot after a verified successful installation. Ordinary remote settings changes refresh live. Final qualification passed **2,163 backend / 203 frontend / 43 packaging tests**, both UI builds and exact-main CI, plus successful switch and forced rollback with both current and deployed 0.3.1 installers. The production download client verified bytes identical to the qualified signed archive. No dependency/schema/game-rule changes were made.
 

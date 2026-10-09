@@ -1,6 +1,6 @@
 # Beta — Luma 0.3.3
 
-Luma 0.3.3 adds a themed Raspberry Pi CPU temperature readout in wall Settings and the iPhone remote’s Hub page. It uses the built-in sensor; no external probe is needed and it does not measure room temperature.
+[Luma 0.3.3 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.3). It adds a themed Raspberry Pi CPU temperature readout in wall Settings and the iPhone remote’s Hub page. It uses the built-in sensor; no external probe is needed and it does not measure room temperature.
 
 ## Temperature readout
 
@@ -10,6 +10,8 @@ A missing, unreadable or malformed sensor displays Sensor unavailable, never zer
 
 ## Installation and owner check
 
-Once the signed Beta is published, use Settings → Luma software → Check for updates → review 0.3.3 → Install. A primary iPhone remote can also install through Software. Keep power connected through the progress screen and graceful reboot. Accounts, settings, phone bonds, timers and saved games stay on the existing card; no flash is required.
+Use Settings → Luma software → Check for updates → review 0.3.3 → Install. A primary iPhone remote can also install through Software. If the wall is still running 0.3.1 or earlier, initiate from wall Settings: those older versions gain the independent wall progress monitor only after this installation. Keep power connected through the progress screen and graceful reboot. Accounts, settings, phone bonds, timers and saved games stay on the existing card; no flash is required.
 
 After installation, confirm version 0.3.3 and compare the wall and remote CPU readings. Small differences are expected because they sample at different times. On the Pi, `cat /sys/class/thermal/thermal_zone0/temp` returns millidegrees Celsius; divide by 1,000 for comparison. Actual sensor permission, screen rendering and Safari behavior require this owner check. No fan control or game changes are included.
+
+Software qualification passed 2,184 backend, 206 frontend and 43 packaging tests, both UI builds and exact-main CI. The same offline-signed archive passed successful installation and forced rollback with both current and published 0.3.2 installers; synthetic saved-state rows were unchanged. Chromium checks cover all three themes, 320/390-pixel authorized primary/secondary remotes, wall refresh and sensor failure/recovery. The production GitHub client independently verified the downloaded archive and byte equality. These are software checks, not new Pi hardware acceptance.

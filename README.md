@@ -13,12 +13,15 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.2 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.2).
-For this first upgrade, use the **wall's Settings → Luma software → Check for updates**;
-review **0.3.2**, install and keep power connected through the verified reboot.
+Latest: [Luma 0.3.3 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.3).
+Use **Settings → Luma software → Check for updates**;
+review **0.3.3**, install and keep power connected through the verified reboot.
 Confirm the installed version afterward. Do not reflash its SD card.
-This release restores cohesive layouts and adds wall progress for future
-phone-started updates; ordinary phone settings changes refresh live without a reboot.
+This release adds live built-in Pi CPU temperature in wall Settings and authorized
+iPhone Hub previews, retaining cohesive layouts, wall update progress and a
+graceful reboot after verified installation. Ordinary phone settings changes
+refresh live without rebooting. If still on 0.3.1 or earlier, start this update
+from wall Settings; newer releases support phone-started wall progress.
 Luma supports **one primary and up to four secondary
 users**, each with a named phone, separate Google information and timers.
 Guided personal setup, coordinated Bluetooth presence, shared calendar/task

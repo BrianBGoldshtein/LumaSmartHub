@@ -75,6 +75,7 @@ export interface Settings {
 }
 
 export interface Snapshot {
+  voice_account_choice?: {id:string;remaining_ms:number;users:{profile_id:string;nickname:string}[]} | null;
   presence_transition?: {id:number;remaining_ms:number;arriving:string[];leaving:string[]} | null;
   users?: {profile_id:string;nickname:string;role:'primary'|'secondary'}[];
   user_panels?: UserPanel[];

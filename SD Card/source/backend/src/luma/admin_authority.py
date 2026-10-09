@@ -28,6 +28,7 @@ PUBLIC_WRITES = frozenset({
     '/api/v1/device/timer-chime', '/api/v1/device/notification-chime',
     '/api/v1/voice/phase', '/api/v1/voice/diagnostic', '/api/v1/voice/heartbeat',
     '/api/v1/voice/output-report', '/api/v1/voice/calibration/level', '/api/v1/voice/calibration/sample',
+    '/api/v1/voice/account/choose', '/api/v1/voice/account/reply', '/api/v1/voice/account/cancel',
     '/api/v1/voice/call-trial/armed', '/api/v1/voice/call-trial/observation',
     '/api/v1/voice/speaker-trial/armed', '/api/v1/voice/speaker-trial/observation',
     '/api/v1/voice/asset/preview/result', '/api/v1/voice/asset/tone/result',

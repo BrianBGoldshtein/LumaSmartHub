@@ -182,7 +182,8 @@ def test_live_command_routes_honor_single_briefing(tmp_path,endpoint,payload):
     service.update_settings({'onboarding_completed':True,'voice_enabled':True})
     client=TestClient(app)
     headers={'X-Luma-Token':app.state.security.get_or_create_lan_token()}
-    with patch('luma.api.morning_briefing',return_value='One morning briefing') as briefing:
+    briefing_module = 'luma.voice_accounts' if endpoint == '/api/v1/voice/command' else 'luma.api'
+    with patch(briefing_module+'.morning_briefing',return_value='One morning briefing') as briefing:
         first=client.post(endpoint,json=payload,headers=headers)
         second=client.post(endpoint,json=payload,headers=headers)
     assert first.status_code==second.status_code==200

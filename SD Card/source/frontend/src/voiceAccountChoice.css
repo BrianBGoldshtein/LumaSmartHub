@@ -1,0 +1,10 @@
+.voice-account-choice{position:fixed;right:var(--pad);bottom:9vmin;z-index:90;width:min(620px,90vw);max-height:75vh;overflow:auto;padding:clamp(18px,3vmin,36px);background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius);box-shadow:0 12px 70px #0008;color:var(--ink)}
+.voice-account-choice h2{margin:0;font:700 clamp(26px,4.5vmin,56px)/1.05 var(--heading);letter-spacing:-.03em}
+.voice-account-choice p{font-size:clamp(17px,2.2vmin,27px);line-height:1.35;color:var(--muted);margin:12px 0 18px}
+.voice-account-choice>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.voice-account-choice button{min-width:0;padding:18px 12px;overflow-wrap:anywhere;background:color-mix(in srgb,var(--accent) 12%,var(--surface));border:1px solid var(--line);border-radius:var(--radius);font:700 clamp(22px,3.1vmin,40px)/1.1 var(--heading);color:var(--ink)}
+.voice-account-choice button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.voice-account-choice .voice-account-close{margin-top:16px;font:600 clamp(17px,2.2vmin,27px) var(--body);background:transparent}
+.theme-neon-grid .voice-account-choice{padding:calc(6*var(--pixel));border-width:var(--pixel)}
+.theme-neon-grid .voice-account-choice>div{gap:calc(3*var(--pixel))}
+.theme-neon-grid .voice-account-choice button{padding:calc(4*var(--pixel)) calc(3*var(--pixel))}

@@ -3,18 +3,22 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 import os
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from luma.api import create_app
 from luma.companion_google import AUTH_URI, TOKEN_URI
 from luma.integrations.google_calendar import CLIENT_CONFIG_KEY
+from luma.models import CalendarEvent
 
 app=create_app(data_dir=os.environ['USER_QA_DATA'],frontend_dir=os.environ['USER_QA_FRONTEND'])
 app.state.security.set_pin('123456')
 app.state.luma.update_settings({'onboarding_completed':True})
 app.state.luma.display_clock_trusted=lambda:True
 clock=[0.0]
+voice_clock=[100.0]
+app.state.luma.voice_accounts.clock=lambda:voice_clock[0]
 app.state.admin.clock=lambda:clock[0]
 app.state.luma.storage.set_secret(CLIENT_CONFIG_KEY,json.dumps({'installed':{
     'client_id':'1234567890-fake.apps.googleusercontent.com','client_secret':'synthetic-client-secret',
@@ -48,6 +52,38 @@ app.router.lifespan_context=isolated
 
 @app.middleware('http')
 async def qa_only(request:Request,call_next):
+    if request.url.path=='/qa/voice-initialize':
+        service,profiles=app.state.luma,app.state.profiles
+        profiles.rename('primary','Brian')
+        users=[profiles.get('primary')]+[profiles.create_secondary(name) for name in ['Alex','Sam','Casey','Robin']]
+        now=datetime.now(UTC)
+        service.update_settings({'voice_enabled':True,'timezone':'UTC'})
+        for index,user in enumerate(users):
+            profiles.bind_phone(user.id,f'AA:BB:CC:DD:EE:{index+1:02X}')
+            profiles.set_setup(user.id,'ready',wall_share_approved=True)
+            profiles.update_personal(user.id,{'visible_calendar_ids':['events']})
+            account=app.state.profile_calendars.account(user.id)
+            account.google.authorized=lambda:True
+            account.events=[CalendarEvent('same-event','events',user.nickname+' PRIVATE EVENT',now+timedelta(minutes=30),now+timedelta(hours=1))]
+            account.status['last_synced']=now.isoformat()
+            child=app.state.bluetooth.runtime(user.id)
+            child.remote_authorized.clock=lambda:100.0
+            child.remote_authorized.begin(profiles.get(user.id).phone_address,'/synthetic/'+user.id,'/synthetic/source/'+user.id)
+            child.remote_authorized.heartbeat(profiles.get(user.id).phone_address)
+            child.service.phone_seen(now)
+        service.machine.settings=profiles.storage.load_settings()
+        service.replace_events(app.state.profile_calendars.account('primary').events,now)
+        service.calendar_synced_at=now
+        return JSONResponse({'users':[{'id':user.id,'nickname':user.nickname} for user in users]})
+    if request.url.path=='/qa/voice-expire':
+        voice_clock[0]+=31
+        app.state.luma.publish('voice.account.updated')
+        return JSONResponse({'changed':True})
+    if request.url.path=='/qa/voice-disconnect':
+        user_id=(await request.json())['profile_id']
+        app.state.bluetooth.runtime(user_id).remote_authorized.clear()
+        app.state.luma.publish('user.presence.updated')
+        return JSONResponse({'changed':True})
     if request.url.path=='/qa/theme':
         app.state.luma.update_settings({'theme':(await request.json())['theme']})
         return JSONResponse({'changed':True})

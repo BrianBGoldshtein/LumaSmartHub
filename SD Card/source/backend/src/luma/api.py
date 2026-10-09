@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+import secrets
 import shutil
 import sys
 from importlib.metadata import version as package_version
@@ -17,7 +18,7 @@ import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .models import AssistantPhase, Command, CommandName, Orientation, Theme, Page
 from .voice import parse_local_command
@@ -140,6 +141,17 @@ class DisplayConfirmation(DisplayRevision, DisplayGeneration):
 
 class VoiceCommand(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
+
+
+class VoiceAccountChoice(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    choice_id: str = Field(pattern=r'^[A-Za-z0-9_-]{43}$')
+    profile_id: str = Field(min_length=1, max_length=80)
+
+
+class VoiceAccountCancel(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    choice_id: str = Field(pattern=r'^[A-Za-z0-9_-]{43}$')
 
 
 class VoicePhrasePreview(BaseModel):
@@ -1618,6 +1630,21 @@ def create_app(
             return {"accepted": False, "message": "Call false-wake test in progress; no commands were applied."}
         if speaker_trial.status()['active']:
             return {"accepted": False, "message": "Owner-voice trial in progress; no commands were applied."}
+        from .voice_accounts import split_account_phrase
+        personal_phrase, _, _ = split_account_phrase(payload.text, service.voice_accounts.names())
+        personal_parsed = parse_local_command(personal_phrase)
+        if personal_parsed and personal_parsed.name == CommandName.GOOD_MORNING:
+            # Wake is a room action; the briefing below is separately projected
+            # from the chosen account, never from the primary flat snapshot.
+            morning_result = service.execute(personal_parsed)
+            if not morning_result.accepted or not morning_result.data.get('briefing'):
+                service.voice_accounts.clear()
+                return {'accepted': morning_result.accepted, 'message': morning_result.message}
+        account_reply = service.voice_accounts.handle(payload.text)
+        if account_reply is not None:
+            if account_reply.get('message') == 'Unknown command':
+                service.unknown_voice_command()
+            return account_reply
         parsed = parse_local_command(payload.text)
         if parsed is None:
             service.unknown_voice_command()
@@ -1659,6 +1686,32 @@ def create_app(
         result = service.execute(parsed)
         reply = morning_briefing(service.snapshot(briefing=True)) if parsed.name == CommandName.GOOD_MORNING and result.data.get('briefing') else result.message
         return {"accepted": result.accepted, "message": reply}
+
+    @app.get('/api/v1/voice/accounts/context', dependencies=[Depends(local_only)])
+    async def voice_account_context():
+        # Bounded local recognition context, never phones/tokens/event content.
+        return JSONResponse({'names': service.voice_accounts.names()}, headers={'Cache-Control': 'no-store'})
+
+    @app.post('/api/v1/voice/account/choose', dependencies=[Depends(local_only)])
+    async def voice_account_choose(payload: VoiceAccountChoice):
+        return JSONResponse(service.voice_accounts.select(payload.choice_id, payload.profile_id),
+                            headers={'Cache-Control': 'no-store'})
+
+    @app.post('/api/v1/voice/account/cancel', dependencies=[Depends(local_only)])
+    async def voice_account_cancel(payload: VoiceAccountCancel):
+        pending = service.voice_accounts.pending
+        accepted = bool(pending and secrets.compare_digest(pending['id'], payload.choice_id))
+        if accepted:
+            service.voice_accounts.clear()
+        return JSONResponse({'accepted': accepted}, headers={'Cache-Control': 'no-store'})
+
+    @app.post('/api/v1/voice/account/reply', dependencies=[Depends(local_only)])
+    async def voice_account_reply():
+        if (keyword_runtime.busy or calibration.status()['active'] or call_trial.status()['active'] or
+            speaker_trial.status()['active']):
+            service.voice_accounts.clear()
+            return {'play': False}
+        return JSONResponse(service.voice_accounts.claim_reply(), headers={'Cache-Control': 'no-store'})
 
     @app.get("/api/v1/diagnostics", dependencies=[secured])
     async def diagnostics() -> dict[str, Any]:

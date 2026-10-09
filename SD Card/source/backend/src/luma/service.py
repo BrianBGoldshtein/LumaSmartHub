@@ -43,6 +43,7 @@ from .agenda import day_agenda
 from .room import Room
 from .scenes import Scenes
 from .presence_transitions import PresenceTransitions
+from .voice_accounts import VoiceAccounts
 
 
 def display_clock_trusted():
@@ -90,6 +91,7 @@ class LumaService:
         self.presence_transitions = PresenceTransitions()
         self.presence_update_busy = False
         self.presence_update_pending = 0
+        self.voice_accounts = VoiceAccounts(self)
         self._sync_sleep(datetime.now(UTC))
 
     def attach_users(self, profiles, bluetooth, calendars):
@@ -408,6 +410,7 @@ class LumaService:
             "server_time": now.isoformat(),
             "presence_transition": self.presence_transitions.view(
                 {user.id: user.nickname for user in self.profiles.list()}) if self.profiles else None,
+            "voice_account_choice": self.voice_accounts.view(now),
             "voice_notice": {"id": self._unknown_command_id,
                              "remaining_ms": max(0, int((self._unknown_command_until - monotonic()) * 1000))},
             "room": self.room.view(now) if full else None,

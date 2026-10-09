@@ -31,6 +31,7 @@ from .keyword_command import timed_transcript, command_after_keyword
 from .keyword_gate import keyword_near_sound_start
 from .keyword_wake import KeywordWakeError, validate_audio
 from .keyword_live import LiveKeywordRuntime
+from .voice_accounts import split_account_phrase
 
 
 def _report_diagnostic(client: httpx.Client, code: str) -> None:
@@ -285,8 +286,29 @@ def choose_command(constrained: str, free_transcript: str, wake_phrase: str) -> 
 
 
 def select_command(constrained: str, free_transcript: str, wake_phrase: str,
-                   adaptations: PhraseAdaptations | None = None) -> tuple[str | None, str]:
+                   adaptations: PhraseAdaptations | None = None,
+                   account_names: dict[str, str] | None = None) -> tuple[str | None, str]:
     """Apply only owner-confirmed, post-wake corrections before intent choice."""
+    if account_names:
+        varied = _free_command(free_transcript, wake_phrase)
+        stripped, uid, named = split_account_phrase(varied or '', account_names)
+        if named:
+            if re.search(r"\b(?:don't|dont|do not|never|not)\b", varied or ''):
+                return None, 'negated'
+            if uid is None or not stripped:
+                return varied, 'account_name'  # API checks pending choice/live authority.
+            parsed = parse_local_command(stripped)
+            if not parsed or parsed.name.value not in {'local_query', 'good_morning'}:
+                return None, 'account_unsupported'  # Names cannot authorize mutations.
+            plain_constrained, constrained_uid, constrained_named = split_account_phrase(constrained, account_names)
+            if constrained_named and constrained_uid != uid:
+                return None, 'conflict'
+            chosen, reason = choose_command(plain_constrained, wake_phrase+' '+stripped, wake_phrase)
+            if chosen is None:
+                return None, reason
+            # Keep the explicit free-decoder name, rather than dispatching an
+            # anonymous constrained phrase that would choose the wrong person.
+            return varied, 'account_read'
     learned = (adaptations.resolve(command_after_wake(free_transcript, wake_phrase) or '')
                if adaptations is not None and has_wake(free_transcript, wake_phrase)
                else None)
@@ -537,6 +559,8 @@ def main() -> None:
                 adaptations = PhraseAdaptations()
                 next_check = 0.0
                 next_preview_check = 0.0
+                next_accounts_check = 0.0
+                account_names = {}
                 handled_preview_id = None
                 handled_tone_id = None
                 next_heartbeat = time.monotonic() + 5
@@ -555,6 +579,17 @@ def main() -> None:
                         next_heartbeat = now + 5
                     if now >= next_preview_check:
                         next_preview_check = now + 1
+                        if now >= next_accounts_check:
+                            next_accounts_check = now + 5
+                            try:
+                                context = client.get('/api/v1/voice/accounts/context')
+                                context.raise_for_status()
+                                names = context.json().get('names')
+                                account_names = names if isinstance(names, dict) and len(names)<=5 and all(
+                                    isinstance(key, str) and isinstance(name, str) and 1<=len(name)<=40
+                                    for key, name in names.items()) else {}
+                            except (httpx.HTTPError, ValueError):
+                                account_names = {}
                         try:
                             pending = client.get('/api/v1/voice/asset/preview/pending').json()
                             request_id = pending.get('request_id')
@@ -615,6 +650,23 @@ def main() -> None:
                             seen_drops = capture.dropped_frames
                             trial_partial_wake = False
                             phase('listening' if calibration['active'] else 'idle')
+                            next_check = 0.0
+                            continue
+                        try:
+                            reply = client.post('/api/v1/voice/account/reply')
+                            reply.raise_for_status()
+                            reply_packet = reply.json()
+                        except (httpx.HTTPError, ValueError):
+                            reply_packet = {'play': False}
+                        if reply_packet.get('play') is True:
+                            keyword.close()
+                            present_voice_response(reply_packet, say=say, phase=phase)
+                            _reset_voice_transition(chunks, recognizer, free_recognizer,
+                                                    preprocessor, gate, calibration_segmenter,
+                                                    utterance, raw_utterance)
+                            seen_drops = capture.dropped_frames
+                            trial_partial_wake = False
+                            phase('idle')
                             next_check = 0.0
                             continue
                     if now >= next_check:
@@ -1010,7 +1062,7 @@ def main() -> None:
                     if free_text is None:
                         free_text = _unrestricted_transcript(free_recognizer, spoken)
                     accepted, selection = select_command(accepted, free_text, gate.phrase,
-                                                         adaptations)
+                                                         adaptations, account_names)
                     if capture.dropped_frames != seen_drops:
                         # Replaying the unrestricted decoder can take longer
                         # than a live quarter-second frame on a busy Pi.

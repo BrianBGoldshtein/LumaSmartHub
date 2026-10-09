@@ -269,15 +269,27 @@ class CompanionAuth:
     def issue_ticket(self, pin: str, origin: str, *, profile_id=PRIMARY_ID) -> str:
         with self.lock:
             self._pin(pin)
-            phone = self._phone(profile_id)
-            origin = private_origin(origin)
-            ticket = secrets.token_urlsafe(32)
-            self.ticket = {"digest": hashlib.sha256(ticket.encode()).hexdigest(),
-                           "origin": origin, "phone": phone.address,
-                           "profile_id": profile_id,
-                           "generation": phone.generation, "expires": self.clock() + 300}
-            self.pending = None
-            return ticket  # RAM-only caller renders fragment QR; no secret/audit write.
+            return self._issue_ticket(origin, profile_id)
+
+    def issue_for_setup(self, origin, profile_id, recheck):
+        """Trusted local own-account setup only; not a wire-supplied PIN bypass."""
+        with self.lock:
+            recheck()
+            for row in (self.ticket, self.pending):
+                if row and self.clock() < row['expires'] and row.get('profile_id', PRIMARY_ID) != profile_id:
+                    raise CompanionDenied('Finish the other user’s remote enrollment first.')
+            return self._issue_ticket(origin, profile_id)
+
+    def _issue_ticket(self, origin, profile_id):
+        phone = self._phone(profile_id)
+        origin = private_origin(origin)
+        ticket = secrets.token_urlsafe(32)
+        self.ticket = {"digest": hashlib.sha256(ticket.encode()).hexdigest(),
+                       "origin": origin, "phone": phone.address,
+                       "profile_id": profile_id,
+                       "generation": phone.generation, "expires": self.clock() + 300}
+        self.pending = None
+        return ticket  # RAM-only caller renders fragment QR; no secret/audit write.
 
     def claim(self, ticket: str, origin: str, identity: str,
               public_key: str, signature: str) -> dict:
@@ -303,37 +315,56 @@ class CompanionAuth:
     def pending_status(self, pin: str) -> dict | None:
         with self.lock:
             self._pin(pin)
-            row = self.pending
-            phone = self._phone(row.get("profile_id", PRIMARY_ID) if row else PRIMARY_ID)
-            if (not row or self.clock() >= row["expires"] or row["phone"] != phone.address
-                    or row["generation"] != phone.generation):
-                self.pending = None
-                return None
-            return {"device_id": row["device_id"], "comparison_code": row["code"]}
+            return self._pending_status()
+
+    def pending_for_setup(self, profile_id, recheck):
+        with self.lock:
+            recheck()
+            if self.pending and self.pending.get('profile_id', PRIMARY_ID) != profile_id:
+                return None  # Never reveal another user's comparison code.
+            return self._pending_status(profile_id)
+
+    def _pending_status(self, profile_id=PRIMARY_ID):
+        row = self.pending
+        phone = self._phone(row.get("profile_id", profile_id) if row else profile_id)
+        if (not row or self.clock() >= row["expires"] or row["phone"] != phone.address
+                or row["generation"] != phone.generation):
+            self.pending = None
+            return None
+        return {"device_id": row["device_id"], "comparison_code": row["code"]}
 
     def approve(self, pin: str, device_id: str, comparison_code: str) -> None:
         with self.lock:
             status = self.pending_status(pin)
-            if (not status or not isinstance(comparison_code, str) or status["device_id"] != device_id
-                    or not secrets.compare_digest(status["comparison_code"], comparison_code)):
-                raise CompanionDenied("Enrollment does not match the phone screen.")
-            row = self.pending
-            self._grants()  # Validate/migrate before the serialized commit.
-            with self.storage.transaction() as db:
-                phone = self._phone(row.get("profile_id", PRIMARY_ID))
-                if phone.address != row["phone"] or phone.generation != row["generation"]:
-                    raise CompanionDenied("Enrollment does not match the phone connection.")
-                self._commit_profile(db, phone.profile_id, phone)
-                saved = db.execute("SELECT payload FROM secrets WHERE key=?", (self.grants_key,)).fetchone()
-                rows = self._validate_grants(saved[0] if saved else None, multi=bool(self.profiles))
-                if len(rows) >= MAX_GRANTS:
-                    raise CompanionDenied("Revoke an old browser before enrolling another.")
-                rows[device_id] = {k: row[k] for k in ("public_key", "phone", "origin", "identity")}
-                rows[device_id]["label"] = "iPhone browser"
-                if self.profiles:
-                    rows[device_id]["profile_id"] = phone.profile_id
-                self._save_grants(db, rows)
-            self.pending = None
+            self._approve(status, device_id, comparison_code)
+
+    def approve_for_setup(self, profile_id, device_id, comparison_code, recheck):
+        with self.lock:
+            status = self.pending_for_setup(profile_id, recheck)
+            recheck()
+            self._approve(status, device_id, comparison_code)
+
+    def _approve(self, status, device_id, comparison_code):
+        if (not status or not isinstance(comparison_code, str) or status["device_id"] != device_id
+                or not secrets.compare_digest(status["comparison_code"], comparison_code)):
+            raise CompanionDenied("Enrollment does not match the phone screen.")
+        row = self.pending
+        self._grants()  # Validate/migrate before the serialized commit.
+        with self.storage.transaction() as db:
+            phone = self._phone(row.get("profile_id", PRIMARY_ID))
+            if phone.address != row["phone"] or phone.generation != row["generation"]:
+                raise CompanionDenied("Enrollment does not match the phone connection.")
+            self._commit_profile(db, phone.profile_id, phone)
+            saved = db.execute("SELECT payload FROM secrets WHERE key=?", (self.grants_key,)).fetchone()
+            rows = self._validate_grants(saved[0] if saved else None, multi=bool(self.profiles))
+            if len(rows) >= MAX_GRANTS:
+                raise CompanionDenied("Revoke an old browser before enrolling another.")
+            rows[device_id] = {k: row[k] for k in ("public_key", "phone", "origin", "identity")}
+            rows[device_id]["label"] = "iPhone browser"
+            if self.profiles:
+                rows[device_id]["profile_id"] = phone.profile_id
+            self._save_grants(db, rows)
+        self.pending = None
 
     def devices(self, pin: str) -> list[dict]:
         with self.lock:

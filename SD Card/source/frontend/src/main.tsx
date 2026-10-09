@@ -27,6 +27,7 @@ import {CountdownsPage} from './CountdownsPage';
 import {AgendaPage} from './AgendaPage';
 import {UserPanels} from './UserPanels';
 import {PrimaryAdminGate} from './PrimaryAdminGate';
+import {UsersSetup,PersonalSetup} from './UserSetup';
 import {TransitPage} from './TransitPage';
 import {visibleTransit,disconnectedTransit,transitCycle,sampleTransit,transitStress} from './transitState';
 import {agendaDemo} from './agendaState';
@@ -338,6 +339,8 @@ function App() {
   if(snapshot?.display?.mode==='night-clock' || snapshot?.display?.mode==='waking')return <div className={`app theme-${snapshot.settings.theme} night-screen`}><NightDisplay snapshot={snapshot} onWake={()=>void wake()}/><VoiceNotice notice={snapshot.voice_notice}/>{snapshot.state.assistant_phase!=='idle'&&<AssistantOrb phase={snapshot.state.assistant_phase} onClick={()=>void wake()}/>}</div>;
   if (demoParameters.get("setup") === "google") return withVoiceNotice(primarySetup(<GoogleSetup demo={demoMode}/>));
   if (demoParameters.get("setup") === "device") return withVoiceNotice(primarySetup(<DeviceSetup demo={demoMode}/>));
+  if (demoParameters.get("setup") === "users") return withVoiceNotice(primarySetup(<UsersSetup demo={demoMode}/>));
+  if (demoParameters.get("setup") === "personal") return withVoiceNotice(<PersonalSetup demo={demoMode}/>);
   if (demoParameters.get("setup") === "onboarding") return withVoiceNotice(primarySetup(<Onboarding demo={demoMode}/>));
   if (demoParameters.get("setup") === "extras") return withVoiceNotice(primarySetup(<ExtrasSetup demo={demoMode}/>));
   if (error) return <div className="boot-screen error"><LumaGlow/><h1>Luma is reconnecting</h1><p>{error}</p></div>;

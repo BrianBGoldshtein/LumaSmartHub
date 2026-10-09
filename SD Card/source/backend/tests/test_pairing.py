@@ -106,6 +106,23 @@ async def test_new_phone_is_only_trusted_and_saved_after_matching_code():
 
 
 @pytest.mark.asyncio
+async def test_phone_identity_change_after_pairing_is_never_trusted_or_saved():
+    driver, save = FakeDriver(), Mock()
+    original_pair = driver.pair
+    async def changed(path, confirm):
+        await original_pair(path, confirm)
+        driver.props['Address'] = 'AA:BB:CC:DD:EE:01'
+    driver.pair = changed
+    flow = PairingFlow(save, lambda:driver)
+    await select_phone(flow)
+    await until(lambda: flow.phase == 'confirming')
+    flow.confirm(flow.session,flow.challenge,True)
+    await flow.task
+    assert flow.phase == 'error' and driver.trust_calls == 0
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_rejection_never_changes_phone_or_trust():
     driver, save = FakeDriver(), Mock()
     flow = PairingFlow(save, lambda: driver)

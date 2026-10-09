@@ -67,6 +67,7 @@ from .shortcut_protocol import command_token, read_command
 from .focus_timer import TIMER_COMMANDS
 from .companion_api import install_companion_api, remote_guard
 from .admin_api import install_admin_api, request_origin, set_admin_cookie
+from .user_setup_api import install_user_setup_api
 from .admin_authority import AdminDenied, COOKIE
 
 
@@ -558,6 +559,7 @@ def create_app(
             yield
         finally:
             await pairing.close()
+            await app.state.user_setup.pairing.close()
             await app.state.scene_runtime.close()
             for worker in workers:
                 worker.cancel()
@@ -624,6 +626,7 @@ def create_app(
         service.todo_write_authorized=google.task_write_authorized()
         google_status.update(error=None,error_kind=None,reconnect_required=False)
     install_companion_api(app,service,storage,bluetooth,local_only,companion_google_connected)
+    install_user_setup_api(app, service, local_only)
     install_keyword_api(app,keyword_runtime,local_only)
 
     def keyword_install_idle():
@@ -701,6 +704,8 @@ def create_app(
     @app.post("/api/v1/bluetooth/pairing/start", dependencies=[Depends(local_only)])
     async def pairing_start() -> dict:
         try:
+            if app.state.user_setup.pairing_active():
+                raise ValueError('Finish or cancel the personal setup pairing first.')
             return pairing.start()
         except ValueError as error:
             raise HTTPException(409, str(error)) from None

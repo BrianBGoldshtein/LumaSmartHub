@@ -123,7 +123,7 @@ async def own_operation(service, principal, method, path, value, recheck):
                     result = await asyncio.to_thread(provider)
                 recheck()
                 return result
-            except HTTPException:
+            except (HTTPException, PermissionError):
                 raise
             except Exception as error:
                 if not account.status['reconnect_required']:

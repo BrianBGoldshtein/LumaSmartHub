@@ -242,6 +242,11 @@ class ProfileRepository:
         return self.get(uid)
 
     @staticmethod
+    def _revoke_wall(connection, uid):
+        connection.execute('DELETE FROM secrets WHERE key=?',
+            ('wall_setup_grant_v1' if uid == PRIMARY_ID else f'profile:{uid}:wall_setup_grant_v1',))
+
+    @staticmethod
     def _revoke(connection, uid):
         row = connection.execute("SELECT payload FROM secrets WHERE key=?", (GRANTS_KEY,)).fetchone()
         if row:
@@ -273,6 +278,7 @@ class ProfileRepository:
             old = phone_address(legacy.phone_address) if uid == PRIMARY_ID else user["phone_address"]
             if old != address:
                 self._revoke(connection, uid)
+                self._revoke_wall(connection, uid)
                 if uid == PRIMARY_ID:
                     legacy.phone_address = address
                     legacy.validate()

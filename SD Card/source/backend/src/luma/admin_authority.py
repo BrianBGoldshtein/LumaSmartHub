@@ -33,14 +33,19 @@ PUBLIC_WRITES = frozenset({
     '/api/v1/voice/asset/preview/result', '/api/v1/voice/asset/tone/result',
 })
 PRIVATE_READS = frozenset({'/api/v1/settings', '/api/v1/onboarding', '/api/v1/bluetooth/pairing',
+    '/api/v1/users',
     '/api/v1/google/status', '/api/v1/google/calendars', '/api/v1/google/event-colors',
     '/api/v1/security/lan-token', '/api/v1/diagnostics', '/api/v1/countdowns',
     '/api/v1/transit', '/api/v1/room', '/api/v1/scenes', '/api/v1/backups/media'})
 FRESH_PATHS = frozenset({'/api/v1/updates/install', '/api/v1/backups/apply',
+                         '/api/v1/users/manage',
                          '/api/v1/security/pin', '/api/v1/security/lan-token/rotate'})
 
 
 def needs_admin(method: str, path: str, command: str | None = None) -> bool:
+    from .user_setup import SELF_WRITES
+    if path in SELF_WRITES:
+        return False  # Each fixed route requires the own-account wall grant.
     if path in COMMAND_PATHS:
         return command in GLOBAL_COMMANDS
     if method in {'GET', 'HEAD'}:

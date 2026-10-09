@@ -121,6 +121,7 @@ class Storage:
                                    ("companion_browser_grants_v1", "companion_google_oauth_state_v1"))
                 if registry:
                     ProfileRepository._revoke(connection, PRIMARY_ID)
+                    ProfileRepository._revoke_wall(connection, PRIMARY_ID)
             connection.execute(
                 "UPDATE settings SET payload = ?, updated_at = ? WHERE id = 1",
                 (payload, now),
@@ -243,6 +244,7 @@ class Storage:
                     # A copied pending consent must not revive after restoring
                     # a multi-user backup. Saved Google grants remain intact.
                     prepared.execute("DELETE FROM secrets WHERE key LIKE 'profile:%:google_oauth_state'")
+                    prepared.execute("DELETE FROM secrets WHERE key='wall_setup_grant_v1' OR key LIKE 'profile:%:wall_setup_grant_v1'")
                     prepared.commit()
                     # SQLite backup handles the live destination WAL.
                     with closing(self.connect()) as destination:

@@ -27,8 +27,9 @@ def device_choices(objects, adapter):
 
 
 class PairingFlow:
-    def __init__(self, save_phone, driver_factory=None):
+    def __init__(self, save_phone, driver_factory=None, *, validate_phone=lambda address: None):
         self.save_phone = save_phone
+        self.validate_phone = validate_phone
         self.driver_factory = driver_factory or BlueZPairing
         self.task = None
         self.session = None
@@ -171,6 +172,7 @@ class PairingFlow:
                 props = await driver.properties(path)
                 if props.get("Address", "").casefold() != self.selected["address"].casefold():
                     raise ValueError("Device changed")
+                self.validate_phone(props['Address'])
                 already_bonded = props.get("Paired") is True and props.get("Bonded") is True
                 if already_bonded and props.get("Trusted") is not True:
                     self.phase = "error"
@@ -180,12 +182,16 @@ class PairingFlow:
                     self.message = "Waiting for your iPhone’s pairing request…"
                     await asyncio.wait_for(driver.pair(path, self.request_confirmation), 90)
                 props = await driver.properties(path)
-                if not (props.get("Paired") is True and props.get("Bonded") is True):
+                if (props.get('Address', '').casefold() != self.selected['address'].casefold()
+                        or not (props.get("Paired") is True and props.get("Bonded") is True)):
                     raise ValueError("Pairing did not create a bond")
+                self.validate_phone(props['Address'])
                 await driver.trust(path)
                 props = await driver.properties(path)
-                if props.get("Trusted") is not True:
+                if (props.get('Address', '').casefold() != self.selected['address'].casefold()
+                        or not all(props.get(key) is True for key in ('Paired','Bonded','Trusted'))):
                     raise ValueError("Trust was not saved")
+                self.validate_phone(props['Address'])
                 self.save_phone(props["Address"])
                 self.phase = "complete"
                 self.message = "Phone selected. Enable Share System Notifications for Luma in iPhone Bluetooth settings if offered. Private content stays hidden until that access is authorized."

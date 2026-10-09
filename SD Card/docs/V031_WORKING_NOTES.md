@@ -1,6 +1,6 @@
 # Luma 0.3.1 implementation and acceptance
 
-Status: active development on `codex/v031-multiuser`; not released. The published release remains 0.3.0. Do not install a partial branch or reset existing bonds/accounts.
+Status: [0.3.1 Beta published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.1). Software implementation and release qualification are complete; owner hardware acceptance remains. Install the signed release through Luma, not a partial branch. Do not reset working bonds/accounts. Earlier checkpoints below are historical; the final publication evidence supersedes their pending gates.
 
 ## Agreed behavior
 
@@ -138,3 +138,21 @@ Setup/UI checkpoint `d6e8bfe12dc5db5c6af528bb9a1e55707d4e44da` is pushed to the 
 Candidate package metadata is now 0.3.1. The isolated build environment was reinstalled from that metadata and full backend regression is running in session **49070**, log `/tmp/luma-v031-candidate-backend-full.log`; do not start a duplicate run. Release notes and a primary/secondary setup guide are drafted in `V031_RELEASE_NOTES.md` and `MULTI_USER_SETUP.md`. Main and the owner's installed version are not changed by this preparation. Next: collect the candidate-version full result and exact setup-checkpoint CI, checkpoint release preparation, qualify exact main, build/sign locally, run both current and exact 0.3.0 installers/rollback, verify production downloads, then publish and report owner hardware checks. The goal remains active.
 
 Candidate-version regression finished successfully: **2,151 passed in 336.71 seconds**, including an isolated installed package version of **0.3.1**. Session 49070 is finished; do not restart it. Setup/UI checkpoint `d6e8bfe12dc5db5c6af528bb9a1e55707d4e44da` passed exact CI `37874530234`. Origin main is `92e696dda1505cd1987307c82ca855684b2d9fb4` and is already an ancestor of this feature branch. The complete release-preparation source can now advance main non-destructively under the owner's standing main/Beta authority. Require exact-main CI before signed publication. The owner's Pi remains untouched.
+
+## Published package qualification
+
+The complete candidate advanced `main` to **`9ca2299074d913829a41d601314082ac1fcf5ed1`**. Exact-main [CI 37875591797](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37875591797) passed. An isolated Linux checkout at `/home/luma-build/luma-031-release.DG78RE3K/repo` prepared the checksum-pinned public assets and unchanged frozen frontend dependencies. An initial metadata-install attempt without build isolation lacked Hatchling; the normal declared isolated build backend succeeded. No application dependency or source validation was weakened.
+
+The final publisher passed **201 frontend tests**, both TypeScript/Vite bundles, **2,151 backend tests in 316.25 seconds** and **43 packaging tests**. It signed `/home/luma-build/luma-update-0.3.1.lup` using the offline key; the private key was not copied to the package, Pi or GitHub. Both the current installer and the exact accepted 0.3.0 installer at `99081bb0972d77d03afaf4860b25d7e5cdb514c9` passed success and forced health-failure rollback. Synthetic SQLite settings, Google/browser secrets, games and integrity were preserved; the installed wheel reported 0.3.1 and service-user-readable files. Service control/health responses in that lab are synthetic, not physical Pi acceptance.
+
+The stable GitHub release metadata targets `main`, with headline **Luma 0.3.1 Beta**, no draft/prerelease flag, and one signed application archive. Publication time: **2026-10-09 02:55:15 UTC** (October 8 in the owner's timezone). Luma's production `latest_release("0.3.0")` fetched and verified the released asset, matching the qualified local bytes exactly. Its fetcher is unchanged from the deployed 0.3.0 code. Checking from 0.3.1 reported current.
+
+- Archive: `luma-update-0.3.1.lup`, **1,914,770 bytes**, **81 signed files**.
+- Archive SHA-256: `bc2253be325d3d26f7b4f2cbc76b0c73d18d946154ace86780bd6748ef0d6bfd`.
+- Source-input SHA-256: `33fbb33766705715bd372e69206d548d88b1fd38a99e94a76644cc1688a68d44`.
+- Publisher log: `/home/luma-build/luma-031-release.DG78RE3K/publish.log`.
+- Production-download report: `/home/luma-build/luma-031-release.DG78RE3K/download-report.json`.
+
+Terminal sessions 36338, 38925, 32733, 15783 and 90151 are finished; do not restart or poll them. The earlier candidate/backend/browser sessions are also finished. Repository documentation now records actual publication and optional individual Tailscale sharing; no owner's profile, policy, account, Bluetooth bond or hardware was changed during qualification.
+
+Next action is owner acceptance: install through Settings → Luma software, verify 0.3.1 and preserved primary state, then add one secondary and test two independent authorized phones/accounts, absence privacy, own tasks/timers, arrival/departure and audible alarms. Expand to all five phones, automatic range return and reboot recovery. Actual Safari/Home Screen storage, Google consent, Pi radio/audio and a real hardware update remain unverified by the build-host suites. Do not claim v1 or full hardware acceptance from these results.

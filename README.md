@@ -13,31 +13,31 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.0 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.0).
+Latest: [Luma 0.3.1 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.1).
 On an existing Luma Pi, use **Settings → Luma software → Check for updates**;
-do not reflash its SD card. This release adds a themed private **Safari/Home Screen
-remote** for previews, timers, settings, calendars, optional Google sign-in and
-software updates. Enroll through the hub's PIN-protected QR; private requests
-require the selected iPhone's live authorized Bluetooth notification connection.
-No Mac, native companion app, public port or private offline cache is needed.
-The update preserves saved settings, Google links, games and the working phone
-bond; it restarts application services, not the operating system.
-[iPhone setup](SD%20Card/docs/IPHONE_REMOTE.md),
-[0.3.0 changes and owner checks](SD%20Card/docs/V030_RELEASE_NOTES.md) and
-[release qualification evidence](SD%20Card/docs/V030_PLAN.md).
+review **0.3.1** and install, then verify the installed version. Do not reflash
+its SD card. This release supports **one primary and up to four secondary
+users**, each with a named phone, separate Google information and timers.
+Guided personal setup, coordinated Bluetooth presence, shared calendar/task
+panels and themed arrival/departure announcements follow all three themes.
+Primary settings, user administration and updates require the primary PIN;
+everyone may set timers.
 
-In preparation: **0.3.1 multi-user Beta**, with one primary and up to four
-secondary profiles, separate Google information and timers, coordinated phone
-presence and guided personal setup. Secondary private remotes are optional;
-a primary-only remote policy preserves their wall/Bluetooth/timer features.
-The candidate is not yet published or ready to install. See the
+Each user's optional private **Safari/Home Screen remote** accesses only their
+own account through Tailscale and a live authorized Bluetooth notification
+connection. No Mac, native companion app, public port or private offline cache
+is needed. A primary-only remote policy is available without removing secondary
+wall, Google, Bluetooth or timer features. The update preserves existing primary
+settings, Google links, games and the working phone bond; it restarts application
+services, not the operating system. See the
 [multi-user guide](SD%20Card/docs/MULTI_USER_SETUP.md),
-[candidate changes](SD%20Card/docs/V031_RELEASE_NOTES.md) and
-[qualification progress](SD%20Card/docs/V031_WORKING_NOTES.md).
+[iPhone setup](SD%20Card/docs/IPHONE_REMOTE.md),
+[0.3.1 changes and owner checks](SD%20Card/docs/V031_RELEASE_NOTES.md) and
+[release qualification evidence](SD%20Card/docs/V031_WORKING_NOTES.md).
 
 ## What it does
 
-- Cycles through high-contrast, themed glance screens, with a full day agenda
+- Cycles through high-contrast, themed glance screens, with an upcoming agenda
   that can fit a busy schedule. The dashboard supports several coordinated
   visual themes and full-screen ambient scenes/games.
 - Reads weather forecasts from Open-Meteo and Google events from the selected
@@ -49,9 +49,10 @@ The candidate is not yet published or ready to install. See the
   need AI tokens or a cloud language model; wake phrase and command audio are
   processed on the Pi. Siri remains on the iPhone; optional Apple Shortcuts
   send approved hub commands to Luma.
-- Uses nearby-phone presence as a privacy gate for personal dashboard details.
-  When the phone is away, the intended standby view is time and weather without
-  private calendar/task information.
+- Uses independently authorized phone presence as a privacy gate for each
+  person's shared details. When nobody present has configured shared information,
+  public standby cycles time, weather and ambient games without showing absent
+  users' saved calendars or tasks.
 - Keeps settings and integration tokens in local SQLite storage across normal
   restarts. The Settings screen can check the latest stable GitHub Release,
   verify its image-pinned signature and show release notes before install.

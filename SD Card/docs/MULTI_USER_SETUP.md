@@ -26,6 +26,15 @@ On your enrolled phone, **My calendars** resumes the saved private-link → Goog
 
 Secondary remotes require private Tailscale transport to the Luma node using each person's own identity, plus their own enrolled browser key and live authorized phone connection. Tailscale reachability alone never unlocks data. Keep HTTPS enabled and public Funnel disabled.
 
+To give a secondary user private transport without adding them to your whole tailnet:
+
+1. In the primary's Tailscale admin console, open **Machines → Luma → Share** and create a single-use invitation for that person. Keep the link private.
+2. Have them accept using their own Tailscale account, sign their iPhone into that account and enable Tailscale. Share only Luma, not your laptop or recovery credentials.
+3. Review the tailnet access rules: allow that recipient only Luma's HTTPS port **443**, preserving your own maintenance access. Rules are additive; an existing wildcard allow can also grant access and must be reviewed. Do not replace the entire policy with a sample or expose SSH just to enable the web remote.
+4. With their authorized Bluetooth link active, resume their Luma setup and enroll the Safari/Home Screen window. Use the full private `https://…ts.net` address from Luma, not `luma.local`.
+
+[Tailscale device-sharing instructions](https://tailscale.com/docs/features/sharing) describe invitations, private DNS and access rules. [Serve identity headers](https://tailscale.com/docs/features/tailscale-serve#identity-headers) also cover individually shared users; Luma still requires its own approved browser and live phone authorization.
+
 If that transport is impractical, the primary opens **Settings → iPhone remote → Who can use an iPhone remote? → Use primary-only remote**, enters the required PIN and confirms revocation. Secondary calendars, local guided setup, Bluetooth presence and timers stay available. Already enrolled secondary browsers are revoked and pending consent/enrollment is canceled. **Allow secondary remotes** permits new enrollment; it never revives an old revoked grant.
 
 The primary remote may unlock primary settings using the hub PIN. This permission is deliberately absent from secondary remotes. Do not share that PIN or the primary browser's enrollment.

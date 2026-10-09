@@ -1,6 +1,6 @@
 # Beta — Luma 0.3.1
 
-Multi-user Luma for one primary and up to four secondary users. This is an application update for the existing Pi, not a new OS image or hardware-accepted v1. Install only after this version appears as a verified signed GitHub release on the hub.
+Multi-user Luma for one primary and up to four secondary users. [0.3.1 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.1) and its downloaded package is signature-verified. This is an application update for the existing Pi, not a new OS image or hardware-accepted v1.
 
 ## What's new
 
@@ -20,11 +20,11 @@ The primary Sleep calendar remains room-wide, including when the primary phone i
 
 ## Install
 
-After publication: **Settings → Luma software → Check for updates → review 0.3.1 → Install**. Keep power and internet connected. A dropped connection or accepted installation request is not success; verify the final installed version is **0.3.1**. Do not reflash the SD card or erase working bonds/accounts.
+**Settings → Luma software → Check for updates → review 0.3.1 → Install**. Keep power and internet connected. A dropped connection or accepted installation request is not success; verify the final installed version is **0.3.1**. Do not reflash the SD card or erase working bonds/accounts.
 
-The release gate requires the same signed archive to pass the deployed 0.3.0 verifier/installer, successful switch and forced health-failure rollback with synthetic saved state retained. Publication is blocked until exact-main CI, offline signing and those checks pass.
+Release qualification passed 2,151 backend, 201 frontend and 43 packaging tests, both production UI builds and exact-main CI. The same offline-signed archive passed successful installation and forced health-failure rollback using both the current and deployed 0.3.0 updater, retaining synthetic saved settings, secrets, browser grants and games. Luma's production GitHub fetcher downloaded and verified bytes identical to that qualified archive. These checks do not replace the owner hardware tests below.
 
-See [multi-user setup](MULTI_USER_SETUP.md) for primary approval, optional Google, private phone access and the primary-only fallback.
+See [multi-user setup](https://github.com/BrianBGoldshtein/LumaSmartHub/blob/main/SD%20Card/docs/MULTI_USER_SETUP.md) for primary approval, optional Google, private phone access and the primary-only fallback.
 
 ## Owner hardware acceptance
 

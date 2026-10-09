@@ -10,6 +10,7 @@ Luma 0.3.2 restores cohesive, glanceable layouts and makes phone-started updates
 - An independent wall progress screen observes installation initiated from the primary phone remote, even outside Settings or during guided setup. Progress survives a temporary API restart and stays readable during night/display-off mode. Only the temporary update output is brightened; saved brightness and Sleep settings are unchanged, and private account information is hidden behind the progress screen.
 - A successfully installed, health-checked release requests one graceful Pi reboot. A durable marker prevents repeated reboots after ordinary starts or a denied reboot request. Failed updates do not reboot as successful installations. The wall also reloads fresh dashboard HTML after verified completion if a reboot cannot be requested.
 - Ordinary phone changes, such as themes and brightness, update live without rebooting. Updates and global room settings still require primary authorization; secondary remotes do not gain those privileges.
+- Remote settings tabs wait for an in-progress save response, preventing a fast tab change from being lost when the form refreshes. A delayed-response browser check covers the gap between the wall receiving a change and the phone receiving confirmation.
 
 Game motion, rules and speeds are unchanged. Existing users, Google credentials, calendar/task choices, timers, saved games, Bluetooth bonds and optional remote enrollment remain on the Pi. There are no dependency or database-schema changes.
 

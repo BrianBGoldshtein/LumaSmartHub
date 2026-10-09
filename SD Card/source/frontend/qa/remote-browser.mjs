@@ -28,6 +28,11 @@ async function click(text){
 }
 try{
   await send('Page.enable');await send('Runtime.enable');await send('Network.enable');
+  // Install before the authenticated client captures its fetch transport.
+  await send('Page.addScriptToEvaluateOnNewDocument',{source:`(()=>{const nativeFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await nativeFetch(...args);if(String(args[0]).endsWith('/remote/api/settings')&&args[1]?.method==='PATCH'){window.qaSaveResponsePending=true;await new Promise(r=>setTimeout(r,1500));window.qaSaveResponsePending=false;}return response;};})()`});
+  // Enrollment changes only a hash, so explicitly reload the empty lab page
+  // once to run the fixture before its new authenticated client is created.
+  await send('Page.reload');
   wallTarget=await(await fetch(debug+'/json/new?'+encodeURIComponent('http://127.0.0.1:18835/'),{method:'PUT'})).json();
   wallSocket=new WebSocket(wallTarget.webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{wallSocket.onopen=resolve;wallSocket.onerror=reject;});
@@ -57,8 +62,12 @@ try{
   await click('Settings');await until(`document.body.innerText.includes('Primary settings')`);
   await value(`(()=>{const field=document.querySelector('input[type="password"]');const native=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;native.call(field,'123456');field.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await click('Unlock primary settings');await until(`document.querySelector('.themes')!==null`);
+  // The wall receives a published snapshot before the phone's save response.
+  // Hold only that synthetic response to exercise tab clicks during this gap.
   for(const [name,theme] of [['Glass','luma-glass'],['Hearth','hearth'],['Neon','neon-grid']]){
-    await click(name);await wallUntil(`document.querySelector('.theme-${theme}')!==null`);
+    await click(name);await until(`window.qaSaveResponsePending===true`);
+    assert.equal(await value(`[...document.querySelectorAll('.segmented button')].every(button=>button.disabled)`),true,'Settings tabs must wait for the save response, not just the wall snapshot');
+    await wallUntil(`document.querySelector('.theme-${theme}')!==null`);
   }
   await click('Calendars');await until(`document.body.innerText.includes('Agenda · select all that apply')`);
   await click('Save calendar choices');await until(`document.querySelector('.themes')!==null`);

@@ -242,7 +242,7 @@ function PersonalGuide({busy,request,run}:Pick<SettingsProps,'busy'|'request'|'r
 }
 function SettingsPanel({settings,busy,save,request,run}:SettingsProps){
   const [section,setSection]=useState<'appearance'|'calendars'>('appearance');
-  return <><h1>Make it yours</h1><div className="segmented"><button aria-pressed={section==='appearance'} onClick={()=>setSection('appearance')}>Appearance</button><button aria-pressed={section==='calendars'} onClick={()=>setSection('calendars')}>Calendars</button></div>
+  return <><h1>Make it yours</h1><div className="segmented"><button disabled={busy} aria-pressed={section==='appearance'} onClick={()=>setSection('appearance')}>Appearance</button><button disabled={busy} aria-pressed={section==='calendars'} onClick={()=>setSection('calendars')}>Calendars</button></div>
     {section==='calendars'?<CalendarSettings settings={settings} busy={busy} save={save} request={request} run={run}/>:<>
       <section><h2>Theme</h2><div className="themes">{themes.map(([id,name])=><button aria-pressed={settings.theme===id} disabled={busy} key={id} onClick={()=>void save({theme:id})}>{name}</button>)}</div>
         <form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);void save({brightness:Number(values.get('brightness')),volume:Number(values.get('volume'))});}}>

@@ -38,6 +38,8 @@ The authenticated synthetic remote lab passed live phone theme changes reaching 
 
 Release metadata is 0.3.2. Publisher qualification now pins the deployed 0.3.1 tag to `9ca2299074d913829a41d601314082ac1fcf5ed1`, rather than falling back to the old full-image version. Synthetic preservation checks compare the entire SQLite dump, including four secondary users, Google tokens/caches, personal paused timers, grants and games.
 
+The first clean-main remote repeat exposed a settings-tab race: the wall snapshot can arrive before the phone's PATCH response, and changing tabs during that gap was overwritten by the save-triggered form remount. Publication was stopped before signing. Settings tabs now disable while saving. The remote lab injects a 1.5-second response delay before the client captures its transport, checks the disabled controls, then exercises normal calendar navigation. The complete delayed-response remote run passed with no runtime errors (`/tmp/luma-030-mobile.FhU8iaqe`). Both UI builds and all 203 frontend tests also passed after this fix. Main CI for the preceding source commit passed; rerun exact-main CI for the final fix before signing.
+
 ## Remaining release gates
 
 Commit the candidate, fast-forward the authorized main beta channel, pass exact-main CI, then run the clean-main publisher with the offline signing key. Qualify the same signed archive with both current and deployed 0.3.1 installers through success and forced rollback. Publish new assets without replacing 0.3.1, and independently download/verify the production release. Owner confirmation remains required for actual Pi reboot, screen power handoff and real phone/hardware behavior.

@@ -13,10 +13,13 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.1 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.1).
-On an existing Luma Pi, use **Settings → Luma software → Check for updates**;
-review **0.3.1** and install, then verify the installed version. Do not reflash
-its SD card. This release supports **one primary and up to four secondary
+Latest: [Luma 0.3.2 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.2).
+For this first upgrade, use the **wall's Settings → Luma software → Check for updates**;
+review **0.3.2**, install and keep power connected through the verified reboot.
+Confirm the installed version afterward. Do not reflash its SD card.
+This release restores cohesive layouts and adds wall progress for future
+phone-started updates; ordinary phone settings changes refresh live without a reboot.
+Luma supports **one primary and up to four secondary
 users**, each with a named phone, separate Google information and timers.
 Guided personal setup, coordinated Bluetooth presence, shared calendar/task
 panels and themed arrival/departure announcements follow all three themes.
@@ -28,12 +31,13 @@ own account through Tailscale and a live authorized Bluetooth notification
 connection. No Mac, native companion app, public port or private offline cache
 is needed. A primary-only remote policy is available without removing secondary
 wall, Google, Bluetooth or timer features. The update preserves existing primary
-settings, Google links, games and the working phone bond; it restarts application
-services, not the operating system. See the
+settings, Google links, games and working phone bonds. A successful health-checked
+upgrade now requests one graceful Pi reboot; it does not replace the OS image.
+The already-running 0.3.1 wall gains the global progress monitor only after installing 0.3.2. See the
 [multi-user guide](SD%20Card/docs/MULTI_USER_SETUP.md),
 [iPhone setup](SD%20Card/docs/IPHONE_REMOTE.md),
-[0.3.1 changes and owner checks](SD%20Card/docs/V031_RELEASE_NOTES.md) and
-[release qualification evidence](SD%20Card/docs/V031_WORKING_NOTES.md).
+[0.3.2 changes and owner checks](SD%20Card/docs/V032_RELEASE_NOTES.md) and
+[release qualification evidence](SD%20Card/docs/V032_WORKING_NOTES.md).
 
 ## What it does
 

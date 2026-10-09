@@ -1,6 +1,6 @@
 # Beta — Luma 0.3.2
 
-Luma 0.3.2 restores cohesive, glanceable layouts and makes phone-started updates visible on the wall. This is a signed application update for the existing Pi, not a new OS image or hardware-accepted v1.
+[Luma 0.3.2 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.2). It restores cohesive, glanceable layouts and makes future phone-started updates visible on the wall. This is a signed application update for the existing Pi, not a new OS image or hardware-accepted v1.
 
 ## Changes
 
@@ -22,7 +22,7 @@ Keep power and internet connected through installation and reboot. Verify **Curr
 
 ## Qualification and owner checks
 
-Publication requires complete backend/frontend/packaging tests, both production UI builds and exact-main GitHub CI. The offline-signed archive must pass installation and forced health-failure rollback with both the candidate updater and the published 0.3.1 updater. Qualification compares every synthetic SQLite row, including four secondary profiles, scoped Google tokens/caches, paused personal timers, browser grants, settings and games.
+Qualification passed 2,163 backend, 203 frontend and 43 packaging tests, both production UI builds and exact-main GitHub CI. The offline-signed archive passed installation and forced health-failure rollback with both the candidate updater and the published 0.3.1 updater. Every synthetic SQLite row was unchanged, including four secondary profiles, scoped Google tokens/caches, paused personal timers, browser grants, settings and games. The production GitHub client independently downloaded, signature-verified and matched the released bytes to that qualified archive.
 
 Synthetic Chromium checks cover 168 multi-user layouts, 120 theme/scene cases, authenticated phone-to-wall setting changes, and global progress during normal, sleeping, display-off and setup views. They do not prove the physical Pi's reboot, screen power handoff, audio, radio or Safari behavior.
 

@@ -1,6 +1,6 @@
 # Luma 0.3.2 visual cohesion and remote update behavior
 
-Status: final 0.3.2 candidate on `codex/v032-visual-cohesion`; not yet signed or published. Keep 0.3.1 Beta as the current installable release until the remaining release gates pass.
+Status: [0.3.2 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.2), signed offline and independently verified through the production download client. Software release gates are complete. Actual Pi reboot, display handoff and hardware acceptance remain owner-led.
 
 ## Required behavior
 
@@ -20,17 +20,17 @@ Phone-started software installation must appear on the wall regardless of the cu
 - Always-mounted wall update monitor independent of the settings page or initiating browser, with outage retention and cache-busting navigation after verified completion.
 - Guarded post-upgrade reboot handoff in the newly started protected broker. The existing 0.3.1 installer already restarts this broker after committing success, so this also covers the first upgrade into 0.3.2.
 
-## Verified so far
+## Browser and safeguard checks
 
 203 frontend tests pass; wall and remote TypeScript/Vite builds pass. The synthetic Chromium layout suite passes 168 cases across three themes, one through five configured users, 1024×768 and 2048×1536 wall layouts, evening calendar rulers matching the reported collision, and 320/390px mobile clock cases. New assertions cover actual ruler glyphs, full-width tasks, task contents staying within their cards, and identity attribution. Rendered Hearth, Glass and Neon examples were visually inspected, including dense five-user tasks. These checks do not constitute owner hardware acceptance.
 
-34 focused backend updater/API/reboot tests pass. They cover one-time success reboot, failure/installing/idle suppression, active-release matching, denied reboot without rollback or retry loops, and the existing protected installer and API behavior. The actual Pi reboot and systemd permissions still require owner hardware confirmation.
+The focused reboot/display set passes 12 tests, covering one-time success reboot, failure/installing/idle suppression, active-release matching, denied reboot without rollback or retry loops, unsafe-marker/unmanaged-path rejection and temporary night output with private-data redaction. The complete suite also covers the existing protected installer and API behavior. Actual Pi reboot and systemd permissions still require owner hardware confirmation.
 
 The isolated production wall monitor passes simulated external installation during guided setup, malformed/outage status retention, failure dismissal, verified completion, and fresh-HTML navigation. No update, real account, radio operation or hardware reboot occurs in this browser test.
 
 ## Final candidate checks
 
-The full backend development run passed 2,161 tests; two additional reboot edge cases then passed with the focused reboot/display set (12 tests). The final clean-main publisher will rerun all 2,163 backend tests. Frontend tests pass 203 cases and packaging passes 43 cases; both production UI builds pass. The latest 168-case layout run is `/tmp/luma-031-user-setup.tC5q3ATV`.
+The final clean-main publisher passed all 2,163 backend tests in 336.33 seconds, all 203 frontend tests and 43 packaging tests, plus both production UI builds. The latest 168-case layout run is `/tmp/luma-031-user-setup.tC5q3ATV`.
 
 The broader audit passed 120 cases across all themes and every ambient scene, plus weather, countdowns, transit, controls, presence and voice islands (`/tmp/luma-031-user-setup.UBwFckDM`). Selected rendered controls, games and primary/secondary remotes were visually reviewed. Game rules and speeds were not changed.
 
@@ -38,11 +38,29 @@ The authenticated synthetic remote lab passed live phone theme changes reaching 
 
 Release metadata is 0.3.2. Publisher qualification now pins the deployed 0.3.1 tag to `9ca2299074d913829a41d601314082ac1fcf5ed1`, rather than falling back to the old full-image version. Synthetic preservation checks compare the entire SQLite dump, including four secondary users, Google tokens/caches, personal paused timers, grants and games.
 
-The first clean-main remote repeat exposed a settings-tab race: the wall snapshot can arrive before the phone's PATCH response, and changing tabs during that gap was overwritten by the save-triggered form remount. Publication was stopped before signing. Settings tabs now disable while saving. The remote lab injects a 1.5-second response delay before the client captures its transport, checks the disabled controls, then exercises normal calendar navigation. The complete delayed-response remote run passed with no runtime errors (`/tmp/luma-030-mobile.FhU8iaqe`). Both UI builds and all 203 frontend tests also passed after this fix. Main CI for the preceding source commit passed; rerun exact-main CI for the final fix before signing.
+The first clean-main remote repeat exposed a settings-tab race: the wall snapshot can arrive before the phone's PATCH response, and changing tabs during that gap was overwritten by the save-triggered form remount. Publication was stopped before signing. Settings tabs now disable while saving. The remote lab injects a 1.5-second response delay before the client captures its transport, checks the disabled controls, then exercises normal calendar navigation. The complete delayed-response run passed with no runtime errors (`/tmp/luma-030-mobile.FhU8iaqe`), followed by a successful repeat against final clean main. Both UI builds and all 203 frontend tests passed after this fix.
 
-## Remaining release gates
+## Published package qualification
 
-Commit the candidate, fast-forward the authorized main beta channel, pass exact-main CI, then run the clean-main publisher with the offline signing key. Qualify the same signed archive with both current and deployed 0.3.1 installers through success and forced rollback. Publish new assets without replacing 0.3.1, and independently download/verify the production release. Owner confirmation remains required for actual Pi reboot, screen power handoff and real phone/hardware behavior.
+The signed source/tag is `383552f5f545551f97e6df26574f770bacdc7b1f`; exact-main [CI 37889097051](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37889097051) passed. Clean Linux signing checkout: `/home/luma-build/luma-032-release.yb2gMYwd/repo`. The existing publisher completed its full local test/sign/qualification path while CI ran independently; log `/home/luma-build/luma-032-release.yb2gMYwd/publish.log`. Both current and exact deployed 0.3.1 installers passed successful switch and forced health-failure rollback with every synthetic SQLite row unchanged. Service controls and health replies in this lab are synthetic, not Pi acceptance.
+
+After both gates passed, publication rechecked clean main, exact head, latest successful CI for that head, ascending unused version/tag, notes matching the committed file, archive signature/hash and current whole-source fingerprint. The qualified archive was uploaded without rebuilding it. The annotated tag remains pinned to that exact source; subsequent documentation-only commits do not move it. No previous asset was replaced and the offline private key was not uploaded.
+
+Final exact-main production wall/remote browser labs passed: `/tmp/luma-031-user-setup.bxc6ksbt` and `/tmp/luma-030-mobile.DEAPjMA4`, logs `/tmp/luma-032-final-main-progress.log` and `/tmp/luma-032-final-main-remote.log`; session `17052` is finished. Both tested the exact compiled candidate from the clean signing checkout. The remote response-delay regression, independent wall progress, primary/secondary authorization and clearing all passed with no runtime errors.
+
+The stable GitHub metadata targets `main`, with title **Luma 0.3.2 Beta**, draft/prerelease flags false. Publication time: **2026-10-09 05:42:00 UTC** (October 8 in the owner's timezone). The production `latest_release('0.3.1')` downloaded and signature-verified bytes identical to the qualified local archive; that fetcher is unchanged from deployed 0.3.1. Checking from 0.3.2 reports current.
+
+- Archive: `luma-update-0.3.2.lup`, **1,920,700 bytes**, **81 signed files**.
+- Archive SHA-256: `8571197c8a25b4a0a3a5071bc690ff0ad3c457c6d80fac6606fb9e8391c71ade`.
+- Source-input SHA-256: `2e2bedb9ceafdd58d9e171f9bf1eb4350a50a3158d3857c2d232275887458880`.
+- Qualified local archive: `/home/luma-build/luma-032-release.yb2gMYwd/luma-update-0.3.2.lup`.
+- Production-download report: `/home/luma-build/luma-032-release.yb2gMYwd/download-report.json`.
+
+Session `71688` completed successfully; `17052` is also finished. The earlier aborted publication wait `31726` made no tag or release and must not be resumed. No owner's Pi, settings, account, bond or hardware was modified during qualification.
+
+## Next owner checks
+
+Install through the wall's Settings → Luma software, keep power connected through reboot, verify 0.3.2 and preserved accounts/timers/games. Confirm the new Home/Calendar/To-do spacing and readable rulers on the physical screen, plus phone settings changes appearing live. On a subsequent release, check phone-started progress outside Settings and during Sleep, followed by exactly one reboot and normal return. Report exact version/status on failure; do not repeatedly install, erase the card or infer v1 hardware acceptance from build-host tests.
 
 ## Resume paths
 

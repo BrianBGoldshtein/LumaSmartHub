@@ -1,6 +1,16 @@
 # Luma development status — 2026-10-08
 
-## Current published Beta — 0.3.0
+## Current published Beta — 0.3.2
+
+[0.3.2 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.2) from signed/tagged source `383552f5f545551f97e6df26574f770bacdc7b1f`. It restores cohesive full-width tasks/Home layouts and readable hour rulers, adds independent wall progress for future phone-started updates, and requests exactly one graceful reboot after a verified successful installation. Ordinary remote settings changes refresh live. Final qualification passed **2,163 backend / 203 frontend / 43 packaging tests**, both UI builds and exact-main CI, plus successful switch and forced rollback with both current and deployed 0.3.1 installers. The production download client verified bytes identical to the qualified signed archive. No dependency/schema/game-rule changes were made.
+
+For this first upgrade, initiate **on the wall** through Settings → Luma software, review 0.3.2, install and keep power connected through reboot. Verify the installed version and saved state. The older running wall gains the global monitor only after installation. Actual Pi reboot, physical display handoff and hardware acceptance remain owner checks. See [release notes](docs/V032_RELEASE_NOTES.md) and [qualification evidence](docs/V032_WORKING_NOTES.md). Older sections below are commissioning history, not current install instructions.
+
+## Previous published Beta — 0.3.1
+
+[0.3.1 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.1) added one primary plus up to four secondary users, separate calendars/timers, guided setup, coordinated phone presence and own-account private remotes. Those features and saved state are retained in 0.3.2. See [multi-user setup](docs/MULTI_USER_SETUP.md).
+
+## Previous published Beta — 0.3.0
 
 Owner confirmed the private Safari/Home Screen remote approach. [0.3.0 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.0) from main commit **99081bb0972d77d03afaf4860b25d7e5cdb514c9**: themed mobile preview/settings/software controls, PIN-approved browser enrollment/revocation, live ANCS-gated signed requests, optional separate Google Web consent and no private offline cache. Exact-main CI, **1,697 backend / 189 frontend / 43 packaging tests**, production builds, browser/privacy checks, hardened gateway smoke and exact signed switch/health-failure rollback passed. The same archive passed the accepted 0.2.11 verifier/installer; GitHub's download passed the production fetcher and matched the locally qualified bytes.
 

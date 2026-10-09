@@ -13,6 +13,8 @@ OS image.
 
 Current workflow: the owner has authorized signed Beta releases from `main`, with a **Beta** headline on a stable `vX.Y.Z` GitHub Release (not a prerelease). The installed Pi already has this updater. The first-image/feature-branch history below describes earlier commissioning, not a reason to reflash for an ordinary app update.
 
+From 0.3.2 onward, a wall monitor independent of Settings observes phone-started installation. It retains progress during API restarts, temporarily makes night/off progress readable without saving a manual wake, and hides private information during that output override. The protected new broker requests one graceful systemd reboot only after durable installation success and an exact active-release match. Its exclusive durable marker prevents repeated requests after ordinary boot or denied reboot; failed/rolled-back releases do not qualify. A fresh-HTML reload is a fallback if reboot cannot be requested. Ordinary remote settings changes publish live snapshots without rebooting. For the first upgrade from 0.3.1 into 0.3.2, initiate from the wall Settings page: the old wall does not yet contain the global monitor. Owner hardware confirmation is still required for physical power handoff and reboot.
+
 [0.2.9 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.2.9) also publishes `luma-keyword-0.2.9.lka`, a separately signed ~46 MB phonetic wake model/runtime. Source-pinned vendor hashes, canonical manifest, signature and every payload are checked before offline installation in a private optional venv. It does not alter the application's dependency contract or saved settings. Both staging and the final relocated path must pass the worker protocol smoke. Interruption recovery is scoped to installer-owned paths. Preparation is interlocked with voice/speaker checks and never qualifies the owner's microphone or identity. The app-only update can finish before the separate model download; Settings → Voice reports preparation and commands wait rather than use a sensitive fallback. The offline publisher requires exact signed payload verification and isolated ARM64 installation before attaching this asset; it never uploads the private key. Published artifact hashes and actual public-feed verification are recorded in [V029_WORKING_NOTES.md](V029_WORKING_NOTES.md).
 
 The on-device **Settings → Luma software → Check for updates** control checks
@@ -147,8 +149,10 @@ second atomic switch to the previous release and service restart. Old releases
 are retained; this first implementation deliberately does not prune them.
 After a successful health check, the root update broker asks systemd to restart
 it from the newly active release, so future checks and installs use the updated
-broker code too. Its short-lived status returns to `idle` after that restart;
-the Settings screen confirms completion by matching the installed app version.
+broker code too. The durable status retains the final outcome; the Settings
+screen confirms completion by matching the installed app version. Beginning
+with 0.3.2, the newly active broker then requests the guarded one-time graceful
+reboot described above. This is not an OS replacement or a settings reset.
 After success, remove the uploaded archive yourself when convenient; Luma does
 not keep a copy or upload telemetry.
 

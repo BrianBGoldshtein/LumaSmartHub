@@ -1,6 +1,6 @@
 # Private iPhone remote
 
-[0.3.2 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.2). For the first upgrade into 0.3.2, use the wall's **Settings → Luma software → Check for updates → review 0.3.2 → Install**. Keep power connected through the verified reboot. Afterward, future phone-started installations show independent wall progress, including during night/display-off mode. Ordinary settings changes refresh live without rebooting. Do not reflash your card or reset a working phone bond. Separate secondary remotes are described in [multi-user setup](MULTI_USER_SETUP.md).
+[0.3.5 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.5). Install through **Settings → Luma software → Check for updates → review 0.3.5 → Install** and keep power connected through the verified reboot. Reopen the enrolled primary remote → Settings → unlock → All hub settings for the shared settings and guided setup. Phone-started installations show independent wall progress, including during night/display-off mode; ordinary settings changes refresh live without rebooting. Do not reflash your card or reset a working phone bond. Separate secondary remotes are described in [multi-user setup](MULTI_USER_SETUP.md).
 
 ## What you need
 
@@ -21,10 +21,14 @@ If a QR expires, request another. If the phone or hub code differs, do not appro
 ## Controls
 
 - **Hub:** large time/weather, upcoming events, tasks, named timers, leaving summary and wall page/sleep controls. Tasks use the same completed color and Google's event revision checks as the wall hub.
-- **Settings:** theme, brightness/volume, weather/timezone, night/voice/chime options, wall cycle and agenda/task/sleep/leaving calendar selections. Microphone calibration, pairing, network setup, PIN and privileged recovery stay on the physical hub.
+- **Settings:** from 0.3.5, the primary's **All hub settings** contains the actual wall settings and guided setup, including Users, Google, voice calibration, networks, Bluetooth, PIN/token changes, backups and updates. Unlock with the primary PIN. Sensitive changes require a fresh PIN and explicit review; changing network, PIN or phone access may disconnect you. Secondary remotes retain only their own controls and timers.
 - **Software:** the primary remote checks the signed GitHub release, shows its notes and requires explicit installation confirmation. From installed 0.3.2 onward the wall also shows independent progress, retains it through temporary API outages, and requests one graceful reboot only after verified success. Acceptance is not success: check the final installed version. If the link drops during reboot, keep Pi power connected and reconnect before deciding whether to retry.
 
 The browser saves only its nonexportable signing key, public key and browser ID. It does not save an offline calendar/settings preview. Hidden/offline windows clear private contents and stop polling; iOS can suspend a window, so this cannot promise erasure of screenshots or OS app snapshots. Tailscale alone does not unlock private synchronization.
+
+The shared settings use Safari's keyboard, not the wall keyboard. Voice calibration listens through the **Pi microphone**; speak near the hub even though the controls are on your phone. Backups write to the **Pi's USB drive**, using the wall browser's game checkpoints. Personal setup stays saved on the Pi; reopen it through Users after an application restart. For a secondary user's Google consent, that person signs in through **their own** enrolled remote → My calendars.
+
+**USB cooling** is optional and off by default. Keep the phone remote available for its five-second physical fan test: all onboard USB ports may turn off together, temporarily disabling the mouse. Remove USB storage before testing. Confirm only after seeing the fan stop and restart; the reported hub power bits cannot confirm physical operation. See [0.3.5 cooling instructions](V035_RELEASE_NOTES.md).
 
 ## Optional Google sign-in on the phone
 

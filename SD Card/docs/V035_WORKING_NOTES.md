@@ -48,4 +48,16 @@ Release preparation must rerun final exact-source suites/builds and signed archi
 
 Hardware checklist: compatible onboard USB power switching/firmware; five-second fan stop/restart; mouse return; attached unmounted drive protects power; update holds power on; actual temperature cools at a quiet physical fan setting; phone Keep USB on override; drive plugged during off is discovered within the bounded window; failed test leaves automatic disabled. A fan needs a real inlet/exhaust through the enclosure.
 
+## Final software qualification
+
+Source commit `eeea9bbd3d0beecb618ceae234525ec73c34a384` passed **2,238 backend / 210 frontend / 43 packaging tests** and both production builds. The exact signed archive passed installation, service switch and forced health-failure rollback using both its candidate installer and the immutable published 0.3.4 installer. Synthetic database state was preserved during those checks. These Linux tests do not establish physical Pi acceptance.
+
+The final complete remote browser fixture passed with no JavaScript errors, including primary shared settings, guided secondary-user creation, secondary isolation, remote changes reaching the wall, update progress and disconnect/background/offline/revocation clearing. Report: `/tmp/luma-030-mobile.3RUrRnhi/result.json`. The final themed settings audit passed 24 cases with native phone input and no horizontal overflow; report `/tmp/luma-030-mobile.SPQrlbKK/result.json`, screenshots copied to workspace `qa/0.3.5-shared-settings/final`.
+
+Signed artifact: **2,134,636 bytes**, **92 files**, SHA-256 `7605048f2f999d78321b8f01fc359d4b4d3b040635d5b9b2c792e4ebe0b0799c`; source fingerprint `a4d38109eed9525b2914e0adaac823fd186606b4b7ae1f2736d0039e7f1ff9ea`. Isolated release lab: `/home/luma-build/luma-035-release.7TuSO7wy`. The private key remains outside the repository and GitHub.
+
+[Exact-source CI run 37910434233](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/37910434233) passed on attempt two. The first attempt timed out midway through the backend suite without an assertion failure; its completed log is retained as `ci-completed.log` in the release lab. A full independent local Python 3.11 run also passed all 2,238 tests in 327.63 seconds. The rerun used the same source commit, not a weakened test suite or changed release.
+
+[Luma 0.3.5 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.5) was published on 2026-10-09 at 09:57:10 UTC, targeting main with immutable tag `v0.3.5` at the qualified source commit. Luma's production `latest_release('0.3.4')` fetcher downloaded it, validated metadata and the signed payload, and confirmed byte-for-byte equality with the qualified local archive and matching source fingerprint. No Pi was changed during qualification or publication. Hardware checks above remain open; software release and physical acceptance are separate.
+
 The [uhubctl Pi 4 hardware notes](https://github.com/mvp/uhubctl#raspberry-pi-4b) describe the two ganged hub views and VL805 firmware prerequisite `00137ad` or newer. Do not automatically modify firmware. Physical fan observation remains required even if reported hub status changes.

@@ -13,11 +13,16 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.4 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.4).
+Latest: [Luma 0.3.5 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.5).
 Use **Settings → Luma software → Check for updates**;
-review **0.3.4**, install and keep power connected through the verified reboot.
+review **0.3.5**, install and keep power connected through the verified reboot.
 Confirm the installed version afterward. Do not reflash its SD card.
-This release adds a soft local notification bell and retains live built-in Pi
+This release adds shared primary-phone settings and guided setup, including
+secondary-user enrollment, optional temperature-controlled USB fan power and
+twenty-second idle wall cursor hiding. The primary remote's **All hub settings**
+uses the wall's setup screens; sensitive changes require a fresh primary PIN
+and explicit review. Secondary remotes remain personal-only.
+It retains the soft local notification bell and live built-in Pi
 CPU temperature in wall Settings and authorized iPhone Hub previews,
 cohesive layouts, wall update progress and a
 graceful reboot after verified installation. Ordinary phone settings changes
@@ -40,8 +45,8 @@ upgrade now requests one graceful Pi reboot; it does not replace the OS image.
 The already-running 0.3.1 wall gains the global progress monitor only after installing 0.3.2. See the
 [multi-user guide](SD%20Card/docs/MULTI_USER_SETUP.md),
 [iPhone setup](SD%20Card/docs/IPHONE_REMOTE.md),
-[0.3.2 changes and owner checks](SD%20Card/docs/V032_RELEASE_NOTES.md) and
-[release qualification evidence](SD%20Card/docs/V032_WORKING_NOTES.md).
+[0.3.5 changes and owner checks](SD%20Card/docs/V035_RELEASE_NOTES.md) and
+[release qualification evidence](SD%20Card/docs/V035_WORKING_NOTES.md).
 
 ## What it does
 
@@ -103,6 +108,12 @@ The project is designed for this owner-selected set:
 - A ventilated enclosure with Pi clearance for the HAT, cable bends, cooling
   and a secure wall mount is required for permanent installation. It is not
   required for initial bench bring-up.
+- Optional quiet **5 V USB fan** with a physical speed switch and a real
+  enclosure inlet/exhaust. Automatic cooling requires compatible Pi 4 USB
+  power switching and a confirmed physical stop/restart test. All onboard USB
+  ports switch together; this is on/off control, not variable voltage or PWM.
+  Always-on power remains the default. See the
+  [cooling instructions](SD%20Card/docs/V035_RELEASE_NOTES.md).
 
 No extra GPU, cloud-AI subscription, Home Assistant server or second Pi is part
 of the current design. Optional later room-device hardware is documented in
@@ -179,8 +190,8 @@ not be upgraded merely because a software suite or emulator passes.
 The device checks signed releases targeted to `main`, not raw branch files;
 the private signing key stays on the Linux build machine and outside GitHub.
 The owner has approved `main` for explicitly labeled beta releases. The
-installed Pi's last reported version is 0.2.9; 0.2.10 follows the same signed
-GitHub updater path and preserves its dependency and saved-data contracts. Hardware
+0.3.5 release follows the signed GitHub updater path and preserves existing
+settings, accounts, profiles and working phone bonds. Hardware
 acceptance and v1 publication remain separate decisions.
 In-place update scope, release publishing, verification, rollback and recovery are documented in
 [`SD Card/docs/UPDATE_DEPLOYMENT.md`](SD%20Card/docs/UPDATE_DEPLOYMENT.md).

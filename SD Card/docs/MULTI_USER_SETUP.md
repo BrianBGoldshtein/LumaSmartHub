@@ -8,6 +8,8 @@ Use these steps after installing the verified 0.3.1 Beta. One primary and up to 
 2. Under **Add someone**, enter a unique nickname, then tap **Approve & begin guided setup**. The name identifies their roster, calendar panel and arrival screen; it does not authenticate them.
 3. Hand the wall screen to that person. They can complete their approved personal setup without your phone remaining connected. Global settings, user management and updates remain primary-only.
 
+From 0.3.5, the primary can instead open the enrolled phone remote → Settings → unlock → **All hub settings → Users**, then approve and begin the same guided setup. The primary phone must remain authorized while it administers that flow. Let the secondary user pair their phone, approve their own browser and grant their own Google consent; do not sign them into the primary's account. On their enrolled remote, **My calendars** finishes their personal Google/calendar/sharing steps. If the primary remote disconnects, resume through Users; uncertain changes are not automatically replayed.
+
 The hub supports five profiles total. **Open personal setup** resumes an existing person's flow. **Rename** changes their display name, not their phone or credentials. **Change phone…** clears that person's registration and access grants, retaining Google choices; it does not erase a Bluetooth bond. **Remove user…** deletes their Luma credentials/cache/timer/grants, never their Google calendar events. Review these confirmations carefully.
 
 ## Secondary: finish your own setup

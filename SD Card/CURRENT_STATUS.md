@@ -1,10 +1,14 @@
 # Luma development status — 2026-10-09
 
-## Next draft 0.3.5
+## Current published Beta — 0.3.5
 
-Local development adds opt-in temperature-controlled USB fan power, twenty-second wall cursor hiding and shared primary-phone settings/setup, including guided secondary-user setup. The owner explicitly approved sensitive remote controls. Access remains primary-only, PIN-protected and tied to live phone authorization. This draft is not signed or published. See [active implementation and remaining gates](docs/V035_WORKING_NOTES.md). Published 0.3.4 below remains unchanged.
+[0.3.5 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.5) from tagged source `eeea9bbd3d0beecb618ceae234525ec73c34a384`. It adds opt-in temperature-controlled USB fan power, twenty-second wall cursor hiding and the shared primary-phone settings/setup screens, including guided secondary-user setup. The owner explicitly approved sensitive remote controls; access remains primary-only, PIN-protected and tied to live phone authorization.
 
-## Current published Beta — 0.3.4
+Qualification passed **2,238 backend / 210 frontend / 43 packaging tests**, both production builds, exact-source CI, signed switch/forced rollback with both candidate and published 0.3.4 installers, the complete remote browser fixture and 24 themed mobile settings cases. GitHub's production download verified and matched the qualified archive: **2,134,636 bytes**, 92 files, SHA-256 `7605048f2f999d78321b8f01fc359d4b4d3b040635d5b9b2c792e4ebe0b0799c`. See [release notes and owner checks](docs/V035_RELEASE_NOTES.md) and [qualification evidence](docs/V035_WORKING_NOTES.md).
+
+Install from **Settings → Luma software → Check for updates → review 0.3.5 → Install**; keep power connected through the successful-update reboot, then confirm version and saved state. On the enrolled primary phone, reopen the remote → Settings → unlock → All hub settings. No reflash or account/bond reset is required. Physical USB fan stop/restart, cooling, actual Safari and Pi acceptance remain owner tests. Automatic fan control stays disabled until its physical qualification succeeds. Previous release artifacts below remain immutable.
+
+## Previous published Beta — 0.3.4
 
 [0.3.4 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.4) from tagged source `55f9aadd3037f75c8df708a6ecf692dbc7c9f5e0`. Notifications, departure reminders and existing arrival/departure cues use one soft, locally synthesized 1.2-second bell instead of electronic two-note beeps. Saved volume, at-most-once delivery, quiet/privacy rules, timer alarms and speech remain unchanged. All 0.3.3 temperature features are retained; its published artifact remains immutable.
 

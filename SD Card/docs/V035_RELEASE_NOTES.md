@@ -1,6 +1,6 @@
 # Luma 0.3.5 Beta
 
-This application update adds the full primary iPhone settings experience, optional USB fan switching and an idle mouse cursor. Keep the existing SD card and saved configuration; no reflash is needed. Install only after the signed GitHub release is published.
+This [signed application update](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.5) adds the full primary iPhone settings experience, optional USB fan switching and an idle mouse cursor. Keep the existing SD card and saved configuration; no reflash is needed. Install from Settings → Luma software → Check for updates → review 0.3.5 → Install. Keep power connected through the successful-update reboot, then verify the installed version and saved state.
 
 ## Primary iPhone settings
 

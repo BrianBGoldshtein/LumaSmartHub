@@ -13,6 +13,7 @@ import sys
 from contextlib import suppress
 from time import monotonic
 import wave
+from functools import lru_cache
 
 from .voice_asset import ASSET_ROOT, MODEL, VOICE_ID, ready
 
@@ -253,19 +254,34 @@ def play_test_tone() -> str:
 
 
 def notification_cue_pcm(level: int) -> bytes:
-    """One restrained two-note Luma cue, distinct from the timer alarm."""
+    """Original soft struck-bell cue, not a copied platform sound."""
     if type(level) is not int or not 0 <= level <= 100:
         raise ValueError("notification cue volume must be 0 to 100")
+    return _notification_bell_pcm(level)
+
+
+@lru_cache(maxsize=8)
+def _notification_bell_pcm(level: int) -> bytes:
+    # A single strike with slightly inharmonic resonances. Bright modes die
+    # first; the warm body rings out instead of stepping between beep notes.
+    # Cache only eight bounded PCM buffers in memory; no saved audio/assets.
     rate = 22050
+    duration = 1.2
+    modes = ((1.0, .52, .36), (2.01, .26, .24), (2.756, .13, .16),
+             (4.07, .06, .10), (5.43, .025, .075))
+    count = round(rate * duration)
     pcm = bytearray()
-    for frequency, duration in ((659.25, .15), (0, .045), (987.77, .23)):
-        count = round(rate * duration)
-        for index in range(count):
-            envelope = min(1.0, index / (rate * .012),
-                           (count - index - 1) / (rate * .07)) if frequency else 0
-            value = round(32767 * .12 * level / 100 * envelope *
-                          math.sin(2 * math.pi * frequency * index / rate))
-            pcm.extend(struct.pack("<h", value))
+    for index in range(count):
+        elapsed = index / rate
+        attack = 1 - math.exp(-elapsed / .004)
+        tail = max(0.0, min(1.0, (count - index - 1) / (rate * .18)))
+        # Smoothstep to zero at the end, avoiding a click or a hard cutoff.
+        fade = tail * tail * (3 - 2 * tail)
+        bell = sum(weight * math.exp(-elapsed / decay) *
+                   math.sin(2 * math.pi * 659.25 * ratio * elapsed)
+                   for ratio, weight, decay in modes)
+        value = round(32767 * .12 * level / 100 * attack * fade * bell)
+        pcm.extend(struct.pack('<h', value))
     return bytes(pcm)
 
 

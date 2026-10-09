@@ -134,12 +134,42 @@ def test_notification_cue_is_short_bounded_and_scales_with_volume():
     low = notification_cue_pcm(20)
     high = notification_cue_pcm(80)
     assert len(low) == len(high)
-    assert 15000 < len(low) < 25000  # Under half a second at 22.05 kHz/16-bit.
+    assert len(low) == round(22050 * 1.2) * 2  # One short bell with its decay.
     assert max(abs(int.from_bytes(low[i:i+2], 'little', signed=True)) for i in range(0, len(low), 2)) < \
            max(abs(int.from_bytes(high[i:i+2], 'little', signed=True)) for i in range(0, len(high), 2))
     for invalid in (-1, True, 101):
         with pytest.raises(ValueError):
             notification_cue_pcm(invalid)
+
+
+def test_notification_bell_has_smooth_ends_natural_decay_and_no_clipping():
+    import math
+    import struct
+    samples=struct.unpack('<'+'h'*(len(notification_cue_pcm(100))//2),notification_cue_pcm(100))
+    assert samples[0]==samples[-1]==0
+    assert max(abs(sample) for sample in samples)<32767*.12
+    def rms(start,end):
+        window=samples[round(start*22050):round(end*22050)]
+        return math.sqrt(sum(value*value for value in window)/len(window))
+    assert rms(.8,1.0)<rms(.02,.15)*.2
+    # One ringing tail, not a silent gap followed by a new electronic note.
+    assert all(rms(start,start+.05)>0 for start in [.05,.15,.25,.4,.6,.8,1.0])
+    assert notification_cue_pcm(0)==bytes(len(samples)*2)
+    assert notification_cue_pcm(35)==notification_cue_pcm(35)
+
+
+def test_notification_bell_has_multiple_resonances_not_a_single_beep():
+    import math
+    import struct
+    pcm=notification_cue_pcm(100)
+    samples=struct.unpack('<'+'h'*(len(pcm)//2),pcm)[:round(.16*22050)]
+    def energy(frequency):
+        sine=sum(value*math.sin(2*math.pi*frequency*i/22050) for i,value in enumerate(samples))
+        cosine=sum(value*math.cos(2*math.pi*frequency*i/22050) for i,value in enumerate(samples))
+        return math.hypot(sine,cosine)
+    assert energy(659.25)>energy(900)*8
+    assert energy(659.25*2.01)>energy(1100)*8
+    assert energy(659.25*2.756)>energy(1600)*5
 
 
 def test_notification_cue_uses_the_same_explicit_local_route_as_voice(monkeypatch):

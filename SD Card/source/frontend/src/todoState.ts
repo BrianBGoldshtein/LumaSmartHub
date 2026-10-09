@@ -32,14 +32,15 @@ export function deadlineStatus(dueDate:string|undefined,today:string,theme:Theme
   return {daysUntil,color,label,kind};
 }
 
-export function taskPages(tasks:CalendarEvent[],page:number){
+export function taskPages(tasks:CalendarEvent[],page:number,capacity=3){
+  if(!Number.isInteger(capacity)||capacity<1||capacity>3)throw Error('Invalid task page capacity');
   const byDue=(a:CalendarEvent,b:CalendarEvent)=>(a.due_date || '').localeCompare(b.due_date || '')
     || (a.summary || '').localeCompare(b.summary || '') || a.id.localeCompare(b.id);
   const outstanding=tasks.filter(task=>!task.completed).sort(byDue);
   const completed=tasks.filter(task=>task.completed).sort(byDue);
   // Keep complete-only pages separate so they can rotate more quickly.
-  const groups=[...Array.from({length:Math.ceil(outstanding.length/3)},(_,i)=>outstanding.slice(i*3,i*3+3)),
-    ...Array.from({length:Math.ceil(completed.length/3)},(_,i)=>completed.slice(i*3,i*3+3))];
+  const groups=[...Array.from({length:Math.ceil(outstanding.length/capacity)},(_,i)=>outstanding.slice(i*capacity,(i+1)*capacity)),
+    ...Array.from({length:Math.ceil(completed.length/capacity)},(_,i)=>completed.slice(i*capacity,(i+1)*capacity))];
   const count=Math.max(1,groups.length);
   const index=((page%count)+count)%count;
   const items=groups[index] || [];

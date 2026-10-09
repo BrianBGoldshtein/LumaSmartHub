@@ -37,15 +37,22 @@ try{
       panels:[...document.querySelectorAll('.user-panel')].map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom};}),
       appointments:[...document.querySelectorAll('.user-appointment')].map(e=>{const r=e.getBoundingClientRect(),s=e.querySelector('strong');return {height:r.height,titleHeight:s.getBoundingClientRect().height,font:parseFloat(getComputedStyle(s).fontSize)};}),
       tracks:[...document.querySelectorAll('.user-appointments')].map(e=>({width:e.clientWidth,scroll:e.scrollWidth})),
-      font:getComputedStyle(document.querySelector('.user-panel h2')).fontFamily}))()`);
+      tasks:[...document.querySelectorAll('.user-task')].map(e=>{const r=e.getBoundingClientRect(),title=e.querySelector('strong').getBoundingClientRect(),due=e.querySelector('small').getBoundingClientRect();return {width:r.width,available:e.parentElement.clientWidth,top:r.top,bottom:r.bottom,titleTop:title.top,dueBottom:due.bottom};}),
+      rulers:[...document.querySelectorAll('.user-hour time')].map(e=>{const range=document.createRange();range.selectNodeContents(e);const r=range.getBoundingClientRect(),track=e.closest('.user-timeline').querySelector('.user-appointments').getBoundingClientRect();return {right:r.right,trackLeft:track.left};}),
+      headings:document.querySelectorAll('.user-panel h2').length,
+      font:getComputedStyle(document.querySelector('.user-panel')).fontFamily}))()`);
     assert.equal(report.overflow,false,`${theme}/${count}/${page}/${width}: page overflow`);
+    assert.equal(report.headings,count===1?0:count,'Redundant sole-viewer name or missing shared identity');
+    assert.ok(report.tasks.every(t=>Math.abs(t.width-t.available)<2),`${theme}/${count}/${width}: task rows must use panel width ${JSON.stringify(report.tasks)}`);
+    assert.ok(report.tasks.every(t=>t.titleTop>=t.top&&t.dueBottom<=t.bottom),`${theme}/${count}/${width}: task content crosses card bounds ${JSON.stringify(report.tasks)}`);
+    assert.ok(report.rulers.every(r=>r.right+8<=r.trackLeft),`${theme}/${count}: ruler glyphs collide with events`);
     if(page==='agenda'&&fixture!=='empty')assert.ok(report.appointments.length>0,`${fixture}: timed appointments must be exercised`);
     assert.ok(report.tracks.every(t=>t.scroll<=t.width+1),`${theme}/${count}/${fixture}: overlapping events require scrolling ${JSON.stringify(report.tracks)}`);
     assert.ok(report.panels.every(r=>r.x>=-1&&r.right<=width+1&&r.y>=-1&&r.bottom<=height+1),`${theme}/${count}/${page}/${width}: panel beyond screen`);
     reports.push({width,theme,count,page,fixture,...report});
-    if(count===5&&width===2048&&fixture!=='empty'){
+    if((count===1||count===5)&&fixture!=='empty'){
       const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
-      await fs.writeFile(`${process.env.USER_QA_OUTPUT}/multi-${theme}-${page}-${fixture}.png`,Buffer.from(shot.data,'base64'));
+      await fs.writeFile(`${process.env.USER_QA_OUTPUT}/multi-${theme}-${count}-${width}-${page}-${fixture}.png`,Buffer.from(shot.data,'base64'));
     }
     if(page==='home'&&count===5){
       await value(`document.querySelector('.user-next-event')?.click()`);
@@ -55,6 +62,21 @@ try{
         await value(`document.querySelector('[aria-label="Close event details"]').click()`);
       }
     }
+  }
+  await send('Page.addScriptToEvaluateOnNewDocument',{source:`{const OriginalDate=Date,now=Date.parse('2026-10-09T04:38:00Z');window.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}};}`});
+  for(const theme of ['luma-glass','hearth','neon-grid'])for(const width of [1024,2048]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height:width*3/4,deviceScaleFactor:1,mobile:false});
+    await send('Page.navigate',{url:`${base}/?demo=1&hold=1&theme=${theme}&users=1&page=agenda&fixture=packed`});
+    await until(`document.querySelector('.user-panel')!==null&&document.fonts.status==='loaded'`);
+    for(let section=0;section<20&&!await value(`document.querySelector('.user-hour')!==null`);section++){
+      await value(`document.querySelector('[aria-label="Next shared section"]')?.click()`);
+      await new Promise(r=>setTimeout(r,70));
+    }
+    await value('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+    const rulers=await value(`([...document.querySelectorAll('.user-hour time')].map(e=>{const range=document.createRange();range.selectNodeContents(e);return {text:e.textContent,right:range.getBoundingClientRect().right,left:e.closest('.user-timeline').querySelector('.user-appointments').getBoundingClientRect().left};}))`);
+    assert.ok(rulers.some(r=>r.text.includes('PM')),'Late-night fixture must exercise actual evening labels');
+    assert.ok(rulers.every(r=>r.right+8<=r.left),`${theme}/${width}: evening time label covered`);
+    reports.push({theme,width,fixture:'evening',rulers});
   }
   await send('Page.addScriptToEvaluateOnNewDocument',{source:`{const OriginalDate=Date,now=Date.parse('2026-10-08T18:59:00Z');window.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}};}`});
   for(const theme of ['luma-glass','hearth','neon-grid'])for(const width of [320,390])for(const privacy of [false,true]){

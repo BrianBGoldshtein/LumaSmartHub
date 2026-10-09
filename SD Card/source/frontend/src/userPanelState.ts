@@ -1,6 +1,12 @@
 import type {UserPanel} from './types';
 import {upcomingAgendaSections,placeAgendaWindow,HOUR} from './agendaState.ts';
 
+// The corner roster already identifies a sole viewer. Retain attribution
+// when several people are present, even if only one configured calendars.
+export function showPanelIdentity(panelCount:number,presentCount:number){
+  return panelCount>1||presentCount>1;
+}
+
 /** Every present configured user stays visible; never silently rotate pairs. */
 export function userGrid(count:number){
   if(!Number.isInteger(count)||count<1||count>5)throw Error('Invalid user panel count');

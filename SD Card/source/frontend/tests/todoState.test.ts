@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {taskPages,taskDueLabel,deadlineStatus} from '../src/todoState.ts';
+
+test('dense shared panels use two tasks per slide without losing ordering or completion groups',()=>{
+  const tasks=Array.from({length:9},(_,i)=>({id:String(i),summary:String(i),due_date:`2026-10-${String(i+10).padStart(2,'0')}`,completed:i>=5})) as Parameters<typeof taskPages>[0];
+  const pages=Array.from({length:5},(_,page)=>taskPages(tasks,page,2));
+  assert.deepEqual(pages.flatMap(page=>page.items.map(task=>task.id)),tasks.map(task=>task.id));
+  assert.ok(pages.every(page=>page.items.length<=2));
+  assert.deepEqual(pages.map(page=>page.completedOnly),[false,false,false,true,true]);
+  for(const bad of [0,4,1.5])assert.throws(()=>taskPages(tasks,0,bad));
+});
 test('all tasks are reachable without shrinking the three-row design',()=>{
   const tasks=Array.from({length:14},(_,i)=>({id:String(i)})) as Parameters<typeof taskPages>[0];
   const ids=Array.from({length:5},(_,page)=>taskPages(tasks,page).items.map(item=>item.id)).flat();

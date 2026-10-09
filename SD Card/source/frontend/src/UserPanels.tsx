@@ -1,11 +1,18 @@
 import {useEffect,useMemo,useRef,useState,type CSSProperties} from 'react';
 import {ChevronLeft,ChevronRight,Check,X,Pause,Play} from 'lucide-react';
 import type {Snapshot,CalendarEvent} from './types';
-import {userGrid,synchronizedUserSections} from './userPanelState';
+import {userGrid,synchronizedUserSections,showPanelIdentity} from './userPanelState';
+import {useTimelineGutter} from './useTimelineGutter';
 import {calendarColor,eventKey,hourRulerTicks} from './agendaState';
 import {taskPages,deadlineStatus,taskDueLabel} from './todoState';
 import {wallRequest} from './PersonalWallControls';
 import './userPanels.css';
+
+function Timeline({children,revision}:{children:React.ReactNode;revision:string}){
+  const ref=useRef<HTMLDivElement>(null);
+  useTimelineGutter(ref,'.user-hour time','--user-gutter',revision);
+  return <div ref={ref} className="user-timeline">{children}</div>;
+}
 
 export function UserPanels({snapshot,mode,onInteraction,wallAccess=[]}:{snapshot:Snapshot;mode:'home'|'agenda'|'todos';onInteraction?:()=>void;wallAccess?:string[]}){
   const panels=snapshot.privacy_redacted?[]:snapshot.user_panels||[];
@@ -19,7 +26,7 @@ export function UserPanels({snapshot,mode,onInteraction,wallAccess=[]}:{snapshot
   const clock=(value:string|number)=>new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',timeZone:timezone}).format(new Date(value));
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now));
   const detail=panels.flatMap(panel=>panel.agenda.events).find(event=>eventKey(event)===selected);
-  const taskGroups=panels.map(panel=>taskPages(panel.todos,index));
+  const taskGroups=panels.map(panel=>taskPages(panel.todos,index,panels.length>=4?2:3));
   const taskCount=Math.max(1,...taskGroups.map(group=>group.count));
   const allCompleted=taskGroups.some(group=>group.items.length)&&taskGroups.every(group=>!group.items.length||group.completedOnly);
   const count=mode==='agenda'?sections.length:mode==='todos'?taskCount:1;
@@ -31,7 +38,7 @@ export function UserPanels({snapshot,mode,onInteraction,wallAccess=[]}:{snapshot
   if(!panels.length)return null;
   const grid=userGrid(panels.length);
   const style=(event:CalendarEvent)=>({'--event-color':calendarColor(event)} as CSSProperties);
-  const eventButton=(event:CalendarEvent)=> <button key={eventKey(event)} className="user-next-event" style={style(event)} onClick={e=>{returnFocus.current=e.currentTarget;setSelected(eventKey(event));}}><time>{event.all_day?'All day':clock(event.start)}</time><strong>{event.summary}</strong></button>;
+  const eventButton=(event:CalendarEvent)=> <button key={eventKey(event)} className="user-next-event" style={style(event)} onClick={e=>{returnFocus.current=e.currentTarget;setSelected(eventKey(event));}}><time>{event.all_day?'All day':clock(event.start)}</time><span className="user-event-copy"><strong>{event.summary}</strong></span></button>;
   async function toggleTask(task:CalendarEvent,uid:string){
     if(saving||!wallAccess.includes(uid)||!task.etag)return;
     onInteraction?.();
@@ -47,8 +54,9 @@ export function UserPanels({snapshot,mode,onInteraction,wallAccess=[]}:{snapshot
       {panels.map((panel,position)=>{
         const own=section?.panels.find(row=>row.profile_id===panel.profile_id)?.section;
         return <article key={panel.profile_id} className="user-panel" style={{gridColumn:`span ${grid.spans[position]}`}} aria-label={`${panel.nickname} ${mode==='todos'?'tasks':'calendar'}`}>
-          <header><h2>{panel.nickname}</h2>{panel.agenda.stale&&<span>Saved</span>}</header>
-          {mode==='home'&&<div className="user-next-list">{panel.calendar.slice(0,2).map(eventButton)}{!panel.calendar.length&&<p className="user-empty">Nothing upcoming</p>}</div>}
+          {showPanelIdentity(panels.length,snapshot.users?.length||panels.length)&&<header><h2>{panel.nickname}</h2>{panel.agenda.stale&&<span>Saved</span>}</header>}
+          {!showPanelIdentity(panels.length,snapshot.users?.length||panels.length)&&(mode==='todos'?panel.todo_controls.stale:panel.agenda.stale)&&<span className="user-saved" role="status">{mode==='todos'?'Saved tasks':'Saved calendar'}</span>}
+          {mode==='home'&&<div className="user-next-list" style={{'--next-rows':Math.max(1,Math.min(panel.calendar.length,panels.length>=4?1:2))} as CSSProperties}>{panel.calendar.slice(0,panels.length>=4?1:2).map(eventButton)}{!panel.calendar.length&&<p className="user-empty">Nothing upcoming</p>}</div>}
           {mode==='todos'&&<div className="user-task-list" style={{'--task-rows':Math.max(1,taskGroups[position].items.length)} as CSSProperties}>{taskGroups[position].items.map(task=>{
             const deadline=deadlineStatus(task.due_date,today,snapshot.settings.theme);
             return <article key={eventKey(task)} className={`user-task${task.completed?' is-complete':''}`} style={{...style(task),'--deadline-color':deadline.color} as CSSProperties}>
@@ -60,11 +68,11 @@ export function UserPanels({snapshot,mode,onInteraction,wallAccess=[]}:{snapshot
           })}{!panel.todos.length&&<p className="user-empty">All caught up</p>}</div>}
           {mode==='agenda'&&own&&<>
             {own.allDay.length>0&&<div className="user-all-day">{own.allDay.map(eventButton)}</div>}
-            {section.panels.some(row=>row.section.items.length>0)&&<div className="user-timeline">
+            {section.panels.some(row=>row.section.items.length>0)&&<Timeline revision={`${section.start}/${section.end}/${timezone}/${snapshot.settings.theme}`}>
               {hourRulerTicks(section.start,section.end).map(tick=><div key={tick} className="user-hour" style={{top:`${(tick-section.start)/(section.end-section.start)*100}%`}}><time>{clock(tick)}</time><span/></div>)}
               <div className="user-appointments"><div className="user-appointment-track">{own.items.map(item=><button key={eventKey(item.event)} className="user-appointment" style={{...style(item.event),'--event-lanes':item.columns,top:`${item.top}%`,height:`${item.height}%`,left:`${item.column/item.columns*100}%`,width:`${100/item.columns}%` } as CSSProperties} aria-label={`${item.event.summary}, ${clock(item.event.start)} to ${clock(item.event.end)}`} onClick={e=>{returnFocus.current=e.currentTarget;setSelected(eventKey(item.event));}}><strong>{item.event.summary}</strong><time>{clock(item.event.start)} – {clock(item.event.end)}</time></button>)}</div></div>
               {now>=section.start&&now<section.end&&<div className="user-now" style={{top:`${(now-section.start)/(section.end-section.start)*100}%`}}/>}
-            </div>}
+            </Timeline>}
           </>}
           {mode==='agenda'&&!section&&<p className="user-empty">Nothing upcoming</p>}
         </article>;

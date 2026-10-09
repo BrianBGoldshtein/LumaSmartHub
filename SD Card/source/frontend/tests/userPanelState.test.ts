@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {userGrid,synchronizedUserSections} from '../src/userPanelState.ts';
+import {userGrid,synchronizedUserSections,showPanelIdentity} from '../src/userPanelState.ts';
 import {hourRulerTicks,HOUR,eventKey} from '../src/agendaState.ts';
 import type {UserPanel,CalendarEvent} from '../src/types.ts';
 
@@ -9,6 +9,12 @@ const event=(id:string,from:number,to:number):CalendarEvent=>({id,calendar_id:'s
 const panel=(id:string,events:CalendarEvent[]):UserPanel=>({profile_id:id,nickname:id,configured:true,
   calendar:events,ongoing:[],todos:[],todo_controls:{can_update:false,stale:false},google:{authorized:true,last_synced:at(0),error:null,reconnect_required:false},
   agenda:{date:'2026-10-08',start:at(0),end:at(840),wake:null,sleep:null,stale:false,events}});
+
+test('sole viewer uses corner identity; shared screens retain account attribution',()=>{
+  assert.equal(showPanelIdentity(1,1),false);
+  assert.equal(showPanelIdentity(1,2),true);
+  for(let count=2;count<=5;count++)assert.equal(showPanelIdentity(count,count),true);
+});
 
 test('all five layout counts use every grid cell with no missing user or spare tile',()=>{
   for(let count=1;count<=5;count++){

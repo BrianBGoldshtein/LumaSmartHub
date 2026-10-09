@@ -76,3 +76,4 @@
 .theme-neon-grid .agenda-overview-event span { font-size:calc(5*var(--pixel)); }
 .theme-neon-grid .agenda-now::before { border-radius:0; }
 @media(max-width:620px) { .day-agenda { --agenda-gutter:80px; }.agenda-appointment time { font-size:16px; }.agenda-appointment strong { font-size:22px; }.agenda-hour time { font-size:16px; }.agenda-overview,.agenda-all-day.is-dense { grid-template-columns:1fr; }.theme-neon-grid .day-agenda { --agenda-gutter:calc(27*var(--pixel)); }.theme-neon-grid .agenda-appointment time,.theme-neon-grid .agenda-hour time { font-size:calc(5*var(--pixel)); }.theme-neon-grid .agenda-appointment strong { font-size:calc(7*var(--pixel)); } }
+.agenda-hour time {flex-shrink:0;box-sizing:border-box;}

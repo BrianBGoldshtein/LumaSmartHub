@@ -3,12 +3,14 @@ import {ChevronLeft,ChevronRight,Pause,Play,X} from 'lucide-react';
 import type {Snapshot,CalendarEvent} from './types';
 import {agendaSections,upcomingAgendaSections,calendarColor,eventKey,hourRulerTicks,HOUR} from './agendaState';
 import './agenda.css';
+import {useTimelineGutter} from './useTimelineGutter';
 
 // Only a position survives slide cycling, never event content or private text.
 let nextAgendaSection=0;
 export function AgendaPage({snapshot,onInteraction}:{snapshot:Snapshot;onInteraction?:()=>void}){
   const [index,setIndex]=useState(()=>nextAgendaSection),[columns,setColumns]=useState(2),[viewportHeight,setViewportHeight]=useState(600),[paused,setPaused]=useState(false),[fullDay,setFullDay]=useState(false),[selected,setSelected]=useState<string|null>(null);
   const root=useRef<HTMLElement>(null),close=useRef<HTMLButtonElement>(null),restoreFocus=useRef<HTMLButtonElement|null>(null);
+  const timeline=useRef<HTMLElement>(null);
   const agenda=snapshot.privacy_redacted?null:snapshot.agenda;
   const now=Date.parse(snapshot.server_time);
   const sections=useMemo(()=>agenda?(fullDay?agendaSections(agenda,columns,viewportHeight):upcomingAgendaSections(agenda,now,columns,viewportHeight)):[],[agenda,columns,viewportHeight,fullDay,now]);
@@ -16,6 +18,7 @@ export function AgendaPage({snapshot,onInteraction}:{snapshot:Snapshot;onInterac
   const hourMarks=section?hourRulerTicks(section.start,section.end):[];
   const detail=agenda?.events.find(event=>eventKey(event)===selected);
   const timezone=snapshot.settings.timezone;
+  useTimelineGutter(timeline,'.agenda-hour time','--agenda-gutter',`${section?.start}/${section?.end}/${section?.items.length}/${timezone}/${snapshot.settings.theme}`);
   const clock=(value:string|number)=>new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',timeZone:timezone}).format(new Date(value));
   const date=(value:string|number)=>new Intl.DateTimeFormat('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:timezone}).format(new Date(value));
   const weekday=(value:string|number)=>new Intl.DateTimeFormat('en-US',{weekday:'short',timeZone:timezone}).format(new Date(value));
@@ -31,7 +34,7 @@ export function AgendaPage({snapshot,onInteraction}:{snapshot:Snapshot;onInterac
       <div className="agenda-window-title"><h2>{section.allDay.length&&!section.items.length?'All day':`${weekday(section.start)} · ${clock(section.start)} – ${clock(section.end)}`}</h2>{section.dense&&<span>{section.items.length||section.allDay.length} events · scroll for all</span>}</div>
       {section.allDay.length>0&&section.items.length>0&&<section className="agenda-all-day-ribbon" aria-label="All-day event">{section.allDay.map(event=><button key={eventKey(event)} style={style(event)} onClick={e=>{restoreFocus.current=e.currentTarget;setSelected(eventKey(event));}}><strong>{event.summary}</strong><span>{event.calendar_name||'All day'} · All day</span></button>)}</section>}
       {section.allDay.length>0&&!section.items.length ? <section className={`agenda-all-day${section.dense?' is-dense':''}`} aria-label="All-day events">{section.allDay.map(event=><button key={eventKey(event)} style={style(event)} onClick={e=>{restoreFocus.current=e.currentTarget;setSelected(eventKey(event));}}><strong>{event.summary}</strong><span>{event.calendar_name||'All day'}</span></button>)}</section>:
-      <section className={`agenda-timeline${section.end-section.start<=60*60000?' is-zoom':''}`} aria-label={`Calendar from ${clock(section.start)} to ${clock(section.end)}`}>
+      <section ref={timeline} className={`agenda-timeline${section.end-section.start<=60*60000?' is-zoom':''}`} aria-label={`Calendar from ${clock(section.start)} to ${clock(section.end)}`}>
         {section.end-section.start<=HOUR&&Array.from({length:Math.ceil((section.end-section.start)/(5*60000))-1},(_,i)=>section.start+(i+1)*5*60000).filter(tick=>tick<section.end&&tick%HOUR!==0).map(tick=><div className="agenda-five-minute" key={tick} style={{top:`${(tick-section.start)/(section.end-section.start)*100}%`}} aria-hidden="true"/>)}
         {hourMarks.map(tick=><div className="agenda-hour" key={tick} style={{top:`${(tick-section.start)/(section.end-section.start)*100}%`}}><time>{clock(tick)}</time><span/></div>)}
         <div className="agenda-appointments"><div className="agenda-appointment-track" style={{'--agenda-lanes':Math.max(1,...section.items.map(item=>item.columns))} as CSSProperties}>{section.items.map(item=><button key={eventKey(item.event)} className={`agenda-appointment${item.height<28?' is-compact':''}${item.event.summary.length>44?' is-long-title':''}${item.event.summary.length>90?' is-verbose':''}${Date.parse(item.event.end)<=now?' is-past':''}`} style={{...style(item.event),'--agenda-top':`${item.top}%`,'--agenda-height':`${item.height}%`,'--agenda-left':`${item.column/item.columns*100}%`,'--agenda-width':`${100/item.columns}%`} as CSSProperties} onClick={e=>{restoreFocus.current=e.currentTarget;setSelected(eventKey(item.event));}} aria-label={`${item.event.summary}, ${clock(item.event.start)} to ${clock(item.event.end)}, ${item.event.calendar_name||'Calendar'}`}>

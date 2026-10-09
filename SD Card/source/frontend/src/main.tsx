@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {fitClockFont} from './clockFit';
 import { createRoot } from "react-dom/client";
+import {WallUpdateProgress} from './WallUpdateProgress';
 import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
 import "@fontsource/manrope/latin-600.css";
@@ -398,4 +399,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<React.StrictMode><App /></React.StrictMode>);
+createRoot(document.getElementById("root")!).render(<React.StrictMode><App /><WallUpdateProgress demo={demoMode}/></React.StrictMode>);

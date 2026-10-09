@@ -14,7 +14,7 @@ import subprocess
 import time
 from contextlib import suppress
 
-from .update_agent import APP_ROOT, MAX_BUNDLE_BYTES, PUBLIC_KEY, RELEASES_ROOT, UpdateError, apply_bundle, staged_bundle, verify_bundle
+from .update_agent import APP_ROOT, MAX_BUNDLE_BYTES, PUBLIC_KEY, RELEASES_ROOT, VERSION_RE, UpdateError, apply_bundle, staged_bundle, verify_bundle
 
 
 SOCKET = "/run/luma-update.sock"
@@ -235,7 +235,52 @@ async def serve():
     listener = socket.socket(fileno=3)
     refresh_connect_broker_after_027_upgrade()
     refresh_gateway_after_030_upgrade()
-    await _serve_listener(listener, UpdateBroker(refresh_service=_restart_service,status_path=STATUS_PATH))
+    async def finish_upgrade():
+        # The old installer restarts this broker after committing success.
+        # Give the wall/phone time to receive the durable health-check result.
+        await asyncio.sleep(5)
+        await asyncio.to_thread(reboot_after_verified_upgrade)
+    reboot_task=asyncio.create_task(finish_upgrade())
+    try:
+        await _serve_listener(listener, UpdateBroker(refresh_service=_restart_service,status_path=STATUS_PATH))
+    finally:
+        reboot_task.cancel()
+
+
+def reboot_after_verified_upgrade(*,status_path:Path=STATUS_PATH,app_root:Path=APP_ROOT,
+                                 releases_root:Path=RELEASES_ROOT,runner=subprocess.run)->bool:
+    """One graceful reboot per committed release, never on failure or every boot.
+
+    Claim the root-owned marker durably BEFORE asking systemd to reboot. A
+    interrupted request or a denied reboot cannot create a restart loop.
+    """
+    saved=ProgressStore(status_path).read()
+    if not saved or saved['state']!='installed':return False
+    version=saved.get('target_version')
+    if not isinstance(version,str) or not VERSION_RE.fullmatch(version):return False
+    if tuple(map(int,version.split('.'))) < (0,3,2):return False
+    try:
+        if releases_root.is_symlink() or not releases_root.is_dir() or not app_root.is_symlink():return False
+        root=releases_root.resolve(strict=True);current=app_root.resolve(strict=True)
+        if not current.is_relative_to(root):return False
+        manifest=json.loads((current/'.luma-release.json').read_text(encoding='utf-8'))
+        if not isinstance(manifest,dict) or manifest.get('version')!=version:return False
+        marker=root/f'.luma-reboot-requested-{version}'
+        descriptor=os.open(marker,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0),0o600)
+        with os.fdopen(descriptor,'wb') as stream:
+            stream.write(b'Verified update completed; one graceful reboot requested.\n')
+            stream.flush();os.fsync(stream.fileno())
+        directory=os.open(root,os.O_RDONLY|getattr(os,'O_DIRECTORY',0))
+        try:os.fsync(directory)
+        finally:os.close(directory)
+        runner(['/usr/bin/systemctl','--no-block','reboot'],check=True,timeout=8,
+               stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        return True
+    except FileExistsError:
+        return False
+    except (OSError,ValueError,TypeError,subprocess.SubprocessError):
+        log.exception('Post-update reboot could not be requested; release remains installed')
+        return False
 
 
 def refresh_connect_broker_after_027_upgrade(*, status_path: Path = STATUS_PATH,

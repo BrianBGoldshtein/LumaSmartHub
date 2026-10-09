@@ -75,6 +75,7 @@ export interface Settings {
 }
 
 export interface Snapshot {
+  presence_transition?: {id:number;remaining_ms:number;arriving:string[];leaving:string[]} | null;
   users?: {profile_id:string;nickname:string;role:'primary'|'secondary'}[];
   user_panels?: UserPanel[];
   personal_timers?: (import('./timerState').TimerState & {profile_id:string;owner:string;owner_present:boolean})[];

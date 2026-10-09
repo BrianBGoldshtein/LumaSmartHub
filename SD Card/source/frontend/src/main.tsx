@@ -28,6 +28,7 @@ import {AgendaPage} from './AgendaPage';
 import {UserPanels} from './UserPanels';
 import {PrimaryAdminGate} from './PrimaryAdminGate';
 import {UsersSetup,PersonalSetup} from './UserSetup';
+import {PresenceTransition} from './PresenceTransition';
 import {TransitPage} from './TransitPage';
 import {visibleTransit,disconnectedTransit,transitCycle,sampleTransit,transitStress} from './transitState';
 import {agendaDemo} from './agendaState';
@@ -48,6 +49,7 @@ function initialDemoSnapshot(): Snapshot {
   const privateMode = demoParameters.has("privacy");
   const result:Snapshot = {
     ...demoSnapshot,
+    presence_transition:demoParameters.get('arrival')?{id:1,remaining_ms:5000,arriving:demoParameters.get('arrival')==='all'?Array.from({length:5},(_,i)=>`User ${i+1} with a forty-character nickname`):demoParameters.get('arrival')==='mixed'?['Brian','Alex']:demoParameters.get('arrival')==='leave'?[]:[demoParameters.get('arrival')!],leaving:['mixed','leave'].includes(demoParameters.get('arrival')!)?['Sam']:[]}:null,
     voice_notice:demoParameters.get('voice')==='unknown'?{id:1,remaining_ms:3000}:undefined,
     transit:demoParameters.get('page')==='transit'?visibleTransit((demoParameters.get('fixture')==='long-transit'?transitStress:sampleTransit)(Date.parse(demoSnapshot.server_time)),privateMode):[],
     countdowns:demoParameters.get('page')==='countdowns'||demoParameters.get('fixture')==='countdowns'?visibleDates(demoParameters.get('fixture')==='many-dates'?Array.from({length:12},(_,i)=>({...sampleDates[i%3],id:`date-${i}`,title:`${sampleDates[i%3].title} ${i+1}`})):demoParameters.get('fixture')==='long-dates'?sampleDates.map(item=>({...item,title:'A long-awaited celebration with family and friends across the country',value:item.value===null?null:12345})):sampleDates,privateMode):[],
@@ -294,7 +296,7 @@ function App() {
     fetchSnapshot().then(receive).catch(() => setError("Waiting for the local service."));
     return watchSnapshots(receive, ()=>{
       // A lost control connection must never leave private events on the wall.
-      setSnapshot(current=>current ? {...current,room:null,agenda:null,users:[],user_panels:[],personal_timers:current.personal_timers?.map(timer=>({...timer,label:'Timer',owner_present:false})),transit:disconnectedTransit(current.transit),countdowns:disconnectedDates(current.countdowns),display:current.display && current.display.mode!=='day'?{...current.display,mode:'off',brightness:0,ramp:null,handoff:{...current.display.handoff,revision:null,needs_frame:false}}:current.display,privacy_redacted:true,departure:null,calendar:[],ongoing:[],todos:[],notifications:[],weather:current.weather?{...current.weather,stale:true,nudge:null}:null,state:{...current.state,phone_connected:false}} : null);
+      setSnapshot(current=>current ? {...current,presence_transition:null,room:null,agenda:null,users:[],user_panels:[],personal_timers:current.personal_timers?.map(timer=>({...timer,label:'Timer',owner_present:false})),transit:disconnectedTransit(current.transit),countdowns:disconnectedDates(current.countdowns),display:current.display && current.display.mode!=='day'?{...current.display,mode:'off',brightness:0,ramp:null,handoff:{...current.display.handoff,revision:null,needs_frame:false}}:current.display,privacy_redacted:true,departure:null,calendar:[],ongoing:[],todos:[],notifications:[],weather:current.weather?{...current.weather,stale:true,nudge:null}:null,state:{...current.state,phone_connected:false}} : null);
     }, action=>{
       if(action.overlay) setOverlay(action.overlay==='timer'?'timer':'controls');
       if(action.page && ["show_page","next_page","previous_page","good_morning"].includes(action.name)) setPage(action.name === "good_morning" ? "home" : action.page);
@@ -355,6 +357,7 @@ function App() {
       {!snapshot.privacy_redacted && <nav className="page-dots" aria-label="Dashboard pages">{(["home", "agenda", "weather", "todos", "ambient",...(hasDates?['countdowns']:[]),...(hasTransit?['transit']:[])] as Page[]).map((item) => <button aria-label={item} className={page === item ? "active" : ""} onClick={() => setPage(item)} key={item} />)}</nav>}
       <AssistantOrb phase={snapshot.state.assistant_phase} onClick={() => setPage("home")} />
       <VoiceNotice notice={snapshot.voice_notice}/>
+      {snapshot.timer?.status!=='complete' && !snapshot.personal_timers?.some(timer=>timer.status==='complete') && <PresenceTransition transition={snapshot.presence_transition}/>}
       <ControlIsland snapshot={snapshot} onUpdate={setSnapshot} open={overlay==='controls'} setOpen={open=>setOverlay(open?'controls':null)} onTimer={()=>setOverlay('timer')} />
       {overlay==='timer' && <TimerPanel snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}
       {overlay==='departure' && !snapshot.privacy_redacted && snapshot.departure && <DeparturePanel key={snapshot.departure.key} snapshot={snapshot} demo={demoMode} onUpdate={setSnapshot} onClose={()=>setOverlay(null)}/>}

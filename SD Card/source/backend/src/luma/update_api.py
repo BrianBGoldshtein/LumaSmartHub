@@ -5,6 +5,7 @@ import asyncio
 import base64
 from importlib.metadata import version as package_version
 import secrets
+from datetime import UTC, datetime
 from time import monotonic
 
 from fastapi import Depends, HTTPException, Request
@@ -31,6 +32,7 @@ def install_update_api(app, local_only):
             broker = await update_request({"action": "status"})
         except UpdateError as error:
             raise HTTPException(503, str(error)) from None
+        app.state.luma.presence_update_busy = broker.get('state') == 'installing'
         return JSONResponse({"current_version": package_version("luma-smart-screen"), **broker},
                             headers={"Cache-Control": "no-store"})
 
@@ -75,8 +77,15 @@ def install_update_api(app, local_only):
             admin_check = request.scope.get('luma_admin_check')
             if admin_check is not None:
                 admin_check()
-            accepted = await update_request({"action": "install",
-                                             "bundle": base64.b64encode(bundle).decode("ascii")})
+            app.state.luma.presence_update_pending += 1
+            try:
+                app.state.luma._presence_tick(datetime.now(UTC))
+                accepted = await update_request({"action": "install",
+                                                 "bundle": base64.b64encode(bundle).decode("ascii")})
+                if accepted.get('accepted') is True:
+                    app.state.luma.presence_update_busy = True
+            finally:
+                app.state.luma.presence_update_pending -= 1
         except UpdateError as error:
             raise HTTPException(503, str(error)) from None
         if accepted.get("accepted") is not True or accepted.get("version") != version:

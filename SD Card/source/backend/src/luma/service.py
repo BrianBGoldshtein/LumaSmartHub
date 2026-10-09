@@ -42,6 +42,7 @@ from .transit import Transit
 from .agenda import day_agenda
 from .room import Room
 from .scenes import Scenes
+from .presence_transitions import PresenceTransitions
 
 
 def display_clock_trusted():
@@ -86,6 +87,9 @@ class LumaService:
         self._unknown_command_until = 0.0
         self._unknown_command_id = 0
         self.profiles = self.profile_calendars = self.user_bluetooth = self.personal_timers = None
+        self.presence_transitions = PresenceTransitions()
+        self.presence_update_busy = False
+        self.presence_update_pending = 0
         self._sync_sleep(datetime.now(UTC))
 
     def attach_users(self, profiles, bluetooth, calendars):
@@ -202,6 +206,27 @@ class LumaService:
             self.publish('timer.updated')
         if self.personal_timers and self.personal_timers.tick(now, trusted=trusted):
             self.publish('user.timer.updated')
+        self._presence_tick(now or datetime.now(UTC))
+
+    def _presence_tick(self, now):
+        if self.profiles is None:
+            return False
+        names = {user.id: user.nickname for user in self.profiles.list()}
+        alarms = self.timer.snapshot()['status'] == 'complete' or bool(self.personal_timers and
+            any(timer['status'] == 'complete' for timer in self.personal_timers.snapshot(set())))
+        asleep = any(end and end > now for end in
+                     (self.state.scheduled_sleep_end, self.state.forced_sleep_until))
+        suppressed = (not self.settings.onboarding_completed or asleep or
+                      self.state.display_power != DisplayPower.ON or self.state.forced_private or
+                      self.presence_update_busy or self.presence_update_pending > 0 or alarms or
+                      bool(self.display_state and (self.display_state['mode'] != 'day' or
+                                                   self.display_state['awaiting_clock'])))
+        changed = self.presence_transitions.observe(names, self.present_user_ids(), suppressed=suppressed)
+        # Snapshot/device polling can reach a debounce deadline first. Publish
+        # here too, or that read would consume the edge before the wall hears it.
+        if changed:
+            self.publish('user.transition.updated')
+        return changed
 
     def claim_timer_chime(self):
         muted = self.timer_muted()
@@ -257,6 +282,12 @@ class LumaService:
         """Consume a new local alert once, even if muted or audio is unavailable."""
         now = now or datetime.now(UTC)
         view = self.snapshot(now)
+        # This cue may greet a secondary-only household or announce the last
+        # person's departure. It carries no calendar/notification content.
+        greeting_audible = (self.settings.notification_chime_enabled and
+                            self.settings.notification_chime_volume > 0 and self.settings.volume > 0)
+        if self.presence_transitions.claim_chime(audible=greeting_audible):
+            return {'play': True, 'volume': self.settings.notification_chime_volume}
         audible = (self.primary_private_visible(now) and
                    view['state']['display_power'] == 'on' and
                    self.settings.notification_chime_enabled and
@@ -339,6 +370,7 @@ class LumaService:
         now = now or datetime.now(UTC)
         self._sync_sleep(now)
         full = self.primary_private_visible(now, briefing=briefing)
+        self._presence_tick(now)
         present = self.present_user_ids()
         day_visible = not self.state.forced_private and (briefing or self.state.display_power == DisplayPower.ON) and (not self.display_state or
             (not self.display_state['awaiting_clock'] and (briefing or self.display_state['mode'] == 'day')))
@@ -374,6 +406,8 @@ class LumaService:
         calendar_fresh = self.calendar_is_fresh(now)
         return {
             "server_time": now.isoformat(),
+            "presence_transition": self.presence_transitions.view(
+                {user.id: user.nickname for user in self.profiles.list()}) if self.profiles else None,
             "voice_notice": {"id": self._unknown_command_id,
                              "remaining_ms": max(0, int((self._unknown_command_until - monotonic()) * 1000))},
             "room": self.room.view(now) if full else None,

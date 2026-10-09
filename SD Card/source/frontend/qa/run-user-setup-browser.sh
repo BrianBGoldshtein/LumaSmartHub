@@ -20,7 +20,7 @@ for attempt in $(seq 1 60); do
   if curl -sf http://127.0.0.1:19228/json/version > /dev/null && curl -sf http://127.0.0.1:18833/api/v1/health > /dev/null; then break; fi
   sleep .25
 done
-if ! node user-setup-browser.mjs > "$qaDirectory/result.json" 2> "$qaDirectory/test-error.txt"; then
+if ! node "${USER_QA_SCRIPT:-user-setup-browser.mjs}" > "$qaDirectory/result.json" 2> "$qaDirectory/test-error.txt"; then
   tail -n 30 "$qaDirectory/test-error.txt"
   tail -n 30 "$qaDirectory/server.log"
   printf 'QA directory: %s\n' "$qaDirectory"

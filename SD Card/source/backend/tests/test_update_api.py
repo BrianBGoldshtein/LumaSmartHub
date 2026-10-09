@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -58,3 +59,35 @@ def test_github_update_endpoints_are_local_only(tmp_path):
     with TestClient(app, base_url="http://luma.local") as client:
         response = client.get("/api/v1/updates/status")
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize('outcome', ['accepted', 'rejected', 'error'])
+def test_update_presence_interlock_covers_await_and_releases_pending(monkeypatch, tmp_path, outcome):
+    app = create_app(data_dir=tmp_path)
+    service = app.state.luma
+    monkeypatch.setattr(update_api, 'latest_release', lambda current: {
+        'state': 'available', 'current_version': current, 'version': '0.3.1',
+        'release_notes': 'Beta', 'published_at': '2026-10-08T12:00:00Z',
+        'release_url': 'https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.1',
+        'bundle': b'synthetic signed bytes'})
+    broker_state = 'installing'
+    async def broker(request):
+        if request['action'] == 'status':
+            return {'state': broker_state}
+        assert service.presence_update_pending == 1
+        if outcome == 'error':
+            raise update_api.UpdateError('Synthetic broker failure')
+        return {'accepted': outcome == 'accepted', 'version': '0.3.1'}
+    monkeypatch.setattr(update_api, 'update_request', broker)
+    with TestClient(app) as client:
+        assert client.post('/api/v1/security/pin', json={'pin': '123456'}).status_code == 200
+        details = client.post('/api/v1/updates/check').json()
+        result = client.post('/api/v1/updates/install', json={'candidate_id': details['candidate_id']})
+        assert result.status_code == (202 if outcome == 'accepted' else 503)
+        assert service.presence_update_pending == 0
+        assert service.presence_update_busy == (outcome == 'accepted')
+        assert client.get('/api/v1/updates/status').status_code == 200
+        assert service.presence_update_busy
+        broker_state = 'failed'
+        assert client.get('/api/v1/updates/status').status_code == 200
+        assert not service.presence_update_busy

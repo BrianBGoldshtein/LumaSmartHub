@@ -1,6 +1,12 @@
 # Luma development status — 2026-10-08
 
-## Current published Beta — 0.3.3
+## Current published Beta — 0.3.4
+
+[0.3.4 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.4) from tagged source `55f9aadd3037f75c8df708a6ecf692dbc7c9f5e0`. Notifications, departure reminders and existing arrival/departure cues use one soft, locally synthesized 1.2-second bell instead of electronic two-note beeps. Saved volume, at-most-once delivery, quiet/privacy rules, timer alarms and speech remain unchanged. All 0.3.3 temperature features are retained; its published artifact remains immutable.
+
+Qualification passed **2,186 backend / 206 frontend / 43 packaging tests**, both builds, exact-main CI, and signed switch/forced rollback with both current and published 0.3.3 installers. Production GitHub download matched the qualified signed bytes. See [release notes](docs/V034_RELEASE_NOTES.md) and [qualification evidence](docs/V034_WORKING_NOTES.md). Install through Settings → Luma software without flashing/resetting the existing card. Real speaker timbre/loudness and post-update reboot remain owner checks.
+
+## Previous published Beta — 0.3.3
 
 [0.3.3 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.3) from tagged source `59174f549adaa38d8674bb9763eb787fd0e1e0f9`. Wall Settings and authorized primary/secondary iPhone Hub previews now show the Pi’s built-in CPU temperature in Celsius. Three themes share the component; missing/stale readings become unavailable. No external probe, root command, schema/dependency change or game retuning is involved.
 

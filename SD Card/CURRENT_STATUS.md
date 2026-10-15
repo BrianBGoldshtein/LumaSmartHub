@@ -1,4 +1,8 @@
-# Luma development status — 2026-10-09
+# Luma development status — 2026-10-14
+
+## Next candidate 0.3.6
+
+The owner confirmed physical fan switching on 0.3.5 and approved **70°C on / 60°C off**, without periodic USB discovery windows. Local development preserves temperature/controller/update/storage safeguards and provides manual USB access through the primary phone's Keep USB on control. This candidate is not yet published. See [cooling changes](docs/V036_RELEASE_NOTES.md) and [release gates](docs/V036_WORKING_NOTES.md). Published 0.3.5 below remains immutable.
 
 ## Current published Beta — 0.3.5
 

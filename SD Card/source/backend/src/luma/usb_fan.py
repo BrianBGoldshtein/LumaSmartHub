@@ -25,8 +25,8 @@ from contextlib import contextmanager
 from .thermal import read_temperature
 
 log = logging.getLogger(__name__)
-ON_C, OFF_C = 60, 50
-MIN_ON, MAX_OFF, HEARTBEAT_TTL = 60, 60, 25
+ON_C, OFF_C = 70, 60
+MIN_ON, HEARTBEAT_TTL = 60, 25
 PROBE_SECONDS = 5
 
 
@@ -289,14 +289,11 @@ class USBFanController:
         elif reading >= ON_C:
             self._switch(True)
             self.reason = 'Cooling · USB power on'
-        elif self.on is False and now - self.changed >= MAX_OFF:
-            self._switch(True)
-            self.reason = 'USB discovery window · power on for at least 60 seconds'
         elif self.on is True and reading <= OFF_C and now - self.changed >= MIN_ON:
             self._switch(False)
-            self.reason = 'Cool enough · USB power off for at most 60 seconds'
+            self.reason = 'Cool enough · USB power off until 70°C or manual override'
         else:
-            self.reason = 'Cooling · USB power on' if self.on else 'Cool enough · USB power off for at most 60 seconds'
+            self.reason = 'Cooling · USB power on' if self.on else 'Cool enough · USB power off until 70°C or manual override'
 
     def tick(self):
         with self.lock:
@@ -319,7 +316,9 @@ class USBFanController:
                 'qualified_topology': self.qualified,
                 'probe': 'running' if self.probe_until is not None else 'confirm' if self.probe_completed else 'idle',
                 'reason': self.reason, 'on_celsius': ON_C, 'off_celsius': OFF_C,
-                'max_off_seconds': MAX_OFF}
+                # Retain the response field for existing clients: null means
+                # no scheduled off-time limit. Fault/temperature guards remain.
+                'max_off_seconds': None, 'discovery_windows': False}
 
     def request(self, value):
         validate_fan_request(value)

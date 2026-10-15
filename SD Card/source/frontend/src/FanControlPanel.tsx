@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 
-type Cooling={available:boolean;mode:string;usb_power:string;qualified:boolean;probe:string;reason:string};
+type Cooling={available:boolean;mode:string;usb_power:string;qualified:boolean;probe:string;reason:string;on_celsius?:number;off_celsius?:number};
 type Request=<T>(method:string,path:string,body?:unknown)=>Promise<T>;
 export function FanControlPanel({demo=false,request}:{demo?:boolean;request:Request}){
   const [status,setStatus]=useState<Cooling|null>(null),[busy,setBusy]=useState(false),[ack,setAck]=useState(false),[message,setMessage]=useState('');
@@ -22,9 +22,9 @@ export function FanControlPanel({demo=false,request}:{demo?:boolean;request:Requ
     finally{setBusy(false);}
   }
   return <section className="fan-control"><h2>USB fan cooling</h2>
-    <p>On at 60°C · off below 50°C. Slow on/off cycles—not variable speed.</p>
-    <p role="status"><b>USB power: {status?.usb_power??'checking'}</b><br/>{status?.reason}</p>
-    <p className="setup-note">All four USB ports switch together. Your mouse will stop working while power is off. Attached USB storage and software updates keep power on. A powered discovery window returns within 60 seconds.</p>
+    <p>On at {status?.on_celsius??70}°C · off at {status?.off_celsius??60}°C. No periodic USB discovery cycles.</p>
+    <p role="status"><b>USB power: {status?.usb_power??'checking'}</b>{status&&<><br/>Mode: {status.mode==='automatic'?'Automatic cooling':'Keep USB on'}</>}<br/>{status?.reason}</p>
+    <p className="setup-note">All four USB ports switch together. The mouse and newly plugged USB devices will not work while power is off. Use your phone remote’s Keep USB on control before using the mouse or connecting a USB stick. Detected USB storage and software updates keep power on.</p>
     <button disabled={busy||demo} onClick={()=>void action('always_on')}>Keep USB on · mouse & drives</button>
     <button disabled={busy||demo||!status?.available||!status.qualified||status.probe==='running'} onClick={()=>void action('automatic')}>Automatic cooling</button>
     <details><summary>Verify physical fan switching</summary>

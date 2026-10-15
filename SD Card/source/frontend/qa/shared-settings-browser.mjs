@@ -32,7 +32,16 @@ try{
       await until(`!!(${child}?.querySelector(${JSON.stringify(selector)}))&&${child}?.fonts.status==='loaded'`);
       await until(`!!(${child}?.querySelector('.theme-${theme}'))&&${child}?.querySelector('h1')!==null&&!/Loading (saved settings|your saved progress)/.test(${child}?.body.innerText??'')`);
       if(step==='users')await until(`(${child}?.querySelectorAll('.user-list article').length??0)>=2`);
-      if(step==='device')await until(`${child}?.body.innerText.includes('Location & display')`);
+      if(step==='device'){
+        await until(`${child}?.body.innerText.includes('Location & display')`);
+        await value(`[...${child}.querySelectorAll('summary')].find(s=>s.textContent.trim()==='USB cooling').click()`);
+        await until(`!!(${child}?.querySelector('.fan-control'))`);
+        const cooling=await value(`${child}.querySelector('.fan-control').textContent`);
+        assert.ok(cooling.includes('On at 70°C · off at 60°C'));
+        assert.ok(cooling.includes('No periodic USB discovery cycles.'));
+        assert.ok(cooling.includes('Use your phone remote’s Keep USB on control'));
+        assert.ok(!cooling.includes('discovery window returns'));
+      }
       if(step==='onboarding')await until(`${child}?.querySelector('.onboarding-themes')!==null`);
       const report=await value(`(()=>{const d=${child},w=d.defaultView;return {width:w.innerWidth,scroll:d.documentElement.scrollWidth,heading:d.querySelector('h1')?.textContent,keyboards:d.querySelectorAll('.keyboard-toggle').length};})()`);
       assert.ok(report.scroll<=report.width+1,`${theme}/${width}/${step}: horizontal overflow`);assert.equal(report.keyboards,0);

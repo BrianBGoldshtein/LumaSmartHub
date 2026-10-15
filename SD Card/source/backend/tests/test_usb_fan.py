@@ -108,14 +108,56 @@ def test_storage_even_unmounted_and_update_prevent_probe_and_off(rig, field):
     assert p.on and False not in p.calls
 
 
-def test_hysteresis_minimum_on_and_discovery_window(rig):
+def test_minimum_on_then_stays_off_without_discovery_windows(rig):
     c,p,s=rig; q=qualify(rig)
     s.now=64; request(c,mode='automatic',qualified=q); assert p.on
     s.now=65; request(c,mode='automatic',qualified=q); assert not p.on
-    s.now=124; request(c,mode='automatic',qualified=q); assert not p.on
-    s.now=125; request(c,mode='automatic',qualified=q); assert p.on
-    s.now=184; request(c,mode='automatic',qualified=q); assert p.on
-    s.now=185; request(c,mode='automatic',qualified=q); assert not p.on
+    calls=list(p.calls)
+    for now in range(70, 14471, 5):
+        s.now=now
+        s.temperature=(55,60,65,69.9)[now//5%4]
+        result=request(c,mode='automatic',qualified=q)
+        c.tick()
+        assert not p.on and result['mode']=='automatic'
+    assert p.calls==calls
+    assert result['max_off_seconds'] is None and result['discovery_windows'] is False
+
+
+def test_exact_70_on_60_off_hysteresis_and_no_threshold_chatter(rig):
+    c,p,s=rig; q=cool_off(rig)
+    for reading in (60,65,69.9):
+        s.temperature=reading
+        request(c,mode='automatic',qualified=q)
+        assert not p.on
+    s.temperature=70
+    request(c,mode='automatic',qualified=q)
+    assert p.on
+    for reading in (69,65,60.1):
+        s.now+=20; s.temperature=reading
+        request(c,mode='automatic',qualified=q)
+        assert p.on
+    s.temperature=60
+    request(c,mode='automatic',qualified=q)
+    assert not p.on
+    calls=list(p.calls)
+    for reading in (60.1,59.9,65,69.99):
+        s.now+=10; s.temperature=reading
+        request(c,mode='automatic',qualified=q)
+        assert not p.on
+    assert p.calls==calls
+
+
+def test_manual_keep_on_recovers_usb_after_extended_quiet_period(rig):
+    c,p,s=rig; q=cool_off(rig)
+    for now in range(70,3671,5):
+        s.now=now
+        request(c,mode='automatic',qualified=q)
+    assert not p.on
+    result=request(c,'keep_on',mode='always_on',qualified=q)
+    assert p.on and result['mode']=='always_on' and result['qualified']
+    s.storage=True
+    request(c,mode='automatic',qualified=q)
+    assert p.on and 'storage' in c.status()['reason']
 
 
 @pytest.mark.parametrize('condition', ['heartbeat','storage','updating','heat','bad_sensor','changed_topology'])
@@ -124,7 +166,7 @@ def test_unsafe_conditions_restore_power(rig,condition):
     if condition=='heartbeat': s.now+=26; c.tick()
     else:
         if condition in {'storage','updating'}: setattr(s,condition,True)
-        elif condition=='heat': s.temperature=60
+        elif condition=='heat': s.temperature=70
         elif condition=='bad_sensor': s.temperature=float('nan')
         else: q='b'*64
         request(c,mode='automatic',qualified=q)

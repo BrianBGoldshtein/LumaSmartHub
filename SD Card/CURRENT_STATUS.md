@@ -1,10 +1,14 @@
 # Luma development status — 2026-10-14
 
-## Next candidate 0.3.6
+## Current published Beta — 0.3.6
 
-The owner confirmed physical fan switching on 0.3.5 and approved **70°C on / 60°C off**, without periodic USB discovery windows. Local development preserves temperature/controller/update/storage safeguards and provides manual USB access through the primary phone's Keep USB on control. This candidate is not yet published. See [cooling changes](docs/V036_RELEASE_NOTES.md) and [release gates](docs/V036_WORKING_NOTES.md). Published 0.3.5 below remains immutable.
+[0.3.6 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.6) from tagged source `0dd1d84cbd69e25d48b65bb64f27cfeab451043e`. Automatic cooling uses **70°C on / 60°C off**, without periodic USB discovery windows. Temperature/controller/update/storage safeguards remain, and the primary phone's Keep USB on control restores access for the mouse or a newly plugged USB stick. Saved physical-switch qualification, settings, accounts, profiles and phone bonds are retained.
 
-## Current published Beta — 0.3.5
+Qualification passed **2,240 backend / 210 frontend / 43 packaging tests**, both production builds, exact-source CI, signed installation/forced rollback with both candidate and published 0.3.5 installers, and a complete rerun of the 24-case themed mobile audit. Luma's production GitHub fetcher verified the published archive and matched its qualified bytes: **2,134,940 bytes**, 92 files, SHA-256 `50cc1d7e38d702b841df4b61a1701ca54bb89a36129320c33c1e1ef376780498`. See [release instructions](docs/V036_RELEASE_NOTES.md) and [qualification evidence](docs/V036_WORKING_NOTES.md).
+
+Install through **Settings → Luma software → Check for updates → review 0.3.6 → Install**; keep power connected through reboot. No reflash. The owner confirmed physical switching on 0.3.5; observe the revised 70/60 cycle on hardware after installation. Use the phone's Keep USB on override before plugging in storage or needing the mouse. Earlier signed releases remain immutable.
+
+## Previous published Beta — 0.3.5
 
 [0.3.5 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.5) from tagged source `eeea9bbd3d0beecb618ceae234525ec73c34a384`. It adds opt-in temperature-controlled USB fan power, twenty-second wall cursor hiding and the shared primary-phone settings/setup screens, including guided secondary-user setup. The owner explicitly approved sensitive remote controls; access remains primary-only, PIN-protected and tied to live phone authorization.
 

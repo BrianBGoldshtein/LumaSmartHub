@@ -16,6 +16,6 @@ This application-only update preserves the existing SD card, settings, accounts,
 
 ## Installation and checks
 
-After the signed release is published, use Settings → Luma software → Check for updates → review 0.3.6 → Install. Keep Pi power connected through the successful-update reboot and verify version 0.3.6.
+Install the [published signed release](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.6) through Settings → Luma software → Check for updates → review 0.3.6 → Install. Keep Pi power connected through the successful-update reboot and verify version 0.3.6.
 
 With no USB drive attached, choose Automatic and check that the fan stays off beyond one minute while the CPU is below 70°C. Do not artificially heat the Pi: observe ordinary use until it reaches 70°C, then confirm cooling continues until 60°C or below. Check the phone's Keep USB on override before connecting a drive, and confirm saved settings, voice, phone presence and dashboard still work.

@@ -1,6 +1,6 @@
 # Private iPhone remote
 
-[0.3.5 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.5). Install through **Settings → Luma software → Check for updates → review 0.3.5 → Install** and keep power connected through the verified reboot. Reopen the enrolled primary remote → Settings → unlock → All hub settings for the shared settings and guided setup. Phone-started installations show independent wall progress, including during night/display-off mode; ordinary settings changes refresh live without rebooting. Do not reflash your card or reset a working phone bond. Separate secondary remotes are described in [multi-user setup](MULTI_USER_SETUP.md).
+[0.3.6 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.6). Install through **Settings → Luma software → Check for updates → review 0.3.6 → Install** and keep power connected through the verified reboot. Reopen the enrolled primary remote → Settings → unlock → All hub settings for the shared settings and guided setup. Phone-started installations show independent wall progress, including during night/display-off mode; ordinary settings changes refresh live without rebooting. Do not reflash your card or reset a working phone bond. Separate secondary remotes are described in [multi-user setup](MULTI_USER_SETUP.md).
 
 ## What you need
 
@@ -28,7 +28,7 @@ The browser saves only its nonexportable signing key, public key and browser ID.
 
 The shared settings use Safari's keyboard, not the wall keyboard. Voice calibration listens through the **Pi microphone**; speak near the hub even though the controls are on your phone. Backups write to the **Pi's USB drive**, using the wall browser's game checkpoints. Personal setup stays saved on the Pi; reopen it through Users after an application restart. For a secondary user's Google consent, that person signs in through **their own** enrolled remote → My calendars.
 
-**USB cooling** is optional and off by default. Keep the phone remote available for its five-second physical fan test: all onboard USB ports may turn off together, temporarily disabling the mouse. Remove USB storage before testing. Confirm only after seeing the fan stop and restart; the reported hub power bits cannot confirm physical operation. See [0.3.5 cooling instructions](V035_RELEASE_NOTES.md).
+**USB cooling** is optional and off by default. Keep the phone remote available for its five-second physical fan test: all onboard USB ports may turn off together, temporarily disabling the mouse. Remove USB storage before testing. Confirm only after seeing the fan stop and restart; the reported hub power bits cannot confirm physical operation. From 0.3.6, automatic cooling uses 70°C on / 60°C off with no periodic discovery windows. Before using the mouse or plugging in a USB stick, use the phone's **Keep USB on · mouse & drives** control; select Automatic again after USB use. See [cooling instructions](V036_RELEASE_NOTES.md).
 
 ## Optional Google sign-in on the phone
 

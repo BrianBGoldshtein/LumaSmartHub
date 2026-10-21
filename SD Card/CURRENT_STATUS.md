@@ -1,6 +1,14 @@
-# Luma development status — 2026-10-14
+# Luma development status — 2026-10-21
 
-## Current published Beta — 0.3.6
+## Current published Beta — 0.3.7
+
+[0.3.7 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.7) from tagged source `d414e946fc664895339a891c5fde32112c295fee`. Secondary presence now uses the registered live trusted bond with resolved services, without notification permission or notification subscriptions. Primary ANCS consent remains mandatory. Arrivals play three quick strikes of the existing bell; primary notifications, time-to-leave reminders and departures stay single-strike. Settings, accounts, profiles, bonds and saves are retained.
+
+Qualification passed **2,256 backend / 210 frontend / 43 packaging tests**, both production builds, [exact-source CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/39652947531), the complete remote browser test and all 24 themed shared-settings cases on a full rerun. The signed archive passed install and forced rollback with candidate and pinned published 0.3.6 installers. Luma's production GitHub fetcher verified the published signature and matched the qualified bytes: **2,136,762 bytes**, 92 files, SHA-256 `be4269efdf6c25ba1eee5235811f69b2668d01aa1a960720fadcb189971de9a4`. See [release checks](docs/V037_RELEASE_NOTES.md) and [qualification evidence](docs/V037_WORKING_NOTES.md).
+
+Install through Settings → Luma software → Check for updates → review **0.3.7** → Install. Keep power connected through reboot and confirm the version. No reflash or re-pairing is required. Owner checks remain: secondary phone connection with notification sharing off, independent privacy lockout, actual iOS background return and three-versus-one bell playback. Automatic retry attempts remain; iOS availability is not guaranteed. Cooling stays 70°C on / 60°C off.
+
+## Previous published Beta — 0.3.6
 
 [0.3.6 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.6) from tagged source `0dd1d84cbd69e25d48b65bb64f27cfeab451043e`. Automatic cooling uses **70°C on / 60°C off**, without periodic USB discovery windows. Temperature/controller/update/storage safeguards remain, and the primary phone's Keep USB on control restores access for the mouse or a newly plugged USB stick. Saved physical-switch qualification, settings, accounts, profiles and phone bonds are retained.
 

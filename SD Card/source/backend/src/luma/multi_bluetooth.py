@@ -1,4 +1,4 @@
-"""Independent ANCS workers, coordinated radio and primary-only notifications.
+"""Independent role-specific workers, coordinated radio, primary-only notifications.
 
 This uses actual BlueZ sessions, not pretend presence or connection rotation.
 The application must install per-user privacy projections before enabling it.
@@ -46,9 +46,8 @@ class UserBluetoothService:
             self.service.publish('user.presence.updated', {'profile_id': self.id, 'connected': False})
 
     def receive_notification(self, notice):
-        # Secondary call/message content is outside 0.3.1's shared-wall scope.
-        # Subscribe only for authorization, never mix their notifications into
-        # the primary user's existing notification queue.
+        # Defense in depth: secondary workers never subscribe, parse or fetch
+        # ANCS content. Reject even an accidental internal delivery here.
         return False
 
     def remove_notification(self, notification_id):
@@ -60,7 +59,7 @@ class MultiPhoneBluetooth:
         self.service, self.profiles = service, profiles
         self.coordinator = coordinator or RadioScheduler()
         self.children = {PRIMARY_ID: BluetoothRuntime(service, coordinator=self.coordinator)}
-        self.advertiser = ANCSReconnectAdvertising(self.registered_addresses)
+        self.advertiser = ANCSReconnectAdvertising(self.notification_addresses)
 
     def __getattr__(self, name):
         # Existing primary diagnostics/scene hooks remain compatible. Never
@@ -85,6 +84,12 @@ class MultiPhoneBluetooth:
 
     def registered_addresses(self):
         return tuple(user.phone_address for user in self.profiles.list() if user.phone_address)
+
+    def notification_addresses(self):
+        # Soliciting Apple's notification service is only for the primary.
+        # Secondary workers retain their coordinated bonded reconnect scans.
+        phone = self.profiles.get(PRIMARY_ID).phone_address
+        return (phone,) if phone else ()
 
     def runtime(self, uid):
         self.profiles.get(uid)

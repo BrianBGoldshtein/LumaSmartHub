@@ -1,4 +1,7 @@
-"""Signed browser grants bound to a registered user's live ANCS session.
+"""Signed browser grants bound to a registered user's live phone session.
+
+Primary presence requires ANCS consent; secondary presence requires the
+selected live trusted bond, without notification access.
 
 Local PIN-approved callers alone may issue/approve/revoke. The gateway enforces
 its fixed private HTTPS origin and trustworthy Serve identity independently.

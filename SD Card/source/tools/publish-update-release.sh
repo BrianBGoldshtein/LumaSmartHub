@@ -106,6 +106,8 @@ elif [[ "${VERSION}" == "0.3.5" ]]; then
   QUALIFY_FROM="0.3.4"
 elif [[ "${VERSION}" == "0.3.6" ]]; then
   QUALIFY_FROM="0.3.5"
+elif [[ "${VERSION}" == "0.3.7" ]]; then
+  QUALIFY_FROM="0.3.6"
 fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"
@@ -302,6 +304,19 @@ if [[ "${VERSION}" == "0.3.6" ]]; then
   python3 "${DELIVERY_ROOT}/source/tools/qualify-update-bundle.py" "${OUTPUT}" \
     --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
     --current-version "0.3.5" --legacy-delivery "${LEGACY_ROOT}/SD Card"
+fi
+if [[ "${VERSION}" == "0.3.7" ]]; then
+  LEGACY_SHA="0dd1d84cbd69e25d48b65bb64f27cfeab451043e"
+  [[ "$(git -C "${REPO_ROOT}" rev-parse 'refs/tags/v0.3.6^{}')" == "${LEGACY_SHA}" ]] || die "the published 0.3.6 tag changed"
+  LEGACY_ROOT="$(mktemp -d "$(dirname -- "${OUTPUT}")/luma-legacy-036.XXXXXXXX")"
+  git -C "${REPO_ROOT}" archive "${LEGACY_SHA}" -- \
+    "SD Card/source/backend/pyproject.toml" \
+    "SD Card/source/backend/src/luma/storage.py" \
+    "SD Card/source/backend/src/luma/update_agent.py" | tar -x -C "${LEGACY_ROOT}"
+  printf 'Qualifying the same signed archive with the published 0.3.6 verifier/installer…\n'
+  python3 "${DELIVERY_ROOT}/source/tools/qualify-update-bundle.py" "${OUTPUT}" \
+    --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
+    --current-version "0.3.6" --legacy-delivery "${LEGACY_ROOT}/SD Card"
 fi
 if [[ -n "${KEYWORD_ASSETS_DIR}" ]]; then
   python3 "${DELIVERY_ROOT}/source/tools/build-keyword-asset.py" "${DELIVERY_ROOT}" \

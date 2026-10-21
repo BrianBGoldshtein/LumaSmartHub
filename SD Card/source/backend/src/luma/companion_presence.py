@@ -1,4 +1,4 @@
-"""ANCS authorization lifetime for the remote; independent of PIN/grace privacy."""
+"""Role-specific live phone authority, independent of PIN/grace privacy."""
 from __future__ import annotations
 
 import secrets
@@ -57,3 +57,40 @@ class AuthorizedPhoneSession:
         fresh = age is not None and 0 <= age <= 15
         authorized = bool(self.generation and self.address == address and phone_connected and fresh)
         return PhonePresence(address, authorized, self.generation if authorized else "")
+
+
+class BondedPhoneSession(AuthorizedPhoneSession):
+    """Secondary-only authority from a selected live bonded BlueZ connection.
+
+    No notification subscription, data characteristic or advertisement is a
+    prerequisite. Primary phones must keep using AuthorizedPhoneSession.
+    """
+    @staticmethod
+    def valid_link(address: str, properties: dict) -> bool:
+        current = properties.get('Address')
+        return (isinstance(current, str) and current.casefold() == address.casefold()
+                and properties.get('Blocked', False) is False
+                and all(properties.get(key) is True for key in
+                        ('Paired', 'Bonded', 'Trusted', 'Connected', 'ServicesResolved')))
+
+    def begin_bonded(self, address: str, phone_path: str, properties: dict):
+        if not self.valid_link(address, properties):
+            self.clear()
+            raise ValueError('A selected live bonded phone is required.')
+        super().begin(address, phone_path, '')
+
+    def properties_changed(self, interface: str, changed: dict, invalidated: list):
+        super().properties_changed(interface, changed, invalidated)
+        if interface != 'org.bluez.Device1':
+            return
+        value = lambda key: getattr(changed[key], 'value', changed[key])
+        if ({'ServicesResolved', 'Blocked', 'Address'}.intersection(invalidated)
+                or ('ServicesResolved' in changed and value('ServicesResolved') is not True)
+                or ('Blocked' in changed and value('Blocked') is not False)
+                or ('Address' in changed and (not isinstance(value('Address'), str)
+                    or value('Address').upper() != self.address))):
+            self.clear()
+
+    def source_properties_changed(self, interface: str, changed: dict, invalidated: list):
+        # Secondary presence never depends on ANCS or its Notifying property.
+        return None

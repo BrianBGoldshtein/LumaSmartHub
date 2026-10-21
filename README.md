@@ -39,8 +39,10 @@ Primary settings, user administration and updates require the primary PIN;
 everyone may set timers.
 
 Each user's optional private **Safari/Home Screen remote** accesses only their
-own account through Tailscale and a live authorized Bluetooth notification
-connection. No Mac, native companion app, public port or private offline cache
+own account through Tailscale and a live authorized Bluetooth connection.
+The primary requires notification permission; from 0.3.7, secondary users need
+only their registered live trusted bond and Luma never accesses their phone
+notifications. No Mac, native companion app, public port or private offline cache
 is needed. A primary-only remote policy is available without removing secondary
 wall, Google, Bluetooth or timer features. The update preserves existing primary
 settings, Google links, games and working phone bonds. A successful health-checked

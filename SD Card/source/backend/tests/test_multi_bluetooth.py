@@ -51,6 +51,8 @@ class Device(ServiceInterface):
         self.connected = False
         self.connects = 0
         self.disconnects = 0
+        self.resolved = True
+        self.blocked = False
 
     @dbus_property(access=PropertyAccess.READ)
     def Address(self) -> 's': return self.address
@@ -71,7 +73,10 @@ class Device(ServiceInterface):
     def Connected(self) -> 'b': return self.connected
 
     @dbus_property(access=PropertyAccess.READ)
-    def ServicesResolved(self) -> 'b': return True
+    def ServicesResolved(self) -> 'b': return self.resolved
+
+    @dbus_property(access=PropertyAccess.READ)
+    def Blocked(self) -> 'b': return self.blocked
 
     @method()
     def Connect(self):
@@ -107,6 +112,7 @@ class Source(ServiceInterface):
         super().__init__('org.bluez.GattCharacteristic1')
         self.service = service
         self.notifying = False
+        self.subscriptions = 0
 
     @dbus_property(access=PropertyAccess.READ)
     def UUID(self) -> 's': return SOURCE
@@ -119,6 +125,7 @@ class Source(ServiceInterface):
 
     @method()
     def StartNotify(self):
+        self.subscriptions += 1
         self.notifying = True
         self.emit_properties_changed({'Notifying': True})
 
@@ -132,7 +139,7 @@ async def until(check, timeout=5):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('failure', ['none', 'one_link', 'one_subscription', 'one_removed'])
+@pytest.mark.parametrize('failure', ['none', 'one_link', 'primary_subscription', 'one_removed', 'no_secondary_ancs', 'secondary_subscription', 'secondary_blocked', 'secondary_unresolved', 'secondary_disconnect'])
 async def test_five_real_sessions_reconnect_and_isolate_failures(tmp_path, monkeypatch, failure):
     daemon = subprocess.Popen(['dbus-daemon', '--session', '--nofork', '--print-address=1'],
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -158,7 +165,9 @@ async def test_five_real_sessions_reconnect_and_isolate_failures(tmp_path, monke
             gatt, char = path+'/service0001', path+'/service0001/char0002'
             device = Device(phone, fail=failure == 'one_link' and index == 4)
             source = Source(gatt)
-            bus.export(path, device); bus.export(gatt, Gatt(path)); bus.export(char, source)
+            bus.export(path, device)
+            if index == 0 or failure != 'no_secondary_ancs':
+                bus.export(gatt, Gatt(path)); bus.export(char, source)
             devices.append(device); sources.append(source); paths.append(path)
         # Exercise the real scan + Device1.Connect wire calls, but accelerate
         # only its 0.5-second observation pauses in this disposable fixture.
@@ -176,12 +185,33 @@ async def test_five_real_sessions_reconnect_and_isolate_failures(tmp_path, monke
         assert all('Pattern' not in value for value in adapter.filters)
         assert all(device.connects == 1 for device in devices)
         assert all(device.disconnects == 0 for device in devices)
+        assert sources[0].subscriptions == 1
+        assert all(source.subscriptions == 0 for source in sources[1:])
+        assert runtime.notification_addresses() == (users[0].phone_address or 'AA:BB:CC:DD:EE:01',)
         generations = {uid: runtime.companion_presence(uid).generation for uid in expected}
-        if failure in {'one_subscription', 'one_removed'}:
+        if failure in {'secondary_blocked', 'secondary_unresolved', 'secondary_disconnect'}:
             lost = users[-1].id
-            if failure == 'one_subscription':
-                sources[-1].notifying = False
-                sources[-1].emit_properties_changed({'Notifying': False})
+            if failure == 'secondary_blocked':
+                devices[-1].blocked = True
+                devices[-1].emit_properties_changed({'Blocked': True})
+            elif failure == 'secondary_unresolved':
+                devices[-1].resolved = False
+                devices[-1].emit_properties_changed({'ServicesResolved': False})
+            else:
+                devices[-1].set_connected(False)
+            await until(lambda: not runtime.companion_presence(lost).authorized)
+            assert runtime.present_ids() == expected - {lost}
+            assert all(runtime.companion_presence(uid).generation == generation for uid, generation in generations.items() if uid != lost)
+            assert all(device.disconnects == 0 for device in devices[:-1])
+        if failure == 'secondary_subscription':
+            sources[-1].emit_properties_changed({'Notifying': False})
+            await asyncio.sleep(.1)
+            assert runtime.present_ids() == expected
+        if failure in {'primary_subscription', 'one_removed'}:
+            lost = users[0].id if failure == 'primary_subscription' else users[-1].id
+            if failure == 'primary_subscription':
+                sources[0].notifying = False
+                sources[0].emit_properties_changed({'Notifying': False})
             else:
                 bus.unexport(paths[-1])
             await until(lambda: not runtime.companion_presence(lost).authorized)
@@ -206,3 +236,17 @@ async def test_five_real_sessions_reconnect_and_isolate_failures(tmp_path, monke
         except subprocess.TimeoutExpired:
             daemon.kill(); daemon.wait(timeout=3)
         if daemon.stdout: daemon.stdout.close()
+
+
+def test_secondary_notification_delivery_is_rejected_even_if_called_accidentally(tmp_path):
+    storage = Storage(tmp_path/'luma.db')
+    profiles = ProfileRepository(storage)
+    user = profiles.create_secondary('Alex')
+    profiles.bind_phone(user.id, 'AA:BB:CC:DD:EE:02')
+    service = LumaService(storage)
+    runtime = MultiPhoneBluetooth(service, profiles)
+    child = runtime.runtime(user.id)
+    from unittest.mock import Mock
+    service.receive_notification = Mock()
+    assert child.service.receive_notification(object()) is False
+    service.receive_notification.assert_not_called()

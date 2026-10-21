@@ -315,7 +315,9 @@ class LumaService:
         greeting_audible = (self.settings.notification_chime_enabled and
                             self.settings.notification_chime_volume > 0 and self.settings.volume > 0)
         if self.presence_transitions.claim_chime(audible=greeting_audible):
-            return {'play': True, 'volume': self.settings.notification_chime_volume}
+            transition = view.get('presence_transition') or {}
+            return {'play': True, 'volume': self.settings.notification_chime_volume,
+                    'cue': 'arrival' if transition.get('arriving') else 'notification'}
         audible = (not self.timer_alarm_busy() and self.primary_private_visible(now) and
                    view['state']['display_power'] == 'on' and
                    self.settings.notification_chime_enabled and

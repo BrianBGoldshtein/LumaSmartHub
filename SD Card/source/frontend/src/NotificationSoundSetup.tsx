@@ -27,7 +27,7 @@ export function NotificationSoundSetup({demo}:{demo:boolean}){
     finally{setBusy(false);}
   }
   return <section><h2>Notification sound</h2>
-    <p>One soft Luma bell for a new iPhone notification or time-to-leave reminder. Silent during Sleep, screen-off and privacy standby; timer alarms remain separate.</p>
+    <p>Three quick strikes of the Luma bell when someone arrives; one strike for a primary-phone notification, time-to-leave reminder or departure. Secondary phone notifications are never accessed. Quiet rules and timer alarms remain separate.</p>
     <label><input type="checkbox" checked={enabled} onChange={event=>setEnabled(event.target.checked)} disabled={busy}/> Play notification bell</label>
     <label>Chime volume · {volume}%<input type="range" min="0" max="100" step="5" value={volume} onChange={event=>setVolume(Number(event.target.value))} disabled={busy||!enabled}/></label>
     <button type="button" disabled={busy} onClick={()=>void save()}>Save notification sound</button>

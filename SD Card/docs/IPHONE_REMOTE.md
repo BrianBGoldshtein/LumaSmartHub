@@ -4,17 +4,17 @@
 
 ## What you need
 
-Your existing Luma Pi, the selected paired iPhone with **Share System Notifications** enabled, and Tailscale connected on both devices in the same private tailnet. No Mac, App Store account, developer mode or native companion app is needed. The remote follows the hub theme and has no games or animation loop.
+Your existing Luma Pi, the selected paired iPhone, and private Tailscale transport to Luma. The primary phone requires **Share System Notifications**. From 0.3.7, secondary phones need only their registered live trusted Bluetooth connection, not notification permission; Luma never accesses their notifications. No Mac, App Store account, developer mode or native companion app is needed. The remote follows the hub theme and has no games or animation loop.
 
 On Luma, enable its existing **private Tailscale HTTPS connection** in Settings. If HTTPS setup is missing, follow [private connection setup](TAILSCALE.md). Do not enable public Funnel. The remote uses the same opt-in, restricted gateway; it does not open a public port.
 
 ## Enroll Safari or a Home Screen window
 
-1. Connect the selected iPhone to Luma and verify the hub leaves privacy standby. A pending Bluetooth connection is not enough: notification authorization must be live.
+1. Connect the registered iPhone to Luma and verify its nickname appears. A pending connection is not enough: the primary needs live notification authorization; a secondary needs its live trusted bond with Bluetooth services resolved. A user without configured/shared calendars may still leave the wall in public standby.
 2. Open **Settings → iPhone remote** on the hub. Enter the hub PIN and tap **Create enrollment QR**. Scan it privately with the phone. It expires in five minutes and can be used once.
 3. If you want a Home Screen app, first open the private `/remote/` address in Safari, use **Share → Add to Home Screen**, then open that Home Screen window. Open the enrollment link in that window, or paste it under **First time here? → Enrollment link**. Install before enrolling: Safari and Home Screen have separate keys.
 4. Tap **Enroll this browser**. Compare the six-digit approval code on both screens. On the hub, confirm the match and tap **Approve matching browser**. Enrollment approval uses the hub PIN on the hub, not on the phone. After enrollment, the official primary remote separately requires that PIN for global settings and software updates; secondary remotes cannot unlock those controls.
-5. The phone shows **Hub**, **Settings** and **Software**. Calendar/task data is available only while the selected iPhone's Bluetooth notification session remains authorized.
+5. The primary phone shows **Hub**, **Settings** and **Software**; secondary controls remain personal-only. Calendar/task data is available only while that user's role-specific Bluetooth session remains authorized.
 
 If a QR expires, request another. If the phone or hub code differs, do not approve; generate a fresh QR. Clearing browser storage or changing the selected phone requires new enrollment. Keep the enrollment link private; don't send it to a chat or put it in a screenshot.
 
@@ -46,7 +46,7 @@ The pending sign-in expires after fifteen minutes. Stay near the hub with Blueto
 
 On the hub, **Settings → iPhone remote → Manage enrolled browsers** requires the PIN. Revoke the browser you no longer use; its next private request is denied. Normal application updates retain grants, but restoring a backup removes them so an old backup cannot silently restore access.
 
-If locked, first verify Tailscale is connected, the correct private URL is open, and the selected iPhone has authorized Bluetooth notifications. If the key was cleared, enroll again. Do not repeatedly replay an uncertain task change or update: check the hub/Google state first. Pi Connect remains the recovery tool.
+If locked, first verify Tailscale is connected, the correct private URL is open, and the registered iPhone has a live connection (plus notification authorization for the primary). If the key was cleared, enroll again. Do not repeatedly replay an uncertain task change or update: check the hub/Google state first. Pi Connect remains the recovery tool.
 
 ## Owner acceptance
 

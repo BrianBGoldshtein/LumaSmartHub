@@ -2,7 +2,8 @@
 
 The wall cookie is HttpOnly and its hashed, origin/phone-bound grant survives an
 application restart. A draft may only pair for one hour; a bound grant permits
-its own personal controls for 30 days, and only with live ANCS authorization.
+its own personal controls for 30 days, and only with live role-specific phone
+authorization (primary ANCS consent or secondary trusted bonded connection).
 Backup restore, replacing a phone, and removing a profile revoke these grants.
 """
 from __future__ import annotations

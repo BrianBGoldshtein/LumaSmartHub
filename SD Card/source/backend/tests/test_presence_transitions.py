@@ -165,7 +165,7 @@ def test_guest_only_arrival_and_last_departure_chime_without_primary_data(app_ri
     view = service.snapshot(now)
     assert view['privacy_redacted']  # Guest intentionally has no calendars.
     assert view['presence_transition']['arriving'] == ['Alex']
-    assert service.claim_notification_chime(now) == {'play': True, 'volume': 35}
+    assert service.claim_notification_chime(now) == {'play': True, 'volume': 35, 'cue': 'arrival'}
     assert not service.claim_notification_chime(now)['play']
     child.remote_authorized.clear()
     view = service.snapshot(now)
@@ -173,7 +173,7 @@ def test_guest_only_arrival_and_last_departure_chime_without_primary_data(app_ri
     assert view['presence_transition'] is None  # Cancel active stale greeting.
     clock.return_value = 118.
     assert service.snapshot(now)['presence_transition']['leaving'] == ['Alex']
-    assert service.claim_notification_chime(now)['play']
+    assert service.claim_notification_chime(now) == {'play': True, 'volume': 35, 'cue': 'notification'}
 
 
 @pytest.mark.parametrize('suppression', ['sleep', 'off', 'update', 'pending_update', 'room_timer', 'personal_timer', 'privacy'])
@@ -323,12 +323,12 @@ def test_existing_device_http_claim_consumes_guest_cue_without_names(app_rig):
     assert client.post('/api/v1/device/notification-chime').json()['play'] is False
     clock.return_value = 103.
     assert client.get('/api/v1/state').json()['presence_transition']['arriving'] == ['Alex']
-    assert client.post('/api/v1/device/notification-chime').json() == {'play': True, 'volume': 35}
+    assert client.post('/api/v1/device/notification-chime').json() == {'play': True, 'volume': 35, 'cue': 'arrival'}
     assert client.post('/api/v1/device/notification-chime').json()['play'] is False
     child.remote_authorized.clear()
     view = client.get('/api/v1/state').json()
     assert view['users'] == [] and view['presence_transition'] is None
     clock.return_value = 118.
     packet = client.post('/api/v1/device/notification-chime').json()
-    assert packet == {'play': True, 'volume': 35}
+    assert packet == {'play': True, 'volume': 35, 'cue': 'notification'}
     assert not service.primary_private_visible()

@@ -2,9 +2,53 @@ from types import SimpleNamespace
 
 import pytest
 
-from luma.companion_presence import AuthorizedPhoneSession
+from luma.companion_presence import AuthorizedPhoneSession, BondedPhoneSession
 
 PHONE = 'AA:BB:CC:DD:EE:FF'
+
+
+def bonded_properties():
+    return dict(Address=PHONE, Paired=True, Bonded=True, Trusted=True,
+                Connected=True, ServicesResolved=True, Blocked=False)
+
+
+@pytest.mark.parametrize('field', ['Paired', 'Bonded', 'Trusted', 'Connected', 'ServicesResolved', 'Address', 'Blocked'])
+def test_secondary_presence_requires_selected_live_bond_and_revokes_on_signal(field):
+    lease = BondedPhoneSession(clock=lambda: 100.)
+    props = bonded_properties()
+    bad = {**props, field: ('another phone' if field == 'Address' else field == 'Blocked')}
+    with pytest.raises(ValueError):
+        lease.begin_bonded(PHONE, '/phone', bad)
+    lease.begin_bonded(PHONE, '/phone', props)
+    lease.heartbeat(PHONE)
+    assert lease.snapshot(PHONE, phone_connected=True).authorized
+    lease.properties_changed('org.bluez.Device1', {field: SimpleNamespace(value=bad[field])}, [])
+    assert not lease.snapshot(PHONE, phone_connected=True).authorized
+    lease.begin_bonded(PHONE, '/phone', props)
+    lease.heartbeat(PHONE)
+    lease.properties_changed('org.bluez.Device1', {}, [field])
+    assert not lease.snapshot(PHONE, phone_connected=True).authorized
+
+
+def test_secondary_ignores_notifications_but_not_disconnect_staleness_or_device_removal():
+    clock = [100.]
+    lease = BondedPhoneSession(clock=lambda: clock[0])
+    lease.begin_bonded(PHONE, '/phone', bonded_properties())
+    lease.heartbeat(PHONE)
+    generation = lease.generation
+    lease.source_properties_changed('org.bluez.GattCharacteristic1', {'Notifying': False}, ['Notifying'])
+    lease.interfaces_removed('/phone/source', ['org.bluez.GattCharacteristic1'])
+    assert lease.snapshot(PHONE, phone_connected=True).authorized
+    assert not lease.snapshot(PHONE, phone_connected=False).authorized
+    clock[0] += 16
+    assert not lease.snapshot(PHONE, phone_connected=True).authorized
+    lease.heartbeat(PHONE)
+    assert not lease.generation
+    lease.begin_bonded(PHONE, '/phone', bonded_properties())
+    lease.heartbeat(PHONE)
+    assert lease.generation != generation
+    lease.interfaces_removed('/phone', ['org.bluez.Device1'])
+    assert not lease.snapshot(PHONE, phone_connected=True).authorized
 
 
 def ready():

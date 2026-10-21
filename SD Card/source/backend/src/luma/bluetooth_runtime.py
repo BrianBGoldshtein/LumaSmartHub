@@ -1,4 +1,4 @@
-"""BlueZ ANCS session; presence requires a bonded, trusted phone and authorized GATT."""
+"""BlueZ phone sessions: primary ANCS, secondary live bonded connections."""
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +11,7 @@ from .integrations.ancs import SERVICE, SOURCE, DATA, CONTROL, AttributeResponse
 from .service import LumaService
 from .scene_presence import ScenePresence, evidence
 from .ancs_advertising import ANCSReconnectAdvertising
-from .companion_presence import AuthorizedPhoneSession
+from .companion_presence import AuthorizedPhoneSession, BondedPhoneSession
 
 SERVICE_CHANGED = '00002a05-0000-1000-8000-00805f9b34fb'
 
@@ -90,7 +90,7 @@ async def scan_for_paired_phone(manager, adapter, phone_path: str, *, phone_addr
 
 
 async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: float = 12,
-                                      query_timeout: float = 5) -> dict:
+                                      query_timeout: float = 5, allow_ancs_fallback: bool = True) -> dict:
     """BlueZ can report Connected before iOS GATT service discovery finishes."""
     deadline = monotonic() + timeout
     while True:
@@ -103,7 +103,7 @@ async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: floa
         properties = plain(device)
         # Some BlueZ builds export GATT objects before ServicesResolved flips.
         # Do not equate this with presence: subscribing to ANCS is still required.
-        if trusted_connection(properties) or (trusted_link(properties)
+        if trusted_connection(properties) or (allow_ancs_fallback and trusted_link(properties)
                                               and SOURCE in ancs_characteristics(objects, phone_path)):
             return objects
         if not all(properties.get(key) is True for key in ("Paired", "Bonded", "Trusted")):
@@ -219,7 +219,7 @@ class BluetoothRuntime:
         self.status = "Not configured"
         self.scene_presence = ScenePresence()
         self.scene_authorized = None
-        self.remote_authorized = AuthorizedPhoneSession()
+        self.remote_authorized = AuthorizedPhoneSession() if profile_id == 'primary' else BondedPhoneSession()
         self.last_discovery = -60.0
         self.last_reconnect_at: str | None = None
         self.reconnect_attempts = 0
@@ -280,6 +280,32 @@ class BluetoothRuntime:
         if self.coordinator:
             return await self.coordinator.perform(self.profile_id, 'hci0', connect)
         return await connect()
+
+    async def bonded_presence_session(self, manager, interface, phone_path, address):
+        """Secondary presence without touching any notification characteristic."""
+        lease = self.remote_authorized
+        if self.profile_id == 'primary' or not isinstance(lease, BondedPhoneSession):
+            raise BluetoothStatusError('Primary iPhone requires notification authorization')
+        props_interface = await interface(phone_path, 'org.freedesktop.DBus.Properties')
+        props_interface.on_properties_changed(lease.properties_changed)
+        manager.on_interfaces_removed(lease.interfaces_removed)
+        properties = plain(await asyncio.wait_for(props_interface.call_get_all('org.bluez.Device1'), 5))
+        if not lease.valid_link(address, properties) or self.service.settings.phone_address != address:
+            raise BluetoothStatusError('Registered iPhone bond or connection is unavailable')
+        lease.begin_bonded(address, phone_path, properties)
+        self.status = 'Registered iPhone connected · notifications not accessed'
+        while self.service.settings.phone_address == address and lease.generation:
+            properties = plain(await asyncio.wait_for(props_interface.call_get_all('org.bluez.Device1'), 5))
+            if not lease.valid_link(address, properties):
+                self.status = 'Registered iPhone connection or trust was lost'
+                break
+            lease.heartbeat(address)
+            if not lease.generation:
+                break
+            self.service.phone_seen()
+            if self.coordinator:
+                self.coordinator.note_authorized(self.profile_id)
+            await asyncio.sleep(2)
 
     async def scene_presence_worker(self):
         """Independent fresh radio evidence; only sampled for enabled scenes."""
@@ -358,6 +384,8 @@ class BluetoothRuntime:
             properties = plain(objects[phone_path]["org.bluez.Device1"])
             if not all(properties.get(key) for key in ("Paired", "Bonded", "Trusted")):
                 raise BluetoothStatusError("iPhone bond or trust was lost")
+            if self.profile_id != 'primary' and properties.get('Blocked', False) is not False:
+                raise BluetoothStatusError('Registered iPhone is blocked')
             device = await interface(phone_path, "org.bluez.Device1")
             device_props = await interface(phone_path, "org.freedesktop.DBus.Properties")
             if not properties.get("Connected"):
@@ -396,13 +424,18 @@ class BluetoothRuntime:
                 self.reconnect_attempts += 1
                 await self._connect_phone(manager, device, phone_path, address)
             try:
-                objects = await wait_for_trusted_connection(manager, phone_path)
+                objects = await wait_for_trusted_connection(manager, phone_path,
+                    allow_ancs_fallback=self.profile_id == 'primary')
             except BluetoothStatusError as exc:
                 if str(exc) != "iPhone connected; waiting for Bluetooth services":
                     raise
                 adapter = await interface(adapter_path, "org.bluez.Adapter1") if adapter_path else None
                 await self.refresh_phone_services(manager, device, device_props, phone_path, adapter, address)
-                objects = await wait_for_trusted_connection(manager, phone_path, timeout=20)
+                objects = await wait_for_trusted_connection(manager, phone_path, timeout=20,
+                    allow_ancs_fallback=self.profile_id == 'primary')
+            if self.profile_id != 'primary':
+                await self.bonded_presence_session(manager, interface, phone_path, address)
+                return
             changed=service_changed_path(objects,phone_path)
             if changed:
                 try:

@@ -1,6 +1,6 @@
-# Multi-user setup — Luma 0.3.1
+# Multi-user setup — Luma 0.3.7
 
-Use these steps after installing the verified 0.3.1 Beta. One primary and up to four secondary users have separate accounts and timers. Do not reflash, unpair a working primary phone or share its Google/Tailscale login to add someone.
+One primary and up to four secondary users have separate accounts and timers. From 0.3.7, secondary phones do not need notification permission; Luma never subscribes to or displays their phone notifications. The primary phone still requires Share System Notifications. Do not reflash, unpair a working phone or share its Google/Tailscale login to add someone.
 
 ## Primary: add a person
 
@@ -14,7 +14,7 @@ The hub supports five profiles total. **Open personal setup** resumes an existin
 
 ## Secondary: finish your own setup
 
-1. **Your iPhone:** pair your own phone and compare the six-digit pairing code on both devices. Enable **Share System Notifications** on the iPhone's Luma Bluetooth entry. Pairing alone is not enough: wait for authorized notification services.
+1. **Your iPhone:** pair your own phone and compare the six-digit pairing code on both devices. Leave **Share System Notifications** off for a secondary phone; it is not required. Wait for the registered phone's live trusted connection and resolved Bluetooth services. A saved pairing, advertisement or pending connection alone does not count as presence.
 2. **Phone remote:** optional. Enroll your own Safari or Home Screen window using the private link and matching browser code. Use your own Tailscale identity; never sign in as the primary. You may skip the remote and continue all remaining steps on the hub.
 3. **Your Google:** optional. Sign in to your own account using the configured Google consent flow. The primary configures the application's OAuth client; do not upload private client JSON to GitHub. Enable task updates only if you want Luma to recolor your selected task calendar.
 4. **Your calendars:** select every agenda calendar you want. Choose your all-day task calendar and its completed color, then save. Only that chosen completed color marks tasks done. Your account cannot change the room's primary Sleep calendar.
@@ -42,6 +42,10 @@ If that transport is impractical, the primary opens **Settings → iPhone remote
 The primary remote may unlock primary settings using the hub PIN. This permission is deliberately absent from secondary remotes. Do not share that PIN or the primary browser's enrollment.
 
 ## Everyday use and testing
+
+Secondary reconnect scans and connection attempts continue automatically, without requesting Apple's notification service. iOS controls background availability, so automatic return is not guaranteed; if necessary, tap Luma in the iPhone's Bluetooth settings. Turning secondary notification sharing on or off must not affect an otherwise live registered connection. Disconnecting that phone hides its own data and locks its remote; other users remain unaffected.
+
+Arrivals play three quick strikes of the existing local bell. Ordinary primary notifications, time-to-leave reminders and departure announcements use one strike. Simultaneous arrivals share one three-strike cue. Existing mute, volume, sleep and higher-priority alarm/update rules still apply; suppressed or failed cues are not replayed.
 
 Tap your connected nickname on the wall to open your personal timer. The generic Timer control and anonymous voice timers are shared room timers. Timers do not require primary permission. Task buttons need fresh Google write consent and a personal wall approval; they update only that account's chosen task calendar.
 

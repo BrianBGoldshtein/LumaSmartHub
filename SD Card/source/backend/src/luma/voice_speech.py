@@ -292,6 +292,39 @@ def play_notification_cue(level: int) -> str:
     return _play_pcm(notification_cue_pcm(level), pulse_playback_environment())
 
 
+def arrival_cue_pcm(level: int) -> bytes:
+    """Three quick strikes of the existing bell, mixed into one playback."""
+    if type(level) is not int or not 0 <= level <= 100:
+        raise ValueError('arrival cue volume must be 0 to 100')
+    return _arrival_bell_pcm(level)
+
+
+@lru_cache(maxsize=8)
+def _arrival_bell_pcm(level: int) -> bytes:
+    from array import array
+    source = array('h')
+    source.frombytes(notification_cue_pcm(level))
+    if sys.byteorder != 'little':
+        source.byteswap()
+    spacing = round(22050 * .22)
+    mixed = [0] * (len(source) + 2 * spacing)
+    for strike in range(3):
+        offset = strike * spacing
+        for index, value in enumerate(source):
+            mixed[offset + index] += value
+    limit = round(32767 * .18)
+    result = array('h', (max(-limit, min(limit, value)) for value in mixed))
+    if sys.byteorder != 'little':
+        result.byteswap()
+    return result.tobytes()
+
+
+def play_arrival_cue(level: int) -> str:
+    if type(level) is not int or not 1 <= level <= 100:
+        raise ValueError('arrival cue volume must be 1 to 100')
+    return _play_pcm(arrival_cue_pcm(level), pulse_playback_environment())
+
+
 def wav_to_pcm(data: bytes) -> bytes:
     with wave.open(io.BytesIO(data), "rb") as wav:
         if wav.getnchannels() != 1 or wav.getsampwidth() != 2 or wav.getframerate() != 22050:

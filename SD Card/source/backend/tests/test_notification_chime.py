@@ -13,6 +13,46 @@ from luma import voice_speech
 from synthetic_presence import authorize_primary
 
 
+def test_arrival_is_three_existing_bell_strikes_in_one_bounded_local_playback(monkeypatch):
+    import struct
+    rate = 22050
+    bell = struct.unpack('<'+'h'*(len(notification_cue_pcm(35))//2), notification_cue_pcm(35))
+    pcm = voice_speech.arrival_cue_pcm(35)
+    samples = struct.unpack('<'+'h'*(len(pcm)//2), pcm)
+    spacing = round(rate*.22)
+    assert len(samples) == len(bell)+spacing*2
+    expected = [0]*len(samples)
+    for offset in (0, spacing, spacing*2):
+        for index, value in enumerate(bell):
+            expected[offset+index] += value
+    limit = round(32767*.18)
+    assert samples == tuple(max(-limit, min(limit, value)) for value in expected)
+    assert samples[0] == samples[-1] == 0
+    assert voice_speech.arrival_cue_pcm(0) == bytes(len(pcm))
+    assert voice_speech.arrival_cue_pcm(10) != voice_speech.arrival_cue_pcm(80)
+    for invalid in (-1, True, 101, '35'):
+        with pytest.raises(ValueError): voice_speech.arrival_cue_pcm(invalid)
+    played = Mock(return_value='system_speaker')
+    monkeypatch.setattr(voice_speech, '_play_pcm', played)
+    monkeypatch.setattr(voice_speech, 'pulse_playback_environment', lambda: {'PULSE_SERVER':'local'})
+    assert voice_speech.play_arrival_cue(35) == 'system_speaker'
+    played.assert_called_once_with(pcm, {'PULSE_SERVER':'local'})
+
+
+def test_bridge_selects_arrival_only_for_explicit_valid_claim_and_never_replays():
+    claim = Mock(return_value={'play':True, 'volume':35, 'cue':'arrival'})
+    single, triple = Mock(), Mock(side_effect=VoicePlaybackError('speaker_route_unavailable'))
+    assert apply_notification_chime(claim, single, triple) == 'unavailable; not replayed'
+    triple.assert_called_once_with(35)
+    single.assert_not_called()
+    claim.return_value = {'play':False, 'volume':35, 'cue':'arrival'}
+    assert apply_notification_chime(claim, single, triple) is None
+    triple.assert_called_once()
+    claim.return_value = {'play':True, 'volume':35, 'cue':'invalid'}
+    assert apply_notification_chime(claim, single, triple) == 'unavailable; not replayed'
+    single.assert_not_called()
+
+
 def notice(now, key='one'):
     return PhoneNotification(key, 'net.whatsapp.WhatsApp', 'WhatsApp',
                              'A new message', 'Hello', now)

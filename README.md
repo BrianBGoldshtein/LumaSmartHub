@@ -13,11 +13,14 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.7 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.7).
+Latest: [Luma 0.3.8 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.8).
 Use **Settings → Luma software → Check for updates**;
-review **0.3.7**, install and keep power connected through the verified reboot.
+review **0.3.8**, install and keep power connected through the verified reboot.
 Confirm the installed version afterward. Do not reflash its SD card.
-Secondary users no longer need notification permission, and Luma never accesses
+The wall cursor now hides after twenty idle seconds, including a native Wayland
+refresh to clear Chromium's stale pointer image. The real pointer starts at the
+extreme bottom-right boundary; bridge restarts do not re-park an active mouse.
+Secondary users do not need notification permission, and Luma never accesses
 their phone notifications. Arrivals ring three quick strikes of the existing
 bell; ordinary notifications ring once. Automatic cooling retains **70°C on / 60°C
 off**, without periodic USB discovery cycling. Use the primary phone's **Keep USB on** control
@@ -52,8 +55,8 @@ upgrade now requests one graceful Pi reboot; it does not replace the OS image.
 The already-running 0.3.1 wall gains the global progress monitor only after installing 0.3.2. See the
 [multi-user guide](SD%20Card/docs/MULTI_USER_SETUP.md),
 [iPhone setup](SD%20Card/docs/IPHONE_REMOTE.md),
-[0.3.7 changes and owner checks](SD%20Card/docs/V037_RELEASE_NOTES.md) and
-[release qualification evidence](SD%20Card/docs/V037_WORKING_NOTES.md).
+[0.3.8 changes and owner checks](SD%20Card/docs/V038_RELEASE_NOTES.md) and
+[release qualification evidence](SD%20Card/docs/V038_WORKING_NOTES.md).
 
 ## What it does
 
@@ -197,7 +200,7 @@ not be upgraded merely because a software suite or emulator passes.
 The device checks signed releases targeted to `main`, not raw branch files;
 the private signing key stays on the Linux build machine and outside GitHub.
 The owner has approved `main` for explicitly labeled beta releases. The
-0.3.7 release follows the signed GitHub updater path and preserves existing
+0.3.8 release follows the signed GitHub updater path and preserves existing
 settings, accounts, profiles and working phone bonds. Hardware
 acceptance and v1 publication remain separate decisions.
 In-place update scope, release publishing, verification, rollback and recovery are documented in

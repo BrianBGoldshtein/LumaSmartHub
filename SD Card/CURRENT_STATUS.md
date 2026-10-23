@@ -1,6 +1,16 @@
-# Luma development status — 2026-10-21
+# Luma development status — 2026-10-23
 
-## Current published Beta — 0.3.7
+## Current published Beta — 0.3.8
+
+[0.3.8 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.8) from tagged source `6a688f3b2ef934121e89ced143d97724854267a0`. The wall cursor hides after twenty idle seconds and refreshes its native Wayland image instead of leaving Chromium's stale pointer visible. Unchanged-position events and the reversible subpixel refresh do not reset the timer. Startup parks the real pointer at the extreme bottom-right boundary once per graphical session. No OS package, compositor setting, service unit or dependency change is required.
+
+Qualification passed **2,285 backend / 214 frontend / 43 packaging tests**, both production builds and [exact-source CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/39928163319). The native labwc/Chromium pixel test measured **251 visible cursor pixels → 0 idle → 251 restored**, with unchanged-position events every 75ms, two native refreshes and zero clicks. Separate pre-kiosk startup ordering retained the bottom-right position. The complete remote fixture and all 24 themed shared-settings cases passed on a full rerun.
+
+The exact signed archive passed install/forced rollback with candidate and pinned published 0.3.7 installers. Luma's production GitHub fetcher downloaded, signature-verified and matched the qualified archive: **2,142,428 bytes**, 92 files, SHA-256 `928f0af6de943b8a8169519de4c507b97342346317112c4d75a591ed7b626621`. The key stayed offline. [Release checks](docs/V038_RELEASE_NOTES.md) and [qualification evidence](docs/V038_WORKING_NOTES.md) cover the remaining owner test.
+
+Install through Settings → Luma software → Check for updates → review **0.3.8** → Install. Keep power connected through reboot and verify the version. Then check real Pi startup parking, idle hiding during dashboard cycling and in Settings, and movement restoration. No reflash or re-pairing. Settings, accounts, profiles, bonds, game saves, secondary notification privacy and 70°C on / 60°C off cooling remain intact.
+
+## Previous published Beta — 0.3.7
 
 [0.3.7 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.7) from tagged source `d414e946fc664895339a891c5fde32112c295fee`. Secondary presence now uses the registered live trusted bond with resolved services, without notification permission or notification subscriptions. Primary ANCS consent remains mandatory. Arrivals play three quick strikes of the existing bell; primary notifications, time-to-leave reminders and departures stay single-strike. Settings, accounts, profiles, bonds and saves are retained.
 

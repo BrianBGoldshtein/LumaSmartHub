@@ -52,7 +52,7 @@ class Handler(BaseHTTPRequestHandler):
     latest = None
     module = b''
     style = b''
-    runtime = None
+    directory = None
     refreshes = 0
     def log_message(self, *_): pass
     def do_GET(self):
@@ -64,7 +64,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(data)
     def do_POST(self):
         if self.path=='/cursor-refresh':
-            refreshed=notify_cursor_refresh(runtime=self.runtime)
+            refreshed=notify_cursor_refresh(directory=self.directory)
             type(self).refreshes+=int(refreshed)
             self.send_response(200);self.end_headers();return
         size = int(self.headers.get('Content-Length','0'))
@@ -100,12 +100,13 @@ def main():
     root.mkdir(mode=0o700)
     runtime = root/'runtime'; runtime.mkdir(mode=0o700)
     config = root/'config'; config.mkdir()
+    data = root/'data'; data.mkdir(mode=0o700)
     Handler.module = values.module.read_bytes()
     Handler.style = (Path(__file__).resolve().parents[1]/'src/styles.css').read_bytes()
-    Handler.runtime = runtime
+    Handler.directory = data
     env = {k:v for k,v in os.environ.items() if k not in {'DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','WAYLAND_SOCKET'}}
     env.update(XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(config),XDG_CONFIG_DIRS=str(config),
-               WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_HEADLESS_OUTPUTS='1',LABWC_UPDATE_ACTIVATION_ENV='0')
+               LUMA_DATA_DIR=str(data),WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_HEADLESS_OUTPUTS='1',LABWC_UPDATE_ACTIVATION_ENV='0')
     server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
     thread = threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     compositor = browser = pointer = None

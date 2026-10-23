@@ -903,7 +903,7 @@ def create_app(
     def cursor_refresh() -> dict[str, bool]:
         # A fixed reversible subpixel refresh, never arbitrary input. Remote
         # browsers/LAN tokens cannot drive the wall's native pointer.
-        return {'refreshed': notify_cursor_refresh()}
+        return {'refreshed': notify_cursor_refresh(directory=data_root)}
 
     @app.post('/api/v1/display/frame', dependencies=[Depends(local_only)])
     def display_frame(payload: DisplayRevision):

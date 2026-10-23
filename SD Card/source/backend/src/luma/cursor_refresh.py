@@ -13,21 +13,21 @@ from .cursor_startup import _endpoint, refresh_pointer
 SOCKET_NAME = 'luma-cursor-refresh-v1.sock'
 
 
-def _runtime(path):
+def _private_directory(path):
     directory = path.lstat()
     if (not path.is_absolute() or not stat.S_ISDIR(directory.st_mode)
             or directory.st_uid != os.getuid() or directory.st_mode & 0o077):
         raise ValueError('Private graphical runtime unavailable')
 
 
-def notify_cursor_refresh(*, runtime=None):
+def notify_cursor_refresh(*, directory=None):
     """Fixed request only. Coordinates, commands and arbitrary input are absent."""
     try:
         if os.name != 'posix':
             return False
-        runtime = Path(runtime) if runtime is not None else Path(f'/run/user/{os.getuid()}')
-        _runtime(runtime)
-        endpoint = runtime/SOCKET_NAME
+        directory = Path(directory) if directory is not None else Path(os.environ.get('LUMA_DATA_DIR','/var/lib/luma'))
+        _private_directory(directory)
+        endpoint = directory/SOCKET_NAME
         info = endpoint.lstat()
         if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid():
             return False
@@ -50,9 +50,12 @@ class CursorRefreshServer:
 
     def __enter__(self):
         try:
-            runtime = Path(self.env['XDG_RUNTIME_DIR'])
-            _runtime(runtime)
-            self.path = runtime/SOCKET_NAME
+            # The API has ProtectHome=true, which hides /run/user as well as
+            # /home. Its existing private data directory is the shared IPC
+            # location; only this graphical process opens the Wayland socket.
+            directory = Path(self.env.get('LUMA_DATA_DIR','/var/lib/luma'))
+            _private_directory(directory)
+            self.path = directory/SOCKET_NAME
             if self.path.exists() or self.path.is_symlink():
                 info = self.path.lstat()
                 if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid():

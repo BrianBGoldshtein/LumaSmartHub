@@ -25,7 +25,7 @@ def graphical(tmp_path):
     path = root/'wayland-test'
     server.bind(str(path))
     server.listen(1)
-    yield {'XDG_RUNTIME_DIR':str(root), 'WAYLAND_DISPLAY':path.name}, path, server
+    yield {'XDG_RUNTIME_DIR':str(root), 'WAYLAND_DISPLAY':path.name, 'LUMA_DATA_DIR':str(root)}, path, server
     server.close()
 
 
@@ -178,15 +178,15 @@ def test_private_refresh_is_immediate_reversible_and_cleans_up(graphical):
     refresh = Mock()
     runtime=path.parent
     with CursorRefreshServer(env=env,refresh=refresh):
-        assert notify_cursor_refresh(runtime=runtime)
-        assert notify_cursor_refresh(runtime=runtime)  # Do not discard a fast hide→show.
+        assert notify_cursor_refresh(directory=runtime)
+        assert notify_cursor_refresh(directory=runtime)  # Do not discard a fast hide→show.
         assert refresh.call_args_list==[call(path)]*2
         assert (runtime/SOCKET_NAME).stat().st_mode & 0o777 == 0o600
         with CursorRefreshServer(env=env,refresh=Mock()):
-            assert notify_cursor_refresh(runtime=runtime)
-        assert notify_cursor_refresh(runtime=runtime)  # Second helper did not unlink the first.
+            assert notify_cursor_refresh(directory=runtime)
+        assert notify_cursor_refresh(directory=runtime)  # Second helper did not unlink the first.
     assert not (runtime/SOCKET_NAME).exists()
-    assert not notify_cursor_refresh(runtime=runtime)
+    assert not notify_cursor_refresh(directory=runtime)
 
 
 @pytest.mark.parametrize('kind',['stale','regular','symlink','bad_command','failed_refresh'])
@@ -210,10 +210,10 @@ def test_refresh_rejects_unsafe_paths_and_payloads_without_input(graphical,tmp_p
                 assert client.recv(1)==b''
             refresh.assert_not_called()
         elif kind=='stale':
-            assert notify_cursor_refresh(runtime=path.parent)
+            assert notify_cursor_refresh(directory=path.parent)
             refresh.assert_called_once_with(path)
         else:
-            assert not notify_cursor_refresh(runtime=path.parent)
+            assert not notify_cursor_refresh(directory=path.parent)
     if kind=='regular':
         assert endpoint.read_text()=='must survive'
     if kind=='symlink':
@@ -226,9 +226,22 @@ def test_cursor_refresh_api_is_local_only_and_has_no_input_parameters(tmp_path,m
     app=create_app(data_dir=tmp_path)
     local=TestClient(app)
     assert local.post('/api/v1/device/cursor-refresh').json()=={'refreshed':True}
-    refresh.assert_called_once_with()
+    refresh.assert_called_once_with(directory=tmp_path)
     remote=TestClient(app,client=('192.0.2.20',5000))
     token=app.state.security.get_or_create_lan_token()
     assert remote.post('/api/v1/device/cursor-refresh',headers={'X-Luma-Token':token}).status_code==403
     assert local.post('/api/v1/device/cursor-refresh',headers={'Origin':'https://evil.example'}).status_code==403
     refresh.assert_called_once()
+
+
+def test_refresh_ipc_is_in_private_data_not_run_user_hidden_from_hardened_api(graphical,tmp_path):
+    env,path,_=graphical
+    directory=tmp_path/'data';directory.mkdir(mode=0o700)
+    env={**env,'LUMA_DATA_DIR':str(directory)}
+    refresh=Mock()
+    with CursorRefreshServer(env=env,refresh=refresh):
+        assert (directory/SOCKET_NAME).is_socket()
+        assert not (path.parent/SOCKET_NAME).exists()
+        # No display/runtime environment is needed by the API-side caller.
+        assert notify_cursor_refresh(directory=directory)
+        refresh.assert_called_once_with(path)

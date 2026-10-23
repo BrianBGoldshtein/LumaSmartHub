@@ -40,6 +40,7 @@ from .service import LumaService
 from .storage import Storage
 from .serde import to_primitive
 from . import thermal
+from .cursor_refresh import notify_cursor_refresh
 from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
@@ -892,11 +893,17 @@ def create_app(
 
     @app.post("/api/v1/device/report", dependencies=[Depends(local_only)])
     async def device_report(payload: DeviceReport) -> dict[str, bool]:
-        allowed = {"power", "brightness", "orientation", "volume", "audio_output", "voice", "keyboard", "timer_chime", "notification_chime"}
+        allowed = {"power", "brightness", "orientation", "volume", "audio_output", "voice", "keyboard", "timer_chime", "notification_chime", "cursor_startup"}
         if not payload.controls.keys() <= allowed or any(value not in ({'played','silent','unavailable; not replayed'} if key in {'timer_chime','notification_chime'} else {"ok", "unavailable; retrying"}) for key,value in payload.controls.items()):
             raise HTTPException(422, "Invalid device report")
         device_status.update(last_seen=datetime.now(UTC).isoformat(), controls=payload.controls)
         return {"accepted": True}
+
+    @app.post('/api/v1/device/cursor-refresh', dependencies=[Depends(local_only)])
+    def cursor_refresh() -> dict[str, bool]:
+        # A fixed reversible subpixel refresh, never arbitrary input. Remote
+        # browsers/LAN tokens cannot drive the wall's native pointer.
+        return {'refreshed': notify_cursor_refresh()}
 
     @app.post('/api/v1/display/frame', dependencies=[Depends(local_only)])
     def display_frame(payload: DisplayRevision):

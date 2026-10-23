@@ -17,6 +17,8 @@ from .system_keyboard import SystemKeyboard
 from .timer_chime import TimerChimeBridge
 from .voice_speech import VoicePlaybackError, play_notification_cue, play_arrival_cue
 from .display_handoff import apply_display_job
+from .cursor_startup import StartupCursor
+from .cursor_refresh import CursorRefreshServer
 
 
 class DeviceBridge:
@@ -132,9 +134,11 @@ def main() -> None:
     portal = PortalBrowser()
     keyboard = SystemKeyboard()
     timer_chime = TimerChimeBridge()
-    with ThreadPoolExecutor(max_workers=1,thread_name_prefix='luma-display') as executor, httpx.Client(base_url="http://127.0.0.1:8742", timeout=5) as client:
+    cursor = StartupCursor()
+    with CursorRefreshServer(), ThreadPoolExecutor(max_workers=1,thread_name_prefix='luma-display') as executor, httpx.Client(base_url="http://127.0.0.1:8742", timeout=5) as client:
         display_jobs = DisplayJobWorker(bridge.display,executor)
         while True:
+            cursor_status = cursor.tick()  # Also runs while the API starts.
             try:
                 response = client.get("/api/v1/state")
                 response.raise_for_status()
@@ -145,6 +149,7 @@ def main() -> None:
                 keyboard.tick(awake)
                 portal.apply(None, awake)
                 report = bridge.apply(snapshot)
+                report['cursor_startup'] = cursor_status
                 report.update(display_jobs.poll(client,snapshot))
                 def claim_chime():
                     response = client.post('/api/v1/device/timer-chime')

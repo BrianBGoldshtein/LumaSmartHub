@@ -50,7 +50,18 @@ import "./styles.css";
 const demoMode = new URLSearchParams(location.search).has("demo");
 const stopGameHandoff=demoMode?()=>{}:installWallGameHandoff();
 if(import.meta.hot)import.meta.hot.dispose(stopGameHandoff);
-const stopIdleCursor=installIdleCursor(document,document.documentElement);
+const refreshNativeCursor=()=>{
+  // Never steer a Pi cursor from the phone's embedded settings or a remote
+  // preview. Flush the new CSS before refreshing its cached Wayland image.
+  if(window.self!==window.top||!['127.0.0.1','localhost','[::1]'].includes(location.hostname))return;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    if(document.visibilityState==='visible'&&document.hasFocus())
+      void fetch('/api/v1/device/cursor-refresh',{method:'POST',cache:'no-store'}).catch(()=>{});
+  }));
+};
+const stopIdleCursor=installIdleCursor(document,document.documentElement,20_000,setTimeout,clearTimeout,refreshNativeCursor);
+window.addEventListener('focus',refreshNativeCursor);
+if(import.meta.hot)import.meta.hot.dispose(()=>window.removeEventListener('focus',refreshNativeCursor));
 if(import.meta.hot)import.meta.hot.dispose(stopIdleCursor);
 const demoParameters = new URLSearchParams(location.search);
 

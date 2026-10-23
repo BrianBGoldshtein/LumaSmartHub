@@ -182,7 +182,10 @@ def test_packaged_transport_is_fail_closed_dormant_and_not_userspace():
     assert 'input iifname "luma-ts" drop' in rules
     assert 'forward iifname "luma-ts" drop' in rules
     installer = (system / "install.sh").read_text()
-    assert "enable luma-api.service luma-network.socket luma-backup.socket luma-update.socket luma-tailscale-setup.socket" in installer
+    boot_enable = next(line for line in installer.splitlines()
+                       if line.startswith("systemctl --root=/ enable luma-api.service "))
+    assert {"luma-api.service", "luma-network.socket", "luma-backup.socket",
+            "luma-update.socket", "luma-tailscale-setup.socket"} <= set(boot_enable.split()[3:])
     assert "enable luma-tailscaled" not in installer
     assert "enable luma-shortcut-gateway" not in installer
 

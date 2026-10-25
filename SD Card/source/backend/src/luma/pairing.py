@@ -10,6 +10,18 @@ from uuid import uuid4
 ADDRESS = re.compile(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}")
 
 
+def readable_name(value):
+    """A display/ranking hint only; names never prove phone identity."""
+    if not isinstance(value, str):
+        return "", False
+    name = " ".join("".join(c for c in value if c.isprintable()).split())[:80]
+    compact = re.sub(r"[\s:._{}-]", "", name)
+    identifier = (not compact or compact.isdecimal()
+                  or bool(re.fullmatch(r"[0-9a-fA-F]{6,}", compact))
+                  or bool(re.fullmatch(r"[A-Za-z0-9]{16,}", name)) and any(c.isdigit() for c in name))
+    return name, not identifier and name.casefold() not in {"unknown", "unknown device", "bluetooth device", "unnamed device"}
+
+
 def device_choices(objects, adapter):
     devices = []
     for path, interfaces in objects.items():
@@ -17,13 +29,25 @@ def device_choices(objects, adapter):
         if props.get("Adapter") != adapter or not path.startswith(adapter + "/dev_"):
             continue
         address = props.get("Address", "")
-        if not ADDRESS.fullmatch(address):
+        if not isinstance(address, str) or not ADDRESS.fullmatch(address):
             continue
-        name = "".join(c for c in str(props.get("Alias") or props.get("Name") or "Bluetooth device") if c.isprintable())[:80]
+        alias, alias_named = readable_name(props.get("Alias"))
+        remote, remote_named = readable_name(props.get("Name"))
+        name = alias if alias_named else remote if remote_named else alias or remote or "Unnamed device"
+        named = alias_named or remote_named
+        raw_rssi = props.get("RSSI")
+        # Missing/unavailable/invalid readings must not outrank a measured
+        # nearby device. 127 is HCI's unavailable sentinel, not a strong signal.
+        rssi = raw_rssi if type(raw_rssi) is int and -127 <= raw_rssi <= 20 else None
         devices.append({"path": path, "name": name, "address": address,
+                        "named": named, "rssi": rssi,
                         "paired": props.get("Paired") is True and props.get("Bonded") is True,
                         "trusted": props.get("Trusted") is True})
-    return sorted(devices, key=lambda item: (not item["paired"], item["name"].casefold(), item["address"]))[:40]
+    # No silent top-40 cutoff: the shared UI pages/searches every discovered
+    # device, including anonymous ones. Paired status is only a tie-breaker.
+    return sorted(devices, key=lambda item: (not item["named"], item["rssi"] is None,
+        -item["rssi"] if item["rssi"] is not None else 0, not item["paired"],
+        item["name"].casefold(), item["address"], item["path"]))
 
 
 class PairingFlow:

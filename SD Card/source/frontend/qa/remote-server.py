@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from luma.api import create_app
 from luma.models import CalendarEvent, WeatherSnapshot
@@ -19,9 +20,52 @@ from luma.shortcut_gateway import create_gateway
 from luma import update_api
 from luma import thermal
 
+# Synthetic crowded discovery for pairing UI qualification only. No system
+# Bluetooth connection, agent registration, actual trust or phone selection.
+nearby_drivers=[]
+class NearbyDriver:
+    adapter='/org/bluez/hci0'
+    target='CC:DD:EE:00:FF:01'
+    def __init__(self):
+        self.rows={};self.selected=None;self.trust_calls=0;self.closed=False
+        for index in range(250):
+            address=f'CC:DD:EE:00:{index//256:02X}:{index%256:02X}'
+            self.add(address,f'Campus device {index:03}' if index<70 else address.replace(':',''),
+                     -25-index%40 if index<70 else -20)
+        self.add(self.target,'001122334455',-95,name='Zoë’s iPhone')
+        nearby_drivers.append(self)
+    def add(self,address,alias,rssi,name=None):
+        self.rows[self.adapter+'/dev_'+address.replace(':','_')]={'org.bluez.Device1':{
+            'Adapter':self.adapter,'Address':address,'Alias':alias,'Name':name,'RSSI':rssi,
+            'Paired':False,'Bonded':False,'Trusted':False}}
+    async def open(self):pass
+    async def start_scan(self):pass
+    async def stop_scan(self):pass
+    async def close(self):self.closed=True
+    async def cancel_pair(self,path):pass
+    async def objects(self):return self.rows
+    async def properties(self,path):return dict(self.rows[path]['org.bluez.Device1'])
+    async def pair(self,path,confirm):
+        self.selected=path
+        if not await confirm(path,42817):raise ValueError('Synthetic comparison rejected')
+        self.rows[path]['org.bluez.Device1'].update(Paired=True,Bonded=True)
+    async def trust(self,path):
+        self.trust_calls+=1;self.rows[path]['org.bluez.Device1']['Trusted']=True
+
 ORIGIN='https://luma.example-tail.ts.net'
 PHONE='AA:BB:CC:DD:EE:FF'
 core=create_app(data_dir=os.environ['REMOTE_QA_DATA'],frontend_dir=os.environ['REMOTE_QA_FRONTEND'])
+core.state.pairing.driver_factory=NearbyDriver
+core.state.user_setup.pairing.driver_factory=NearbyDriver
+@core.get('/qa/pairing-audit')
+def pairing_audit():
+    return {'drivers':[{'selected':driver.selected,'trust_calls':driver.trust_calls,
+        'closed':driver.closed} for driver in nearby_drivers]}
+
+@core.post('/qa/theme')
+async def wall_qa_theme(request:Request):
+    value=await request.json();core.state.luma.update_settings({'theme':value['theme']})
+    return {'theme':value['theme']}
 service=core.state.luma;service.display_clock_trusted=lambda:True
 thermal.CPU_SENSOR=Path(os.environ['REMOTE_QA_DATA'])/'synthetic-cpu-temp'
 thermal.CPU_SENSOR.write_bytes(b'56478\n')
@@ -140,6 +184,8 @@ async def qa_only(request,call_next):
         return JSONResponse({'theme':value['theme']})
     if request.url.path=='/qa/actions':
         return JSONResponse({'actions':actions,'timer':service.timer.snapshot(private=False)})
+    if request.url.path=='/qa/pairing-audit':
+        return JSONResponse(pairing_audit())
     if request.url.path=='/qa/update-complete':
         global installed_version
         installed_version='0.3.0'

@@ -189,7 +189,10 @@ class UserSetup:
     def pairing_snapshot(self, uid):
         if self.pairing_owner and self.pairing_owner[2] == uid:
             result = self.pairing.snapshot()
-            result['devices'] = [row for row in result['devices'] if self.profiles.by_phone(row['address']) is None]
+            # A crowded scan must not open/validate SQLite for every row.
+            # Preserve the existing exclusion of another user's bound phone.
+            registered = {user.phone_address for user in self.profiles.list() if user.phone_address}
+            result['devices'] = [row for row in result['devices'] if row['address'].upper() not in registered]
             return result
         return {'session':None, 'phase':'idle', 'devices':[], 'selected':None,
                 'challenge':None, 'passkey':None, 'message':''}

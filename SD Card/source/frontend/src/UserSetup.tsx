@@ -8,9 +8,11 @@ import {useSetupActivity} from './setupActivity';
 import type {GoogleCalendar,GoogleEventColor,GoogleStatus} from './googleSetupState';
 import type {PersonalSettings} from './remote/state';
 import './userSetup.css';
+import {PhonePicker} from './PhonePicker';
+import type {PhoneChoice} from './phoneChoices';
 
 type User={profile_id:string;role:string;nickname:string;phone_registered:boolean;setup_stage:string;wall_share_approved:boolean;connected:boolean};
-type Pairing={session:string|null;phase:string;devices:{path:string;name:string;address:string}[];challenge:string|null;passkey:string|null;message:string};
+type Pairing={session:string|null;phase:string;devices:PhoneChoice[];challenge:string|null;passkey:string|null;message:string};
 type Personal={profile_id:string;nickname:string;role:string;setup_stage:string;wall_share_approved:boolean;phone_registered:boolean;phone_authorized:boolean;connection_status:string;remote_allowed:boolean;google:GoogleStatus;personal:PersonalSettings;theme:string;pairing:Pairing};
 const steps=['phone','remote','google','calendars','ready'] as const;
 const titles=['Your iPhone','Phone remote','Your Google','Your calendars','Ready'];
@@ -100,7 +102,7 @@ export function PersonalSetup({demo}:{demo:boolean}){
         <p className="setup-note">Progress stays on this Luma. Your personal setup does not unlock room settings or updates.</p>
         {view.setup_stage==='phone'&&<section><h2><Smartphone/> Pair your iPhone</h2><p>Open iPhone Settings → Bluetooth. Choose your phone below, then compare the six-digit code on both screens. Only approve if they match.</p>
           {!['scanning','pairing','confirming'].includes(view.pairing.phase)&&<button disabled={busy} onClick={()=>void run(async()=>{await api('user-self/pairing/start','POST');setRetry(value=>value+1);})}>Find my iPhone</button>}
-          <div className="network-list">{view.pairing.devices.map(device=><button key={device.path} disabled={busy} onClick={()=>void run(async()=>{await api('user-self/pairing/select','POST',{session:view.pairing.session,device:device.path});})}><Smartphone/><span>{device.name}<small>{device.address}</small></span></button>)}</div>
+          {view.pairing.phase==='scanning'&&<><PhonePicker key={view.pairing.session} devices={view.pairing.devices} busy={busy} onSelect={device=>void run(async()=>{await api('user-self/pairing/select','POST',{session:view.pairing.session,device:device.path});})}/><p className="setup-note">Phones already registered to another Luma user are excluded.</p></>}
           {view.pairing.phase==='confirming'&&<div className="pairing-confirmation"><output aria-label="Pairing code">{view.pairing.passkey}</output><button disabled={busy} onClick={()=>void run(async()=>{await api('user-self/pairing/confirm','POST',{session:view.pairing.session,challenge:view.pairing.challenge,accepted:true});})}>Codes match · pair</button><button disabled={busy} onClick={()=>void run(async()=>{await api('user-self/pairing/confirm','POST',{session:view.pairing.session,challenge:view.pairing.challenge,accepted:false});})}>Reject</button></div>}
           {['scanning','pairing','confirming'].includes(view.pairing.phase)&&<button disabled={busy} onClick={()=>void run(async()=>{await api('user-self/pairing/cancel','POST',{session:view.pairing.session});})}>Cancel pairing</button>}
           <p role="status">{view.pairing.message}</p><p>{view.role==='primary'?'Enable Share System Notifications beside Luma on the iPhone. Your private data stays hidden until Luma verifies that access.':'Share System Notifications is not needed. Luma uses your registered phone’s live bonded Bluetooth connection and never subscribes to its notifications. Keep that permission off; your own calendar and sharing choices are separate.'}</p></section>}

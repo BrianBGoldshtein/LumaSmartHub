@@ -3,8 +3,10 @@ import {useSetupActivity} from "./setupActivity";
 import {Bluetooth,Check,Smartphone} from "lucide-react";
 import {TouchField} from "./TouchField";
 import {forgetBluetoothPhone} from "./bluetoothForget";
+import {PhonePicker} from './PhonePicker';
+import type {PhoneChoice} from './phoneChoices';
 
-type Phone={path:string;name:string;address:string;paired:boolean;trusted:boolean};
+type Phone=PhoneChoice;
 type Pairing={session:string|null;phase:string;devices:Phone[];selected:Phone|null;challenge:string|null;passkey:null|string;message:string;phone_address?:string|null;connection_status?:string;reconnect_advertising?:string;last_reconnect_at?:string|null;reconnect_attempts?:number;last_service_recovery_at?:string|null;service_recovery_attempts?:number};
 const initial:Pairing={session:null,phase:"idle",devices:[],selected:null,challenge:null,passkey:null,message:""};
 const previewPhone:Phone={path:"preview-phone",name:"Your iPhone",address:"Preview device",paired:false,trusted:false};
@@ -67,7 +69,7 @@ export function BluetoothSetup({demo,pinConfigured}:{demo:boolean;pinConfigured:
       </form>}
     </>}
     {!forgetMode && !active(state.phase) && <button disabled={busy} onClick={()=>void action("start")}><Smartphone/>{state.phone_address?"Choose another phone":"Find my iPhone"}</button>}
-    {state.phase==="scanning" && <><p role="status">Looking for nearby devices…</p><div className="network-list">{state.devices.map(phone=><button key={phone.path} disabled={busy} onClick={()=>void action("select",{session:state.session,device:phone.path})}><Smartphone/><span>{phone.name}<small>{phone.address} · {phone.paired?(phone.trusted?"Previously paired":"Unfinished bond"):"Compare code to pair"}</small></span></button>)}</div><p className="setup-note">Discovery stops after 45 seconds. Device names are not proof of identity; check the matching code on your phone.</p></>}
+    {state.phase==="scanning" && <><p role="status">Looking for nearby devices…</p><PhonePicker key={state.session} devices={state.devices} busy={busy} onSelect={phone=>void action("select",{session:state.session,device:phone.path})}/></>}
     {state.phase==="confirming" && <div className="pairing-confirmation"><p>{state.selected?.name}</p><output aria-label="Pairing code">{state.passkey}</output><p>Does this code match your iPhone?</p><button disabled={busy} onClick={()=>void action("confirm",{session:state.session,challenge:state.challenge,accepted:true})}><Check/>Codes match — pair</button><button disabled={busy} onClick={()=>void action("confirm",{session:state.session,challenge:state.challenge,accepted:false})}>Doesn’t match — reject</button></div>}
     {active(state.phase) && <button disabled={busy} onClick={()=>void action("cancel",{session:state.session})}>Cancel pairing</button>}
     {state.message && <p className="setup-note" role="status">{state.message}</p>}

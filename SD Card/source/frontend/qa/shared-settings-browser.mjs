@@ -43,6 +43,9 @@ try{
         assert.ok(!cooling.includes('discovery window returns'));
       }
       if(step==='onboarding')await until(`${child}?.querySelector('.onboarding-themes')!==null`);
+      // Measure once after font/layout frames settle, not during the hash
+      // transition. Do not retry or weaken the actual overflow assertion.
+      await value(`(async()=>{const d=${child};await d.fonts.ready;await new Promise(resolve=>d.defaultView.requestAnimationFrame(()=>d.defaultView.requestAnimationFrame(resolve)));})()`);
       const report=await value(`(()=>{const d=${child},w=d.defaultView;return {width:w.innerWidth,scroll:d.documentElement.scrollWidth,heading:d.querySelector('h1')?.textContent,keyboards:d.querySelectorAll('.keyboard-toggle').length};})()`);
       assert.ok(report.scroll<=report.width+1,`${theme}/${width}/${step}: horizontal overflow`);assert.equal(report.keyboards,0);
       reports.push({theme,step,...report});

@@ -44,6 +44,13 @@ class FanRuntime:
             standby = True
             result = await self.request({'action':'fan','operation':'keep_on',
                 **preferences,'mode':'always_on','acknowledged':False})
+        if result.get('fault') is True:
+            # A broker restart/update must not revive a qualification from
+            # before a real switching fault. Only an acknowledged new probe
+            # and explicit physical observation may re-enable automatic off.
+            preferences = {'mode':'always_on','qualified_topology':None}
+            if self.preferences() != preferences:
+                self.storage.set_cache('device', PREFERENCES, preferences)
         self.standby = standby
         result = {**result,'standby_override':standby}
         if standby:

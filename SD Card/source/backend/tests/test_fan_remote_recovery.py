@@ -61,3 +61,23 @@ async def test_lost_primary_cannot_submit_even_an_acknowledged_recovery(rig):
     async with client(app) as browser:
         result=await browser.post('/api/v1/companion/dispatch',json=pending)
     assert result.status_code==403 and p.calls==before
+
+
+@pytest.mark.asyncio
+async def test_observed_fault_disarms_saved_qualification_across_broker_restart(rig):
+    app=rig[0];c,p,s=failed_controller(app)
+    app.state.fan.storage.set_cache('device','usb_fan_v1',{
+        'mode':'automatic','qualified_topology':p.fingerprint})
+    result=(await settings(rig,operation('device/fan'))).json()['results'][0]['body']
+    assert result['fault'] and not result['qualified'] and p.on
+    assert app.state.fan.preferences()=={'mode':'always_on','qualified_topology':None}
+    # A fresh protected controller models the service restart during an app
+    # update. Temperature/time would permit off if old qualification survived.
+    fresh=USBFanController(lambda:p,lambda:{'celsius':55},lambda:False,lambda:False,lambda:s.now)
+    async def wire(value):return fresh.request(value)
+    app.state.fan.request=wire;s.now+=120;before=len(p.calls)
+    result=(await settings(rig,operation('device/fan'))).json()['results'][0]['body']
+    assert result['mode']=='always_on' and not result['qualified'] and p.on
+    assert all(p.calls[before:])
+    rejected=(await settings(rig,operation('device/fan','POST',{'action':'automatic'}))).json()['results'][0]
+    assert rejected['status']==409 and p.on

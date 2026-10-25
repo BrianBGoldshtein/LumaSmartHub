@@ -83,6 +83,9 @@ install -m 0644 "${SOURCE_ROOT}/system/luma-tailscaled.service" \
 install -m 0644 "${SOURCE_ROOT}/system/luma-network.service" "${SOURCE_ROOT}/system/luma-network.socket" /etc/systemd/system/
 install -m 0644 "${SOURCE_ROOT}/system/luma-backup.service" "${SOURCE_ROOT}/system/luma-backup.socket" /etc/systemd/system/
 install -m 0644 "${SOURCE_ROOT}/system/luma-update.service" "${SOURCE_ROOT}/system/luma-update.socket" /etc/systemd/system/
+install -d -m 0755 /usr/local/libexec
+install -m 0755 "${SOURCE_ROOT}/system/luma_boot_diagnostics.py" /usr/local/libexec/luma-boot-diagnostics.py
+install -m 0644 "${SOURCE_ROOT}/system/luma-boot-diagnostics.service" /etc/systemd/system/
 install -d -m 0755 /etc/NetworkManager/conf.d
 install -m 0644 "${SOURCE_ROOT}/system/30-luma-connectivity.conf" /etc/NetworkManager/conf.d/
 # Trust is scoped to the Stanford Wi-Fi profile, never the OS/browser trust store.
@@ -111,7 +114,7 @@ if [[ ${LUMA_IMAGE_BUILD:-0} != 1 && -S /run/systemd/private && -d /run/systemd/
 fi
 install -d -m 0755 /etc/lightdm/lightdm.conf.d
 install -m 0644 "${SOURCE_ROOT}/system/60-luma.conf" /etc/lightdm/lightdm.conf.d/
-systemctl --root=/ enable luma-api.service luma-network.socket luma-backup.socket luma-update.socket luma-tailscale-setup.socket bluetooth.service lightdm.service avahi-daemon.service
+systemctl --root=/ enable luma-api.service luma-boot-diagnostics.service luma-network.socket luma-backup.socket luma-update.socket luma-tailscale-setup.socket bluetooth.service lightdm.service avahi-daemon.service
 systemctl --root=/ set-default graphical.target
 
 # Owner-approved recovery route. Only the public key enters the appliance.

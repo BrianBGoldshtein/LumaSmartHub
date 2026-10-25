@@ -94,7 +94,8 @@ def test_bond_and_wall_consent_are_not_voice_authority(rig):
     assert not response['accepted']
     app.state.profiles.set_setup(users[1].id, 'ready', wall_share_approved=True)
     child.remote_authorized.clear()
-    assert child.service.state.phone_connected
+    assert not child.service.state.phone_connected
+    child.service.state.phone_connected = True  # Even a stale UI flag cannot restore voice authority.
     assert not service.voice_accounts.handle('Alex what is on my calendar today')['accepted']
 
 

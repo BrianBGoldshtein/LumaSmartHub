@@ -151,11 +151,14 @@ def test_identity_origin_and_action_cannot_be_supplied_in_protocol_json(gateway)
 
 def test_disconnect_and_revocation_fail_closed_through_gateway(gateway,rig):
     rig[0].state.bluetooth.remote_authorized.clear()
+    assert not rig[0].state.luma.state.phone_connected
     # Build a previously valid request without requesting a new challenge.
     rig[0].state.bluetooth.remote_authorized.begin('AA:BB:CC:DD:EE:FF','/phone','/phone/source')
     rig[0].state.bluetooth.remote_authorized.heartbeat('AA:BB:CC:DD:EE:FF')
+    rig[0].state.luma.phone_seen()  # Fresh verification also publishes the returned link.
     proof=envelope(rig,'GET','/remote/api/preview')
     rig[0].state.bluetooth.remote_authorized.clear()
+    assert not rig[0].state.luma.state.phone_connected
     response=gateway.get('/remote/api/preview',headers={**HEADERS,'X-Luma-Device':proof['device_id'],
         'X-Luma-Nonce':proof['nonce'],'X-Luma-Proof':proof['signature']})
     assert response.status_code==403 and 'calendar' not in response.text

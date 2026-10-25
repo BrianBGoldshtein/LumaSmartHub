@@ -66,12 +66,12 @@ def test_ancs_authorization_loss_redacts_before_legacy_grace_or_worker_cleanup(a
     for user in users: link(user.id)
     lost = users[2]
     app.state.bluetooth.runtime(lost.id).remote_authorized.clear()
-    assert app.state.bluetooth.runtime(lost.id).service.state.phone_connected
+    assert not app.state.bluetooth.runtime(lost.id).service.state.phone_connected
     view = app.state.luma.snapshot(now)
     assert lost.id not in {row['profile_id'] for row in view['user_panels']}
     assert len(view['user_panels']) == 4
     app.state.bluetooth.runtime('primary').remote_authorized.clear()
-    assert app.state.luma.state.phone_connected
+    assert not app.state.luma.state.phone_connected
     view = app.state.luma.snapshot(now)
     assert view['calendar'] == [] and view['privacy_redacted'] is False
     assert len(view['user_panels']) == 3

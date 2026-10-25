@@ -188,6 +188,13 @@ async def isolated_wall(_):
     task=asyncio.create_task(wall.serve())
     async def cooling_watchdog():
         while True:
+            # This opt-in hardware simulation also supplies the continuous
+            # synthetic ANCS heartbeat. Wall HTTP does not pass through the
+            # TLS QA middleware; absent this, the fake phone correctly expires
+            # midway through the wall tests and safely cancels the probe.
+            if linked:
+                core.state.bluetooth.remote_authorized.heartbeat(PHONE)
+                service.phone_seen()
             await asyncio.to_thread(cooling_controller.tick)
             await asyncio.sleep(.1)
     watchdog=asyncio.create_task(cooling_watchdog()) if cooling_controller else None

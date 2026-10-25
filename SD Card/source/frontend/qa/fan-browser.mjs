@@ -32,7 +32,7 @@ async function exercise(theme,width){
   await acknowledge();await click('Retry physical fan test');
   await inside(`d.querySelector('.fan-control')?.textContent.includes('Testing · USB power returns')`);
   assert.equal((await audit()).status.probe,'running');
-  await inside(`d.querySelector('.fan-control')?.textContent.includes('Test restored USB power')`);
+  await inside(`[...d.querySelectorAll('.fan-control button')].some(b=>b.textContent==='Confirm fan stopped and restarted')`);
   let row=await audit();assert.equal(row.status.usb_power,'on');assert.equal(row.status.qualified,false);
   assert.equal(row.calls.filter(v=>v===false).length,before+1);
   assert.equal(await value(scoped(`return d.querySelector('.fan-control input[type=checkbox]').checked;`)),false);

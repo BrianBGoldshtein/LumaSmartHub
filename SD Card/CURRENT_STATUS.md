@@ -1,6 +1,16 @@
 # Luma development status — 2026-10-25
 
-## Current published Beta — 0.3.11 pairing discovery list
+## Current published Beta — 0.3.12 USB cooling recovery
+
+[0.3.12 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.12) from immutable source `a74b92702d79956254293bc87ecc8d9d6d72c46e`. The shared wall/primary-phone fan test no longer deadlocks when a fault makes the controller unavailable. Explicit acknowledgment permits recovery; independent five-second restoration and a new physical-observation confirmation remain mandatory. Duplicate probes cannot extend the interruption, stale polls cannot overwrite a new action, and persistent faults durably disarm automatic qualification across controller restarts. Primary PIN/presence, secondary exclusion, storage/update guards and standby mouse power are retained.
+
+All eight reported hub bits were on in the owner's sample, with no storage or update active. Source review reproduced a possible false fault from immediate USB3 status readback; the switch now allows one 150 ms settling delay without repeated off requests. This is not proof of the historical Pi cause or actual fan RPM/voltage. Keep-on failures enter the safe fault path with fixed diagnostic codes rather than raw errors.
+
+Qualification: **2,364 backend / 222 frontend / 43 packaging tests**, both builds, [exact-source CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/40182315428), all nine themed cooling cases, all 24 shared-settings cases, full private remote regression and 12 crowded-pairing cases. The exact archive passed switch and forced rollback with candidate plus pinned published 0.3.8/0.3.11 installers. Production signed download from both versions matched **2,154,131 bytes**, **92 files**, SHA-256 `584adc114533c06ab657144a43ab638b5f5d6770ad501433b43b512f7d2041de`. The signer stayed offline; no dependency, service-unit, schema or root-request expansion.
+
+Install normally, confirm **0.3.12** after reboot and refresh the phone remote. Keep USB on until personally present; repeat and confirm the physical fan test before choosing Automatic. 70°C on / 60°C off and the minimum-on interval remain unchanged. No physical Pi switching was performed for this qualification. See [release notes](docs/V0312_RELEASE_NOTES.md) and [evidence / exact Pi Connect steps](docs/V0312_WORKING_NOTES.md).
+
+## Previous published Beta — 0.3.11 pairing discovery list
 
 [0.3.11 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.11) from immutable source `50921b306f007c0f04c4ce80bba4fc5d29f57e22`. The pairing backend no longer silently truncates at 40 devices. Readable names rank before identifiers, then stronger valid RSSI within each group; missing readings sort last in their group. Primary and secondary setup share name/address search, six-row pages, counts and signal labels in all themes. Other users' registered phones remain excluded from secondary enrollment, using one registry read per snapshot instead of one per discovered row. Matching-code confirmation and actual identity/bond validation are unchanged.
 

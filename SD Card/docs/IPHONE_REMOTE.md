@@ -30,6 +30,8 @@ The shared settings use Safari's keyboard, not the wall keyboard. Voice calibrat
 
 **USB cooling** is optional and off by default. Keep the phone remote available for its five-second physical fan test: all onboard USB ports may turn off together, temporarily disabling the mouse. Remove USB storage before testing. Confirm only after seeing the fan stop and restart; the reported hub power bits cannot confirm physical operation. From 0.3.6, automatic cooling uses 70°C on / 60°C off with no periodic discovery windows. Before using the mouse or plugging in a USB stick, use the phone's **Keep USB on · mouse & drives** control; select Automatic again after USB use. See [cooling instructions](V036_RELEASE_NOTES.md).
 
+From **0.3.12**, a latched cooling fault no longer disables its own recovery button. After updating, refresh this remote, connect the registered phone and unlock primary settings. Open USB cooling → Verify physical fan switching, remove drives, acknowledge and retry. Wait for power restoration, then check the separate observation acknowledgment and confirm only if the actual fan stopped and restarted. Persistent faults keep automatic cooling disarmed even across a controller restart. No simulated test qualifies your physical fan; see [0.3.12 evidence and recovery instructions](V0312_WORKING_NOTES.md).
+
 ## Optional Google sign-in on the phone
 
 Already-linked Google accounts work without a new client: change calendar selections or tap **Sync now**. To renew Google directly from this phone, configure an additional **Web application** OAuth client. The existing Desktop client and tokens are not deleted.

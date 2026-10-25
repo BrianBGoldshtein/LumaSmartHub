@@ -20,8 +20,38 @@ class FanCommand(BaseModel):
 
 
 class FanRuntime:
-    def __init__(self, storage, request=backup_request):
+    def __init__(self, storage, request=backup_request, *, connected=lambda:False, service=None):
         self.storage, self.request, self.lock = storage, request, asyncio.Lock()
+        self.connected, self.service = connected, service
+        self.standby = None
+
+    def standby_override(self):
+        try:
+            return not bool(self.connected())
+        except Exception:
+            # Unknown presence must never strand the owner without a mouse.
+            return True
+
+    async def _apply(self, preferences, operation='poll', acknowledged=False):
+        standby = self.standby_override()
+        wire_operation = ('keep_on' if self.standby is not True or operation=='keep_on' else 'poll') if standby else operation
+        result = await self.request({'action':'fan','operation':wire_operation,
+            **preferences,'mode':'always_on' if standby else preferences['mode'],
+            'acknowledged':acknowledged})
+        if not standby and self.standby_override():
+            # A disconnect racing an in-flight automatic request wins before
+            # returning status; never leave a stale off decision in effect.
+            standby = True
+            result = await self.request({'action':'fan','operation':'keep_on',
+                **preferences,'mode':'always_on','acknowledged':False})
+        self.standby = standby
+        result = {**result,'standby_override':standby}
+        if standby:
+            # Selected mode is retained; the broker's effective mode is on.
+            result['mode'] = preferences['mode']
+            if result.get('available') and result.get('usb_power')=='on':
+                result['reason'] = 'Standby · no connected phones · mouse USB power stays on'
+        return result
 
     def preferences(self):
         saved = self.storage.get_cache('device', PREFERENCES) or {}
@@ -38,8 +68,7 @@ class FanRuntime:
 
     async def poll(self):
         async with self.lock:
-            return await self.request({'action': 'fan', 'operation': 'poll',
-                                       **self.preferences(), 'acknowledged': False})
+            return await self._apply(self.preferences())
 
     async def command(self, command):
         async with self.lock:
@@ -48,15 +77,17 @@ class FanRuntime:
             action = command.action
             if action in {'probe', 'confirm'} and not command.acknowledged:
                 raise HTTPException(422, 'Confirm the USB interruption and fan observation first.')
+            if action in {'probe','confirm'} and self.standby_override():
+                raise HTTPException(409, 'Connect a registered phone before testing USB power. Standby keeps the mouse powered.')
             if action == 'probe':
                 preferences = {'mode': 'always_on', 'qualified_topology': None}
                 # A crash during testing must not resurrect automatic mode.
                 self.storage.set_cache('device', PREFERENCES, preferences)
             if action in {'always_on', 'automatic'}:
                 preferences['mode'] = action
-            result = await self.request({'action': 'fan',
-                'operation': 'keep_on' if action == 'always_on' else action if action in {'probe', 'confirm'} else 'poll',
-                **preferences, 'acknowledged': command.acknowledged})
+            result = await self._apply(preferences,
+                'keep_on' if action == 'always_on' else action if action in {'probe','confirm'} else 'poll',
+                command.acknowledged)
             require_request_admin()
             if action == 'automatic' and not result.get('qualified'):
                 raise HTTPException(409, 'Run and confirm the USB fan test before enabling automatic cooling.')
@@ -66,12 +97,24 @@ class FanRuntime:
             return result
 
     async def run(self):
+        queue = self.service.subscribe() if self.service else None
         try:
             while True:
                 with suppress(ValueError, OSError):
                     await self.poll()
-                await asyncio.sleep(5)
+                if queue is None:
+                    await asyncio.sleep(5)
+                else:
+                    try:
+                        async with asyncio.timeout(5):
+                            while (await queue.get()).get('type') not in {
+                                'presence.updated','user.presence.updated','users.updated'}:
+                                pass
+                    except TimeoutError:
+                        pass
         finally:
+            if queue is not None:
+                self.service.unsubscribe(queue)
             # The root watchdog independently restores on missing heartbeat.
             with suppress(ValueError, OSError, TimeoutError):
                 await asyncio.wait_for(self.request({'action': 'fan', 'operation': 'keep_on',
@@ -79,7 +122,7 @@ class FanRuntime:
 
 
 def install_fan_api(app, storage, local_only):
-    runtime = FanRuntime(storage)
+    runtime = FanRuntime(storage, connected=lambda:app.state.bluetooth.present_ids(), service=app.state.luma)
     app.state.fan = runtime
 
     @app.get('/api/v1/device/fan', dependencies=[Depends(local_only)])

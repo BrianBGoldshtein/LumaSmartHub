@@ -17,6 +17,7 @@ from .bluetooth_runtime import BluetoothRuntime
 from .companion_auth import PhonePresence
 from .profiles import PRIMARY_ID, ProfileError, ProfileRepository
 from .radio_scheduler import RadioScheduler
+from .bluetooth_events import PhoneSignalMonitor
 
 
 class UserBluetoothService:
@@ -60,6 +61,33 @@ class MultiPhoneBluetooth:
         self.coordinator = coordinator or RadioScheduler()
         self.children = {PRIMARY_ID: BluetoothRuntime(service, coordinator=self.coordinator)}
         self.advertiser = ANCSReconnectAdvertising(self.notification_addresses)
+        self.signals = PhoneSignalMonitor(self.phone_signal,self.bluez_reset)
+
+    def phone_signal(self, address, kind, changed, invalidated, removed):
+        try:
+            user = self.profiles.by_phone(address)
+            if user is None:
+                return
+            child = self.runtime(user.id)
+        except ProfileError:
+            return
+        if kind=='device':
+            if removed:
+                child.remote_authorized.clear()
+            else:
+                child.remote_authorized.properties_changed('org.bluez.Device1',changed,invalidated)
+            if (removed or any(changed.get(key) is True for key in
+                    ('Connected','ServicesResolved','Paired','Bonded','Trusted'))):
+                child.change_event.set()
+        elif kind=='ancs' and user.id==PRIMARY_ID:
+            if removed or 'Notifying' in invalidated or changed.get('Notifying') is False:
+                child.remote_authorized.clear()
+            child.change_event.set()
+
+    def bluez_reset(self):
+        for child in self.children.values():
+            child.remote_authorized.clear()
+            child.change_event.set()
 
     def __getattr__(self, name):
         # Existing primary diagnostics/scene hooks remain compatible. Never
@@ -133,6 +161,7 @@ class MultiPhoneBluetooth:
             self.children[PRIMARY_ID].status = 'Requires Linux BlueZ'
             return
         tasks = {}
+        monitor = asyncio.create_task(self.signals.run(),name='luma-bluez-signals')
         try:
             while True:
                 wanted = {user.id for user in self.profiles.list() if user.phone_address}
@@ -156,9 +185,10 @@ class MultiPhoneBluetooth:
                         tasks[uid] = asyncio.create_task(self.runtime(uid).run(), name=f'luma-phone-{uid}')
                 await pause(1)
         finally:
+            monitor.cancel()
             for task in tasks.values():
                 task.cancel()
-            await asyncio.gather(*tasks.values(), return_exceptions=True)
+            await asyncio.gather(monitor,*tasks.values(), return_exceptions=True)
             for child in self.children.values():
                 child.remote_authorized.clear()
                 child.service.phone_disconnected()

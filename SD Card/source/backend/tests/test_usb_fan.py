@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+import asyncio
+from contextlib import suppress
 
 from luma.usb_fan import FanError, USBFanController, validate_fan_request, usb_storage_attached, update_in_progress
 
@@ -54,6 +56,130 @@ def cool_off(rig):
     request(controller, mode='automatic', qualified=qualified)
     assert not power.on
     return qualified
+
+
+@pytest.mark.asyncio
+async def test_standby_restores_off_usb_preserves_mode_and_resumes_70_60_control(rig,tmp_path):
+    from luma.fan_api import FanRuntime,PREFERENCES
+    from luma.storage import Storage
+    c,p,s=rig;q=cool_off(rig)
+    connected=[False]
+    storage=Storage(tmp_path/'luma.db')
+    saved={'mode':'automatic','qualified_topology':q}
+    storage.set_cache('device',PREFERENCES,saved)
+    async def wire(packet): return c.request(packet)
+    runtime=FanRuntime(storage,wire,connected=lambda:connected[0])
+    result=await runtime.poll()
+    assert p.on and result['standby_override'] and result['mode']=='automatic'
+    assert 'Standby' in result['reason'] and runtime.preferences()==saved
+    calls=list(p.calls)
+    for minute in range(1,61):
+        s.now+=60
+        result=await runtime.poll()
+        assert p.on and result['mode']=='automatic'
+    assert p.calls==calls  # No repeated restoration writes or discovery cycling.
+    connected[0]=True
+    result=await runtime.poll()
+    assert not result['standby_override'] and not p.on and runtime.preferences()==saved
+    s.temperature=70
+    await runtime.poll();assert p.on
+
+
+@pytest.mark.asyncio
+async def test_unknown_phone_presence_fails_on_and_disconnect_race_wins(rig,tmp_path):
+    from luma.fan_api import FanRuntime,PREFERENCES
+    from luma.storage import Storage
+    c,p,s=rig;q=cool_off(rig)
+    storage=Storage(tmp_path/'luma.db')
+    storage.set_cache('device',PREFERENCES,{'mode':'automatic','qualified_topology':q})
+    connected=[True]
+    packets=[]
+    async def wire(packet):
+        packets.append(packet)
+        if len(packets)==1: connected[0]=False
+        return c.request(packet)
+    runtime=FanRuntime(storage,wire,connected=lambda:connected[0])
+    assert (await runtime.poll())['standby_override'] and p.on
+    assert packets[-1]['operation']=='keep_on' and packets[-1]['mode']=='always_on'
+    runtime.connected=lambda:(_ for _ in ()).throw(RuntimeError('observer unavailable'))
+    assert (await runtime.poll())['standby_override'] and p.on
+
+
+@pytest.mark.asyncio
+async def test_phone_loss_cancels_in_progress_physical_probe_immediately(rig,tmp_path):
+    from luma.fan_api import FanRuntime
+    from luma.storage import Storage
+    c,p,s=rig
+    connected=[True]
+    async def wire(packet): return c.request(packet)
+    runtime=FanRuntime(Storage(tmp_path/'luma.db'),wire,connected=lambda:connected[0])
+    await runtime.poll()
+    request(c,'probe',acknowledged=True);assert not p.on
+    connected[0]=False
+    result=await runtime.poll()
+    assert p.on and result['probe']=='idle' and result['standby_override']
+
+
+@pytest.mark.asyncio
+async def test_last_phone_loss_wakes_fan_worker_without_waiting_for_heartbeat(rig,tmp_path):
+    from luma.fan_api import PREFERENCES
+    from luma.api import create_app
+    c,p,s=rig;q=cool_off(rig)
+    app=create_app(data_dir=tmp_path)
+    runtime=app.state.fan
+    runtime.storage.set_cache('device',PREFERENCES,{'mode':'automatic','qualified_topology':q})
+    children=[]
+    for i in range(2):
+        guest=app.state.profiles.create_secondary(f'Guest {i}')
+        phone=f'AA:BB:CC:DD:EE:{i+1:02X}'
+        app.state.profiles.bind_phone(guest.id,phone)
+        child=app.state.bluetooth.runtime(guest.id)
+        child.remote_authorized.begin_bonded(phone,'/phone',dict(Address=phone,Paired=True,
+            Bonded=True,Trusted=True,Connected=True,ServicesResolved=True,Blocked=False))
+        child.remote_authorized.heartbeat(phone);child.service.phone_seen();children.append(child)
+    polled=asyncio.Event()
+    async def wire(packet):
+        result=c.request(packet);polled.set();return result
+    runtime.request=wire
+    task=asyncio.create_task(runtime.run())
+    try:
+        await asyncio.wait_for(polled.wait(),1)
+        assert not p.on
+        polled.clear();children[0].remote_authorized.clear()
+        await asyncio.wait_for(polled.wait(),1)
+        assert not p.on  # Another registered phone is still present.
+        polled.clear();children[1].remote_authorized.clear()
+        await asyncio.wait_for(polled.wait(),1)
+        assert p.on
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError): await task
+
+
+@pytest.mark.asyncio
+async def test_standby_probe_rejected_and_secondary_without_calendars_counts_as_present(tmp_path):
+    from luma.api import create_app
+    app=create_app(data_dir=tmp_path)
+    app.state.security.set_pin('123456')
+    request=app.state.fan.request=AsyncMock(return_value={'available':True,'qualified':True,
+        'qualified_topology':'a'*64,'mode':'always_on','usb_power':'on','probe':'idle','reason':'test'})
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app,client=('127.0.0.1',1)),base_url='http://127.0.0.1:8742') as client:
+        await client.post('/api/v1/admin/unlock',json={'pin':'123456'})
+        assert (await client.post('/api/v1/device/fan',json={'action':'probe','acknowledged':True})).status_code==409
+        assert not request.called
+        app.state.luma.state.phone_connected=True  # A raw/stale link flag is not remote authority.
+        assert (await client.get('/api/v1/device/fan')).json()['standby_override']
+        app.state.luma.state.phone_connected=False
+        guest=app.state.profiles.create_secondary('Alex')
+        phone='AA:BB:CC:DD:EE:02'
+        app.state.profiles.bind_phone(guest.id,phone)
+        child=app.state.bluetooth.runtime(guest.id)
+        child.remote_authorized.begin_bonded(phone,'/phone',dict(Address=phone,Paired=True,
+            Bonded=True,Trusted=True,Connected=True,ServicesResolved=True,Blocked=False))
+        child.remote_authorized.heartbeat(phone);child.service.phone_seen()
+        assert not (await client.get('/api/v1/device/fan')).json()['standby_override']
+        child.remote_authorized.clear()
+        assert (await client.get('/api/v1/device/fan')).json()['standby_override']
 
 
 @pytest.mark.parametrize('field,value', [('operation', []), ('mode', {}), ('qualified_topology', '../dev'),
@@ -247,6 +373,7 @@ def test_restore_attempts_every_port_even_if_one_fails():
 async def test_fan_api_requires_admin_and_preserves_database_preferences(tmp_path):
     from luma.api import create_app
     app=create_app(data_dir=tmp_path)
+    app.state.fan.connected=lambda:True  # This test covers admin policy, not phone verification.
     app.state.security.set_pin('123456')
     app.state.fan.request=AsyncMock(return_value={'available':True,'qualified':True,
         'qualified_topology':'a'*64,'mode':'always_on','usb_power':'on','probe':'idle','reason':'test'})

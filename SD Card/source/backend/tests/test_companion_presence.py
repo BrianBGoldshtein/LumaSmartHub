@@ -1,10 +1,24 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from luma.companion_presence import AuthorizedPhoneSession, BondedPhoneSession
 
 PHONE = 'AA:BB:CC:DD:EE:FF'
+
+
+def test_loss_notifies_once_and_blocked_or_unknown_block_state_revokes():
+    lost=Mock()
+    lease=AuthorizedPhoneSession(on_lost=lost)
+    lease.begin(PHONE,'/phone','/source');lease.heartbeat(PHONE)
+    lease.properties_changed('org.bluez.Device1',{'Blocked':True},[])
+    lease.clear()
+    assert not lease.snapshot(PHONE,phone_connected=True).authorized
+    lost.assert_called_once_with()
+    lease.begin(PHONE,'/phone','/source');lease.heartbeat(PHONE)
+    lease.properties_changed('org.bluez.Device1',{},['Blocked'])
+    assert not lease.snapshot(PHONE,phone_connected=True).authorized and lost.call_count==2
 
 
 def bonded_properties():

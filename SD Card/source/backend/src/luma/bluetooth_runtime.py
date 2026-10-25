@@ -17,12 +17,12 @@ SERVICE_CHANGED = '00002a05-0000-1000-8000-00805f9b34fb'
 
 
 def trusted_connection(properties: dict) -> bool:
-    return all(properties.get(key) is True for key in ("Paired", "Bonded", "Trusted", "Connected", "ServicesResolved"))
+    return trusted_link(properties) and properties.get('ServicesResolved') is True
 
 
 def trusted_link(properties: dict) -> bool:
     """A bond and live link are necessary; ANCS subscription proves authorization."""
-    return all(properties.get(key) is True for key in ("Paired", "Bonded", "Trusted", "Connected"))
+    return properties.get('Blocked',False) is False and all(properties.get(key) is True for key in ("Paired", "Bonded", "Trusted", "Connected"))
 
 
 def plain(properties: dict) -> dict:
@@ -90,7 +90,8 @@ async def scan_for_paired_phone(manager, adapter, phone_path: str, *, phone_addr
 
 
 async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: float = 12,
-                                      query_timeout: float = 5, allow_ancs_fallback: bool = True) -> dict:
+                                      query_timeout: float = 5, allow_ancs_fallback: bool = True,
+                                      pause=asyncio.sleep) -> dict:
     """BlueZ can report Connected before iOS GATT service discovery finishes."""
     deadline = monotonic() + timeout
     while True:
@@ -101,6 +102,8 @@ async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: floa
         if device is None:
             raise BluetoothStatusError("Saved iPhone bond is missing from Bluetooth")
         properties = plain(device)
+        if properties.get('Blocked',False) is not False:
+            raise BluetoothStatusError('Registered iPhone is blocked')
         # Some BlueZ builds export GATT objects before ServicesResolved flips.
         # Do not equate this with presence: subscribing to ANCS is still required.
         if trusted_connection(properties) or (allow_ancs_fallback and trusted_link(properties)
@@ -112,7 +115,7 @@ async def wait_for_trusted_connection(manager, phone_path: str, *, timeout: floa
             raise BluetoothStatusError("iPhone Bluetooth link is disconnected")
         if monotonic() >= deadline:
             raise BluetoothStatusError("iPhone connected; waiting for Bluetooth services")
-        await asyncio.sleep(0.5)
+        await pause(0.5)
 
 
 async def connect_paired_phone(manager, device, phone_path: str, *,
@@ -219,7 +222,9 @@ class BluetoothRuntime:
         self.status = "Not configured"
         self.scene_presence = ScenePresence()
         self.scene_authorized = None
-        self.remote_authorized = AuthorizedPhoneSession() if profile_id == 'primary' else BondedPhoneSession()
+        self.change_event = asyncio.Event()
+        session_type = AuthorizedPhoneSession if profile_id == 'primary' else BondedPhoneSession
+        self.remote_authorized = session_type(on_lost=self.presence_lost)
         self.last_discovery = -60.0
         self.last_reconnect_at: str | None = None
         self.reconnect_attempts = 0
@@ -305,7 +310,7 @@ class BluetoothRuntime:
             self.service.phone_seen()
             if self.coordinator:
                 self.coordinator.note_authorized(self.profile_id)
-            await asyncio.sleep(2)
+            await self.wait_change(2)
 
     async def scene_presence_worker(self):
         """Independent fresh radio evidence; only sampled for enabled scenes."""
@@ -343,6 +348,41 @@ class BluetoothRuntime:
             self.scene_presence.update('', None)
             if bus: bus.disconnect()
 
+    def presence_lost(self):
+        self.scene_authorized = None
+        if self.service.state.phone_connected:
+            self.service.phone_disconnected()
+        self.change_event.set()
+
+    async def wait_change(self, seconds):
+        try:
+            await asyncio.wait_for(self.change_event.wait(), seconds)
+        except TimeoutError:
+            pass
+        finally:
+            self.change_event.clear()
+
+    async def wait_signal_or(self, task, timeout):
+        signal=asyncio.create_task(self.change_event.wait())
+        try:
+            done,_=await asyncio.wait({task,signal},timeout=timeout,return_when=asyncio.FIRST_COMPLETED)
+            return task in done
+        finally:
+            if signal.done() and not signal.cancelled():
+                self.change_event.clear()
+            signal.cancel()
+            await asyncio.gather(signal,return_exceptions=True)
+
+    async def next_notice(self, queue):
+        notice=asyncio.create_task(queue.get())
+        try:
+            if await self.wait_signal_or(notice,5):
+                return notice.result()
+            return None
+        finally:
+            notice.cancel()
+            await asyncio.gather(notice,return_exceptions=True)
+
     async def run(self,*,pause=asyncio.sleep,retry_seconds=10):
         if sys.platform != "linux":
             self.status = "Requires Linux BlueZ"
@@ -362,13 +402,18 @@ class BluetoothRuntime:
                         self.service.phone_disconnected()
             else:
                 self.status = "Not configured"
-            await pause(self.coordinator.failure_delay(self.profile_id) if self.coordinator and address else retry_seconds)
+            delay = self.coordinator.failure_delay(self.profile_id) if self.coordinator and address else retry_seconds
+            if pause is asyncio.sleep:
+                await self.wait_change(delay)
+            else:
+                await pause(delay)
 
     async def session(self, address):
         from dbus_next import BusType, Variant
         from dbus_next.aio import MessageBus
 
         bus = MessageBus(bus_type=BusType.SYSTEM)
+        optional_tasks = []
         try:
             await asyncio.wait_for(bus.connect(), 10)
             async def interface(path, name):
@@ -384,7 +429,7 @@ class BluetoothRuntime:
             properties = plain(objects[phone_path]["org.bluez.Device1"])
             if not all(properties.get(key) for key in ("Paired", "Bonded", "Trusted")):
                 raise BluetoothStatusError("iPhone bond or trust was lost")
-            if self.profile_id != 'primary' and properties.get('Blocked', False) is not False:
+            if properties.get('Blocked', False) is not False:
                 raise BluetoothStatusError('Registered iPhone is blocked')
             device = await interface(phone_path, "org.bluez.Device1")
             device_props = await interface(phone_path, "org.freedesktop.DBus.Properties")
@@ -425,29 +470,21 @@ class BluetoothRuntime:
                 await self._connect_phone(manager, device, phone_path, address)
             try:
                 objects = await wait_for_trusted_connection(manager, phone_path,
-                    allow_ancs_fallback=self.profile_id == 'primary')
+                    allow_ancs_fallback=self.profile_id == 'primary', pause=self.wait_change)
             except BluetoothStatusError as exc:
                 if str(exc) != "iPhone connected; waiting for Bluetooth services":
                     raise
                 adapter = await interface(adapter_path, "org.bluez.Adapter1") if adapter_path else None
                 await self.refresh_phone_services(manager, device, device_props, phone_path, adapter, address)
                 objects = await wait_for_trusted_connection(manager, phone_path, timeout=20,
-                    allow_ancs_fallback=self.profile_id == 'primary')
+                    allow_ancs_fallback=self.profile_id == 'primary', pause=self.wait_change)
             if self.profile_id != 'primary':
                 await self.bonded_presence_session(manager, interface, phone_path, address)
                 return
             changed=service_changed_path(objects,phone_path)
-            if changed:
-                try:
-                    characteristic=await interface(changed,'org.bluez.GattCharacteristic1')
-                    await asyncio.wait_for(characteristic.call_start_notify(),5)
-                except Exception:
-                    # BlueZ may already subscribe internally; periodic GATT
-                    # discovery below remains the fallback.
-                    pass
             self.status='iPhone connected; waiting for notification service'
             try:
-                objects,chars=await wait_for_ancs(manager,phone_path,initial=objects)
+                objects,chars=await wait_for_ancs(manager,phone_path,initial=objects,pause=self.wait_change)
             except BluetoothStatusError as exc:
                 if str(exc) != 'iPhone connected, but notification service is unavailable':
                     raise
@@ -457,14 +494,12 @@ class BluetoothRuntime:
                 # from the selected bearer.
                 adapter = await interface(adapter_path, "org.bluez.Adapter1") if adapter_path else None
                 await self.refresh_phone_services(manager, device, device_props, phone_path, adapter, address)
-                objects = await wait_for_trusted_connection(manager, phone_path, timeout=20)
-                objects,chars=await wait_for_ancs(manager,phone_path,initial=objects)
+                objects = await wait_for_trusted_connection(manager, phone_path, timeout=20,pause=self.wait_change)
+                objects,chars=await wait_for_ancs(manager,phone_path,initial=objects,pause=self.wait_change)
             source = await interface(chars[SOURCE], "org.bluez.GattCharacteristic1")
-            has_details = self.profile_id == 'primary' and DATA in chars and CONTROL in chars
-            data = await interface(chars[DATA], "org.bluez.GattCharacteristic1") if has_details else None
-            control = await interface(chars[CONTROL], "org.bluez.GattCharacteristic1") if has_details else None
+            wants_details = DATA in chars and CONTROL in chars
+            control = None
             source_props = await interface(chars[SOURCE], "org.freedesktop.DBus.Properties")
-            data_props = await interface(chars[DATA], "org.freedesktop.DBus.Properties") if has_details else None
             phone_props = await interface(phone_path, "org.freedesktop.DBus.Properties")
             phone_props.on_properties_changed(self.remote_authorized.properties_changed)
             manager.on_interfaces_removed(self.remote_authorized.interfaces_removed)
@@ -479,13 +514,42 @@ class BluetoothRuntime:
 
             source_props.on_properties_changed(lambda name, changed, invalidated: enqueue(notices, changed))
             source_props.on_properties_changed(self.remote_authorized.source_properties_changed)
-            if data_props:
-                data_props.on_properties_changed(lambda name, changed, invalidated: enqueue(fragments, changed))
             # Never unlock on RSSI, an advertisement or a merely connected
             # device: Notification Source must authorize its subscription.
-            has_details = await subscribe_ancs(source, data)
+            self.change_event.clear()  # Link-ready hints are already reflected in this fresh attempt.
+            await subscribe_ancs(source)
             self.remote_authorized.begin(address, phone_path, chars[SOURCE])
-            self.status = "Authorized ANCS session" if has_details else "Authorized iPhone; notification details unavailable"
+            async def optional_subscribe(characteristic, timeout):
+                try:
+                    await asyncio.wait_for(characteristic.call_start_notify(),timeout)
+                    return True
+                except Exception:
+                    return False
+            async def optional_details():
+                nonlocal control
+                try:
+                    # Optional discovery as well as subscription must never
+                    # hold up a verified arrival or a fresh presence heartbeat.
+                    async with asyncio.timeout(10):
+                        data = await interface(chars[DATA], 'org.bluez.GattCharacteristic1')
+                        control = await interface(chars[CONTROL], 'org.bluez.GattCharacteristic1')
+                        data_props = await interface(chars[DATA], 'org.freedesktop.DBus.Properties')
+                        data_props.on_properties_changed(lambda name, changed, invalidated: enqueue(fragments, changed))
+                        return await optional_subscribe(data,10)
+                except Exception:
+                    return False
+            data_task = asyncio.create_task(optional_details()) if wants_details else None
+            if data_task: optional_tasks.append(data_task)
+            if changed:
+                async def changed_subscribe():
+                    try:
+                        characteristic=await interface(changed,'org.bluez.GattCharacteristic1')
+                        await optional_subscribe(characteristic,5)
+                    except Exception:
+                        pass
+                optional_tasks.append(asyncio.create_task(changed_subscribe()))
+            has_details = False
+            self.status = "Authorized iPhone; notification details loading" if data_task else "Authorized iPhone; notification details unavailable"
             while self.service.settings.phone_address == address and self.remote_authorized.generation:
                 props = plain(await asyncio.wait_for(phone_props.call_get_all("org.bluez.Device1"), 5))
                 if not trusted_link(props):
@@ -499,15 +563,24 @@ class BluetoothRuntime:
                 if plain(current[chars[SOURCE]].get('org.bluez.GattCharacteristic1', {})).get('Notifying') is not True:
                     self.status = "iPhone notification subscription ended"
                     break
+                self.remote_authorized.heartbeat(address)
+                if not self.remote_authorized.generation:
+                    break
                 self.service.phone_seen()
                 self.scene_authorized = (address, monotonic())
-                self.remote_authorized.heartbeat(address)
                 if self.coordinator:
                     self.coordinator.note_authorized(self.profile_id)
-                try:
-                    raw = await asyncio.wait_for(notices.get(), 5)
-                except asyncio.TimeoutError:
+                if data_task:
+                    if not data_task.done():
+                        await self.wait_signal_or(data_task,1)
+                        continue
+                    has_details = data_task.result()
+                    self.status = "Authorized ANCS session" if has_details else "Authorized iPhone; notification details unavailable"
+                raw = await self.next_notice(notices)
+                if raw is None:
                     continue
+                if not self.remote_authorized.generation:
+                    break
                 try:
                     notice = parse_source(raw)
                     if notice.event == 2:
@@ -532,6 +605,10 @@ class BluetoothRuntime:
                     # authorized iPhone link or force the screen into standby.
                     continue
         finally:
+            for task in optional_tasks:
+                task.cancel()
+            if optional_tasks:
+                await asyncio.gather(*optional_tasks,return_exceptions=True)
             self.scene_authorized = None
             self.remote_authorized.clear()
             with suppress(Exception):

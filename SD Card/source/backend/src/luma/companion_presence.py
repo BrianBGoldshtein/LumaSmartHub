@@ -8,13 +8,17 @@ from .companion_auth import PhonePresence
 
 
 class AuthorizedPhoneSession:
-    def __init__(self, *, clock=monotonic):
+    def __init__(self, *, clock=monotonic, on_lost=lambda:None):
         self.clock = clock
+        self.on_lost = on_lost
         self.clear()
 
     def clear(self):
+        had_session = bool(getattr(self, 'generation', ''))
         self.address = self.generation = self.phone_path = self.source_path = ""
         self.last_checked = None
+        if had_session:
+            self.on_lost()
 
     def begin(self, address: str, phone_path: str, source_path: str):
         # Call ONLY after Notification Source StartNotify succeeds. Link,
@@ -36,7 +40,7 @@ class AuthorizedPhoneSession:
         needed = {"Paired", "Bonded", "Trusted", "Connected"}
         if needed.intersection(invalidated) or any(
             key in changed and getattr(changed[key], "value", changed[key]) is not True for key in needed
-        ):
+        ) or 'Blocked' in invalidated or ('Blocked' in changed and getattr(changed['Blocked'],'value',changed['Blocked']) is not False):
             self.clear()
 
     def interfaces_removed(self, path: str, interfaces: list):

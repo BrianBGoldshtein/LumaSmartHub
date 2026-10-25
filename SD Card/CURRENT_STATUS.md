@@ -1,6 +1,14 @@
 # Luma development status — 2026-10-25
 
-## Current published Beta — 0.3.10 recovery
+## Current published Beta — 0.3.11 pairing discovery list
+
+[0.3.11 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.11) from immutable source `50921b306f007c0f04c4ce80bba4fc5d29f57e22`. The pairing backend no longer silently truncates at 40 devices. Readable names rank before identifiers, then stronger valid RSSI within each group; missing readings sort last in their group. Primary and secondary setup share name/address search, six-row pages, counts and signal labels in all themes. Other users' registered phones remain excluded from secondary enrollment, using one registry read per snapshot instead of one per discovered row. Matching-code confirmation and actual identity/bond validation are unchanged.
+
+Qualification passed **2,351 backend / 219 frontend / 43 packaging tests**, both builds, [exact-source CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/40178201599), same-archive switch/forced rollback with candidate plus pinned published 0.3.8/0.3.10 installers, 12 crowded-pairing wall/mobile cases, full private remote fixture and 24 themed shared-settings cases. Production download from both 0.3.8 and 0.3.10 verified identical signed **2,152,471-byte** archive, SHA-256 `e6df311521dd90a65c9cba26e5ff73caaa7e5f3ff69ab3c2af7a4902ae2234ed`. No OS/dependency/schema/root protocol change; the signer stayed offline. See [release notes](docs/V0311_RELEASE_NOTES.md) and [evidence / Pi Connect steps](docs/V0311_WORKING_NOTES.md).
+
+Install 0.3.11 via the signed GitHub updater and retain power through reboot. Confirm the running version, open iPhone Settings → Bluetooth and scan again. Check ordering, name/address search and pages on the physical Pi. Software evidence proves the requested list behavior, not actual RF discoverability or iOS advertising. All 0.3.10 standby USB/cooling/load fixes and saved accounts/bonds are retained. Do not reflash or delete working bonds.
+
+## Previous published Beta — 0.3.10 recovery
 
 The owner's actual 0.3.9 installation failed its health check and restored 0.3.8. Do not retry 0.3.9 or bypass health verification. The restored API is healthy (HTTP 200 in 0.209721 seconds; 671,744-byte database; 99 GB disk space free). [0.3.10 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.10) from immutable source `ad16d72969e2af19cfdc099666c6ffd1c7fb4a9f`, fixing the reproduced synchronous database lookup for every nearby Bluetooth signal. The health deadline remains unchanged; a one-shot startup stack dump retains evidence if startup never reports healthy.
 

@@ -13,10 +13,16 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.10 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.10).
+Latest: [Luma 0.3.11 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.11).
 Use **Settings → Luma software → Check for updates**;
-review **0.3.10**, install and keep power connected through the verified reboot.
+review **0.3.11**, install and keep power connected through the verified reboot.
 Confirm the installed version afterward. Do not reflash its SD card.
+Phone pairing now prioritizes readable names and stronger signals, with name/address
+search and paging instead of silently dropping every result after row 40.
+Primary and secondary setup use the same themed picker. Names and signal strength
+are only hints; matching-code confirmation remains mandatory for new bonds.
+Keep iPhone Settings → Bluetooth open nearby during discovery. See
+[pairing release evidence and Pi Connect procedure](SD%20Card/docs/V0311_WORKING_NOTES.md).
 The owner's 0.3.9 attempt failed health verification and restored 0.3.8;
 0.3.10 fixes a reproduced expensive Bluetooth signal/database path without
 weakening the health gate. Its software and signed install/rollback checks

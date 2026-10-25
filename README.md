@@ -13,18 +13,24 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.8 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.8).
+Latest: [Luma 0.3.9 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.9).
 Use **Settings → Luma software → Check for updates**;
-review **0.3.8**, install and keep power connected through the verified reboot.
+review **0.3.9**, install and keep power connected through the verified reboot.
 Confirm the installed version afterward. Do not reflash its SD card.
-The wall cursor now hides after twenty idle seconds, including a native Wayland
+USB power stays on whenever no registered phone has a verified connection,
+preserving mouse access in standby without changing the saved cooling preference.
+Incoming phone signals bypass retry delays and queued outgoing radio jobs;
+optional notification setup no longer delays a verified arrival. Primary
+authorization remains required; iOS negotiation cannot be guaranteed instantaneous.
+The wall cursor hides after twenty idle seconds, including a native Wayland
 refresh to clear Chromium's stale pointer image. The real pointer starts at the
 extreme bottom-right boundary; bridge restarts do not re-park an active mouse.
 Secondary users do not need notification permission, and Luma never accesses
 their phone notifications. Arrivals ring three quick strikes of the existing
 bell; ordinary notifications ring once. Automatic cooling retains **70°C on / 60°C
-off**, without periodic USB discovery cycling. Use the primary phone's **Keep USB on** control
-before connecting USB storage or needing the mouse. It retains shared
+off** while a verified phone is present, without periodic USB discovery cycling.
+Use the primary phone's **Keep USB on** control before connecting USB storage or
+needing an unpowered mouse while a phone is connected. It retains shared
 primary-phone settings and guided setup, including
 secondary-user enrollment, optional temperature-controlled USB fan power and
 twenty-second idle wall cursor hiding. The primary remote's **All hub settings**

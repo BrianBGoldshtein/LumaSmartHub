@@ -1,6 +1,18 @@
-# Luma development status — 2026-10-23
+# Luma development status — 2026-10-25
 
-## Current published Beta — 0.3.8
+## Current published Beta — 0.3.9
+
+[0.3.9 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.9) from tagged source `544d817e40a1df9bf96ef152167d932492d03d97`. USB power stays on when no registered phone has a verified connection, retaining the saved Automatic preference and restoring mouse access in standby. Presence events wake the cooling worker; a disconnect racing an automatic request is followed by power restoration. Once a verified phone returns, the existing 70°C on / 60°C off policy and minimum-on delay resume. USB interruption tests cannot run without a connected phone.
+
+Incoming Bluetooth signals now wake role-specific verification during retry backoff, queued radio requests and outstanding outgoing connections. Optional notification-detail setup no longer blocks a verified arrival. Primary notification authorization remains mandatory; secondary notifications are never subscribed to or read. This removes application waits, not iOS service/consent negotiation.
+
+Final qualification passed **2,306 backend / 214 frontend / 43 packaging tests**, both builds and [exact-source CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/40170730762). Private-bus tests cover all five phones, a 120-second backoff, incoming primary/secondary links while the radio queue is held, an incoming link during an unfinished Connect, slow optional discovery/subscription, consent denial, daemon restart and peer isolation. The complete remote browser test and all 24 themed mobile settings cases passed on the final source.
+
+The exact signed archive passed install and forced rollback with both candidate and pinned published 0.3.8 installers. Production GitHub download verification matched the qualified **2,147,047 bytes**, 92 files, SHA-256 `727151720ccd8dc6b43c794cba6a2ff7e6cf6997e2e408c04c919c575638e781`. The signing key stayed offline. See [release checks](docs/V039_RELEASE_NOTES.md) and [qualification evidence](docs/V039_WORKING_NOTES.md).
+
+Install through Settings → Luma software → Check for updates → review **0.3.9** → Install, or use the primary remote. Keep power connected through reboot and confirm the version. Owner checks remain: fan/mouse power after the last phone disconnects, saved Automatic resuming after return, and actual iPhone-to-wall recognition timing. No physical Pi has been controlled for this build. Settings, accounts, profiles, phone bonds, browser grants, timers and saves are retained; no flash or re-pairing is required.
+
+## Previous published Beta — 0.3.8
 
 [0.3.8 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.8) from tagged source `6a688f3b2ef934121e89ced143d97724854267a0`. The wall cursor hides after twenty idle seconds and refreshes its native Wayland image instead of leaving Chromium's stale pointer visible. Unchanged-position events and the reversible subpixel refresh do not reset the timer. Startup parks the real pointer at the extreme bottom-right boundary once per graphical session. No OS package, compositor setting, service unit or dependency change is required.
 

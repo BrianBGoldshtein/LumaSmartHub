@@ -13,14 +13,15 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Update hold: the owner's 0.3.9 installation failed its real health check and
-restored 0.3.8. Do not retry 0.3.9. A corrected 0.3.10 candidate is under
-qualification; see [recovery progress](SD%20Card/docs/V0310_WORKING_NOTES.md).
-
-Previously published: [Luma 0.3.9 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.9).
+Latest: [Luma 0.3.10 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.10).
 Use **Settings → Luma software → Check for updates**;
-review **0.3.9**, install and keep power connected through the verified reboot.
+review **0.3.10**, install and keep power connected through the verified reboot.
 Confirm the installed version afterward. Do not reflash its SD card.
+The owner's 0.3.9 attempt failed health verification and restored 0.3.8;
+0.3.10 fixes a reproduced expensive Bluetooth signal/database path without
+weakening the health gate. Its software and signed install/rollback checks
+passed; physical Pi installation remains owner acceptance. See
+[recovery evidence and Pi Connect procedure](SD%20Card/docs/V0310_WORKING_NOTES.md).
 USB power stays on whenever no registered phone has a verified connection,
 preserving mouse access in standby without changing the saved cooling preference.
 Incoming phone signals bypass retry delays and queued outgoing radio jobs;

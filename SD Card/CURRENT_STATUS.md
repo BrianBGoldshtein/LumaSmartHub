@@ -1,10 +1,14 @@
 # Luma development status — 2026-10-25
 
-## Active recovery — 0.3.10 candidate
+## Current published Beta — 0.3.10 recovery
 
-The owner's actual 0.3.9 installation failed its health check and restored 0.3.8. Do not retry 0.3.9 or bypass health verification. The restored API is healthy (HTTP 200 in 0.209721 seconds; 671,744-byte database; 99 GB disk space free). A reproduced synchronous database lookup for every nearby Bluetooth signal is fixed in the 0.3.10 candidate. The health deadline remains unchanged; a one-shot startup stack dump will retain evidence of another stall. Release gates and physical owner acceptance are pending. See [investigation and checkpoint](docs/V0310_WORKING_NOTES.md). The published qualification below is historical software evidence, not hardware acceptance.
+The owner's actual 0.3.9 installation failed its health check and restored 0.3.8. Do not retry 0.3.9 or bypass health verification. The restored API is healthy (HTTP 200 in 0.209721 seconds; 671,744-byte database; 99 GB disk space free). [0.3.10 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.10) from immutable source `ad16d72969e2af19cfdc099666c6ffd1c7fb4a9f`, fixing the reproduced synchronous database lookup for every nearby Bluetooth signal. The health deadline remains unchanged; a one-shot startup stack dump retains evidence if startup never reports healthy.
 
-## Current published Beta — 0.3.9
+Qualification passed **2,317 backend / 214 frontend / 43 packaging tests**, both builds, [exact-source CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/40174042631), signed switch/forced rollback with candidate and both pinned published 0.3.8/0.3.9 installers, full remote browser and 24 themed shared-settings cases. The production downloader verified the signature and identical **2,147,999-byte** archive, SHA-256 `3d035d81e8ab7fd1c36789b7c55384498b472615d59a27a79e21c1c7d1ecbe2a`. No dependency, schema, root protocol or service-unit change is involved; the private key remains offline.
+
+All standby USB power, saved cooling preference and incoming-phone recognition improvements are retained. Install **0.3.10** through the signed GitHub updater or the [Pi Connect terminal procedure](docs/V0310_WORKING_NOTES.md), keep power connected through reboot, and confirm the installed/running version. Physical fan/mouse power and actual iPhone timing remain owner checks, not proven by Linux fixtures. Preserve accounts and bonds; no reflash or re-pairing. Historical 0.3.9 qualification below is not hardware acceptance.
+
+## Superseded Beta — 0.3.9 (owner health-check rollback)
 
 [0.3.9 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.9) from tagged source `544d817e40a1df9bf96ef152167d932492d03d97`. USB power stays on when no registered phone has a verified connection, retaining the saved Automatic preference and restoring mouse access in standby. Presence events wake the cooling worker; a disconnect racing an automatic request is followed by power restoration. Once a verified phone returns, the existing 70°C on / 60°C off policy and minimum-on delay resume. USB interruption tests cannot run without a connected phone.
 
@@ -14,7 +18,7 @@ Final qualification passed **2,306 backend / 214 frontend / 43 packaging tests**
 
 The exact signed archive passed install and forced rollback with both candidate and pinned published 0.3.8 installers. Production GitHub download verification matched the qualified **2,147,047 bytes**, 92 files, SHA-256 `727151720ccd8dc6b43c794cba6a2ff7e6cf6997e2e408c04c919c575638e781`. The signing key stayed offline. See [release checks](docs/V039_RELEASE_NOTES.md) and [qualification evidence](docs/V039_WORKING_NOTES.md).
 
-Install through Settings → Luma software → Check for updates → review **0.3.9** → Install, or use the primary remote. Keep power connected through reboot and confirm the version. Owner checks remain: fan/mouse power after the last phone disconnects, saved Automatic resuming after return, and actual iPhone-to-wall recognition timing. No physical Pi has been controlled for this build. Settings, accounts, profiles, phone bonds, browser grants, timers and saves are retained; no flash or re-pairing is required.
+Do not retry 0.3.9: it failed the owner's real health check despite these software gates. Use 0.3.10 above. No physical Pi was controlled for this build; settings, accounts, profiles, phone bonds, browser grants, timers and saves are retained.
 
 ## Previous published Beta — 0.3.8
 

@@ -19,6 +19,7 @@ from luma.models import CalendarEvent, WeatherSnapshot
 from luma.shortcut_gateway import create_gateway
 from luma import update_api
 from luma import thermal
+from luma.usb_fan import USBFanController,FanError
 
 # Synthetic crowded discovery for pairing UI qualification only. No system
 # Bluetooth connection, agent registration, actual trust or phone selection.
@@ -76,6 +77,47 @@ service=core.state.luma;service.display_clock_trusted=lambda:True
 thermal.CPU_SENSOR=Path(os.environ['REMOTE_QA_DATA'])/'synthetic-cpu-temp'
 thermal.CPU_SENSOR.write_bytes(b'56478\n')
 core.state.security.set_pin('123456')
+
+# Opt-in cooling fixture: actual controller/API, simulated hardware only.
+cooling_controller=None
+class CoolingPower:
+    fingerprint='a'*64
+    def __init__(self):self.on=True;self.fail_off=False;self.calls=[]
+    def power_state(self):return self.on
+    def set_power(self,on):
+        self.calls.append(on)
+        if self.fail_off and not on:raise OSError('Synthetic switch failure')
+        self.on=on
+
+def reset_cooling(permanent=False):
+    global cooling_controller,cooling_power
+    cooling_power=CoolingPower()
+    cooling_controller=USBFanController(lambda:cooling_power,lambda:{'celsius':55},lambda:False,lambda:False)
+    packet=lambda op,ack=False:{'action':'fan','operation':op,'mode':'always_on',
+        'qualified_topology':None,'acknowledged':ack}
+    cooling_controller.request(packet('poll'));cooling_power.fail_off=True
+    try:cooling_controller.request(packet('probe',True))
+    except FanError:pass
+    cooling_power.fail_off=permanent
+    core.state.fan.storage.set_cache('device','usb_fan_v1',{'mode':'always_on','qualified_topology':None})
+
+@core.post('/qa/fan/reset')
+async def qa_fan_reset(request:Request):
+    if os.environ.get('LUMA_QA_COOLING')!='1':return JSONResponse({'disabled':True},status_code=409)
+    data=await request.json();reset_cooling(data.get('permanent') is True)
+    return {'reset':True}
+
+@core.get('/qa/fan')
+def qa_fan_status():
+    return {'status':cooling_controller.status(),'calls':cooling_power.calls} if cooling_controller else {'disabled':True}
+
+for qa_path in ('/qa/fan/reset','/qa/fan'):
+    route=next(route for route in core.router.routes if getattr(route,'path',None)==qa_path)
+    core.router.routes.remove(route);core.router.routes.insert(0,route)
+if os.environ.get('LUMA_QA_COOLING')=='1':
+    reset_cooling()
+    async def cooling_wire(value):return await asyncio.to_thread(cooling_controller.request,value)
+    core.state.fan.request=cooling_wire
 service.update_settings({'phone_address':PHONE,'visible_calendar_ids':['classes'],
                          'todo_calendar_id':'tasks','todo_completed_color_id':'8','onboarding_completed':True})
 linked=True
@@ -144,6 +186,11 @@ async def isolated_wall(_):
     # the hardware/provider workers in the core app's normal lifespan.
     wall=uvicorn.Server(uvicorn.Config(core,host='127.0.0.1',port=18835,lifespan='off',access_log=False))
     task=asyncio.create_task(wall.serve())
+    async def cooling_watchdog():
+        while True:
+            await asyncio.to_thread(cooling_controller.tick)
+            await asyncio.sleep(.1)
+    watchdog=asyncio.create_task(cooling_watchdog()) if cooling_controller else None
     try:
         for _ in range(100):
             if wall.started:break
@@ -152,6 +199,9 @@ async def isolated_wall(_):
         if not wall.started:raise RuntimeError('Synthetic wall did not start')
         yield
     finally:
+        if watchdog:
+            watchdog.cancel();await asyncio.gather(watchdog,return_exceptions=True)
+            cooling_controller.close()
         wall.should_exit=True
         await task
 app.router.lifespan_context=isolated_wall
@@ -190,6 +240,10 @@ async def qa_only(request,call_next):
         return JSONResponse({'theme':value['theme']})
     if request.url.path=='/qa/actions':
         return JSONResponse({'actions':actions,'timer':service.timer.snapshot(private=False)})
+    if request.url.path=='/qa/fan/reset':
+        return await qa_fan_reset(request)
+    if request.url.path=='/qa/fan':
+        return JSONResponse(qa_fan_status())
     if request.url.path=='/qa/pairing-audit':
         return JSONResponse(pairing_audit())
     if request.url.path=='/qa/update-complete':

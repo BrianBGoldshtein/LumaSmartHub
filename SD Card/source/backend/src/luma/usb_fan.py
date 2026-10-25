@@ -28,10 +28,13 @@ log = logging.getLogger(__name__)
 ON_C, OFF_C = 70, 60
 MIN_ON, HEARTBEAT_TTL = 60, 25
 PROBE_SECONDS = 5
+POWER_SETTLE_SECONDS = .15
 
 
 class FanError(ValueError):
-    pass
+    def __init__(self, message, *, code='unavailable'):
+        super().__init__(message)
+        self.code = code
 
 
 def validate_fan_request(value):
@@ -153,9 +156,13 @@ class LinuxUSBPower:
                 except (OSError, ValueError):
                     failed = True
         if failed:
-            raise FanError('USB power switching failed; keep USB powered.')
+            raise FanError('USB power switching failed; keep USB powered.', code='switch_failed')
+        # USB3 hub state is not synchronous with an acknowledged PORT_POWER
+        # request (uhubctl also waits 150 ms). Never repeat an off request or
+        # declare failure from the pre-settle status of the companion hubs.
+        time.sleep(POWER_SETTLE_SECONDS)
         if self.power_state() != on:
-            raise FanError('USB hubs did not confirm the requested power state.')
+            raise FanError('USB hubs did not confirm the requested power state.', code='power_unconfirmed')
 
     def power_state(self):
         values = [self._transfer(hub, port) for hub in self.hubs for port in range(1, 5)]
@@ -222,6 +229,7 @@ class USBFanController:
         self.media_busy, self.hold_until = 0, 0
         self.reason = 'Keep USB on'
         self.fault = False
+        self.fault_code = None
         self.retry_at = 0
 
     def _switch(self, on):
@@ -257,13 +265,14 @@ class USBFanController:
             self.on = self.power.power_state()
             self._restore()
             self.fault = False
+            self.fault_code = None
         elif self.power.power_state() is not self.on:
             # An outside change or partial switch must never leave cached
             # "on" status suppressing the independent restoration attempt.
-            raise FanError('USB power state changed unexpectedly.')
+            raise FanError('USB power state changed unexpectedly.', code='unexpected_state')
         reason = self._guard()
         if self.fault:
-            reason = 'Switching failed · automatic cooling disabled'
+            reason = 'Switching fault · keep USB on and retry the physical fan test'
         if self.probe_until is not None:
             if now >= self.probe_until or reason or now - self.last_seen > HEARTBEAT_TTL:
                 self._switch(True)
@@ -295,25 +304,35 @@ class USBFanController:
         else:
             self.reason = 'Cooling · USB power on' if self.on else 'Cool enough · USB power off until 70°C or manual override'
 
+    def _failed(self, error):
+        if not self.fault:
+            code = 'usb_io' if isinstance(error, OSError) else getattr(error, 'code', 'unavailable')
+            self.fault_code = code if code in {'usb_io','switch_failed','power_unconfirmed','unexpected_state'} else 'unavailable'
+            log.warning('Cooling fault: %s; automatic disabled; attempting power on', self.fault_code)
+        self.fault = True
+        self.mode, self.qualified = 'always_on', None
+        self.probe_until, self.probe_completed = None, False
+        self.reason = 'Switching failed · keep USB on and retry the physical fan test'
+        if self.power is None:
+            self.on = None
+        try:
+            self._restore()
+        except (OSError, ValueError, RuntimeError):
+            self.on = None
+
     def tick(self):
         with self.lock:
             try:
                 self._tick()
-            except (OSError, ValueError, RuntimeError):
-                self.fault = True
-                self.mode, self.qualified = 'always_on', None
-                self.probe_until, self.probe_completed = None, False
-                self.reason = 'USB switching unavailable · use the fan continuously'
-                try:
-                    self._restore()
-                except (OSError, ValueError, RuntimeError):
-                    self.on = None
+            except (OSError, ValueError, RuntimeError) as error:
+                self._failed(error)
 
     def status(self):
         return {'available': self.power is not None and not self.fault,
                 'mode': self.mode, 'usb_power': 'on' if self.on is True else 'off' if self.on is False else 'unknown',
                 'qualified': self.power is not None and self.qualified == self.power.fingerprint and not self.fault,
                 'qualified_topology': self.qualified,
+                'fault': self.fault, 'fault_code': self.fault_code,
                 'probe': 'running' if self.probe_until is not None else 'confirm' if self.probe_completed else 'idle',
                 'reason': self.reason, 'on_celsius': ON_C, 'off_celsius': OFF_C,
                 # Retain the response field for existing clients: null means
@@ -328,7 +347,11 @@ class USBFanController:
             if value['operation'] == 'keep_on':
                 self.probe_until = None
                 self.probe_completed = False
-                self._restore()
+                try:
+                    self._restore()
+                except (OSError, ValueError, RuntimeError) as error:
+                    self._failed(error)
+                    return self.status()
             if value['operation'] == 'probe' and self.fault:
                 self.power = None
                 self.retry_at = 0
@@ -336,6 +359,8 @@ class USBFanController:
             self.tick()
             operation = value['operation']
             if operation == 'probe':
+                if self.probe_until is not None:
+                    raise FanError('The USB test is already running; wait for power to return.')
                 if self.power is None or self.fault or self._guard():
                     raise FanError('Test unavailable. Remove USB drives, finish updates and check the Pi.')
                 self.mode, self.qualified = 'always_on', None
@@ -343,9 +368,8 @@ class USBFanController:
                 try:
                     self._switch(False)
                     self.probe_until = self.clock() + PROBE_SECONDS
-                except (OSError, ValueError, RuntimeError):
-                    self.fault = True
-                    self._restore()
+                except (OSError, ValueError, RuntimeError) as error:
+                    self._failed(error)
                     raise FanError('USB test failed; automatic cooling remains disabled.') from None
             elif operation == 'confirm':
                 if not self.probe_completed or self.probe_until is not None or self.on is not True or self.fault:

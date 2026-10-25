@@ -117,6 +117,8 @@ elif [[ "${VERSION}" == "0.3.10" ]]; then
   QUALIFY_FROM="0.3.8"
 elif [[ "${VERSION}" == "0.3.11" ]]; then
   QUALIFY_FROM="0.3.10"
+elif [[ "${VERSION}" == "0.3.12" ]]; then
+  QUALIFY_FROM="0.3.11"
 fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"
@@ -132,6 +134,23 @@ if [[ "${VERSION}" == "0.2.4" && -z "${VOICE_ASSETS_DIR}" ]]; then
 fi
 if [[ "${VERSION}" == "0.2.9" && -z "${KEYWORD_ASSETS_DIR}" ]]; then
   die "0.2.9 requires its separately signed acoustic wake asset"
+fi
+if [[ "${VERSION}" == "0.3.12" ]]; then
+  for LEGACY in "0.3.8:6a688f3b2ef934121e89ced143d97724854267a0" \
+                "0.3.11:50921b306f007c0f04c4ce80bba4fc5d29f57e22"; do
+    LEGACY_VERSION="${LEGACY%%:*}"
+    LEGACY_SHA="${LEGACY#*:}"
+    [[ "$(git -C "${REPO_ROOT}" rev-parse "refs/tags/v${LEGACY_VERSION}^{}")" == "${LEGACY_SHA}" ]] || die "the published ${LEGACY_VERSION} tag changed"
+    LEGACY_ROOT="$(mktemp -d "$(dirname -- "${OUTPUT}")/luma-legacy-${LEGACY_VERSION}.XXXXXXXX")"
+    git -C "${REPO_ROOT}" archive "${LEGACY_SHA}" -- \
+      "SD Card/source/backend/pyproject.toml" \
+      "SD Card/source/backend/src/luma/storage.py" \
+      "SD Card/source/backend/src/luma/update_agent.py" | tar -x -C "${LEGACY_ROOT}"
+    printf 'Qualifying the same signed archive with the published %s verifier/installer…\n' "${LEGACY_VERSION}"
+    python3 "${DELIVERY_ROOT}/source/tools/qualify-update-bundle.py" "${OUTPUT}" \
+      --public-key "${DELIVERY_ROOT}/source/system/luma-update-ed25519.pub" \
+      --current-version "${LEGACY_VERSION}" --legacy-delivery "${LEGACY_ROOT}/SD Card"
+  done
 fi
 if [[ -n "${KEYWORD_ASSETS_DIR}" ]]; then
   [[ -d "${KEYWORD_ASSETS_DIR}" && ! -L "${KEYWORD_ASSETS_DIR}" ]] || die "keyword source directory is missing or linked"

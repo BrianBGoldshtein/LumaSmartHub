@@ -1873,9 +1873,13 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health() -> dict[str, Any]:
+        database_ok = storage.integrity_check()
+        if database_ok:
+            from .startup_diagnostics import healthy
+            healthy()
         return {
             "status": "ok",
-            "database": "ok" if storage.integrity_check() else "error",
+            "database": "ok" if database_ok else "error",
             "version": app.version,
         }
 
@@ -2095,5 +2099,11 @@ def main() -> None:
     # configured encrypted path; the kiosk and device bridge use loopback.
     # Callback URLs contain short-lived OAuth codes/state. Do not log request
     # URLs or trust proxy-supplied client addresses on this local control plane.
-    uvicorn.run(create_app(frontend_dir=frontend), host=os.environ.get("LUMA_LISTEN_HOST", "127.0.0.1"),
-                port=8742, access_log=False, proxy_headers=False)
+    from . import startup_diagnostics
+    if sys.platform=='linux' and os.environ.get('LUMA_DATA_DIR')=='/var/lib/luma':
+        startup_diagnostics.arm()
+    try:
+        uvicorn.run(create_app(frontend_dir=frontend), host=os.environ.get("LUMA_LISTEN_HOST", "127.0.0.1"),
+                    port=8742, access_log=False, proxy_headers=False)
+    finally:
+        startup_diagnostics.healthy()

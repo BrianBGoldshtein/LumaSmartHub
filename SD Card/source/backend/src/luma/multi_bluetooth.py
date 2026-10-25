@@ -62,14 +62,20 @@ class MultiPhoneBluetooth:
         self.children = {PRIMARY_ID: BluetoothRuntime(service, coordinator=self.coordinator)}
         self.advertiser = ANCSReconnectAdvertising(self.notification_addresses)
         self.signals = PhoneSignalMonitor(self.phone_signal,self.bluez_reset)
+        self.signal_users = {}
+        self.refresh_signal_users()
+
+    def refresh_signal_users(self):
+        # Only the bounded supervisor refresh queries the registry. The D-Bus
+        # reader must never open SQLite for every nearby device/advertisement.
+        users = self.profiles.list()
+        self.signal_users = {user.phone_address.upper():user.id for user in users if user.phone_address}
+        return users
 
     def phone_signal(self, address, kind, changed, invalidated, removed):
-        try:
-            user = self.profiles.by_phone(address)
-            if user is None:
-                return
-            child = self.runtime(user.id)
-        except ProfileError:
+        uid = self.signal_users.get(address.upper()) if isinstance(address,str) else None
+        child = self.children.get(uid)
+        if child is None:
             return
         if kind=='device':
             if removed:
@@ -79,7 +85,7 @@ class MultiPhoneBluetooth:
             if (removed or any(changed.get(key) is True for key in
                     ('Connected','ServicesResolved','Paired','Bonded','Trusted'))):
                 child.change_event.set()
-        elif kind=='ancs' and user.id==PRIMARY_ID:
+        elif kind=='ancs' and uid==PRIMARY_ID:
             if removed or 'Notifying' in invalidated or changed.get('Notifying') is False:
                 child.remote_authorized.clear()
             child.change_event.set()
@@ -164,7 +170,7 @@ class MultiPhoneBluetooth:
         monitor = asyncio.create_task(self.signals.run(),name='luma-bluez-signals')
         try:
             while True:
-                wanted = {user.id for user in self.profiles.list() if user.phone_address}
+                wanted = {user.id for user in self.refresh_signal_users() if user.phone_address}
                 for uid in set(tasks) - wanted:
                     task = tasks.pop(uid)
                     task.cancel()

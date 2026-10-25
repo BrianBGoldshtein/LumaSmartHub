@@ -14,8 +14,10 @@ FIELDS = {DEVICE:{'Address','Connected','ServicesResolved','Paired','Bonded','Tr
           GATT:{'Device','UUID'}, CHAR:{'Service','UUID','Notifying'}}
 
 
-def slim(properties):
-    return {key:getattr(value,'value',value) for key,value in properties.items()}
+def slim(properties, allowed):
+    # Do not even unwrap notification/audio/manufacturer payloads. Presence
+    # needs link metadata only, and radio-noise messages are very frequent.
+    return {key:getattr(value,'value',value) for key,value in properties.items() if key in allowed}
 
 
 class PhoneSignalMonitor:
@@ -28,7 +30,7 @@ class PhoneSignalMonitor:
         target = self.objects.setdefault(path,{})
         for name,properties in interfaces.items():
             if name in FIELDS:
-                target[name] = {key:value for key,value in slim(properties).items() if key in FIELDS[name]}
+                target[name] = slim(properties,FIELDS[name])
 
     def address(self, path):
         obj = self.objects.get(path,{})
@@ -57,7 +59,10 @@ class PhoneSignalMonitor:
                 return
             address = self.address(path)
             before_ancs = self.ancs(path)
-            values = {key:value for key,value in slim(changed).items() if key in FIELDS[name]}
+            values = slim(changed,FIELDS[name])
+            invalidated = [key for key in invalidated if key in FIELDS[name]]
+            if not values and not invalidated:
+                return
             self.objects.setdefault(path,{}).setdefault(name,{}).update(values)
             if address and name==DEVICE:
                 self.notify(address,'device',values,invalidated,False)

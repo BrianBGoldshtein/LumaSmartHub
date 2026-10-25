@@ -1,5 +1,9 @@
 # Luma development status — 2026-10-25
 
+## Active recovery — 0.3.10 candidate
+
+The owner's actual 0.3.9 installation failed its health check and restored 0.3.8. Do not retry 0.3.9 or bypass health verification. The restored API is healthy (HTTP 200 in 0.209721 seconds; 671,744-byte database; 99 GB disk space free). A reproduced synchronous database lookup for every nearby Bluetooth signal is fixed in the 0.3.10 candidate. The health deadline remains unchanged; a one-shot startup stack dump will retain evidence of another stall. Release gates and physical owner acceptance are pending. See [investigation and checkpoint](docs/V0310_WORKING_NOTES.md). The published qualification below is historical software evidence, not hardware acceptance.
+
 ## Current published Beta — 0.3.9
 
 [0.3.9 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.9) from tagged source `544d817e40a1df9bf96ef152167d932492d03d97`. USB power stays on when no registered phone has a verified connection, retaining the saved Automatic preference and restoring mouse access in standby. Presence events wake the cooling worker; a disconnect racing an automatic request is followed by power restoration. Once a verified phone returns, the existing 70°C on / 60°C off policy and minimum-on delay resume. USB interruption tests cannot run without a connected phone.

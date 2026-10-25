@@ -13,7 +13,11 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.9 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.9).
+Update hold: the owner's 0.3.9 installation failed its real health check and
+restored 0.3.8. Do not retry 0.3.9. A corrected 0.3.10 candidate is under
+qualification; see [recovery progress](SD%20Card/docs/V0310_WORKING_NOTES.md).
+
+Previously published: [Luma 0.3.9 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.9).
 Use **Settings → Luma software → Check for updates**;
 review **0.3.9**, install and keep power connected through the verified reboot.
 Confirm the installed version afterward. Do not reflash its SD card.

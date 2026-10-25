@@ -1,5 +1,7 @@
 # Luma 0.3.9 standby power and phone recognition
 
+> Owner hardware result, 2026-10-25: installation failed the real health check and restored 0.3.8. Do not retry 0.3.9. Historical software qualification below did not predict that physical startup stall. See [0.3.10 investigation](V0310_WORKING_NOTES.md) for the reproduced radio-load defect and recovery gates.
+
 ## Required behavior
 
 Keep all onboard USB ports powered whenever no registered phone has a verified live connection, preserving mouse access in standby and the owner's saved cooling preference. Remove application-imposed delays between an incoming authorized phone connection and the wall leaving standby. Distribute through the signed GitHub updater without resetting data.

@@ -107,6 +107,18 @@ class Gatt(ServiceInterface):
     def Device(self) -> 'o': return self.device
 
 
+class PendingDevice(Device):
+    def __init__(self,address,gate):
+        super().__init__(address)
+        self.gate=gate
+
+    @method()
+    async def Connect(self):
+        self.connects+=1
+        await self.gate.wait()
+        self.set_connected(True)
+
+
 class Source(ServiceInterface):
     def __init__(self, service, *, uuid=SOURCE, gate=None, deny=False):
         super().__init__('org.bluez.GattCharacteristic1')
@@ -151,13 +163,15 @@ async def until(check, timeout=5):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('failure', ['none', 'one_link', 'primary_subscription', 'one_removed', 'no_secondary_ancs', 'secondary_subscription', 'secondary_blocked', 'secondary_unresolved', 'secondary_disconnect', 'late_primary','late_secondary','slow_optional','slow_optional_discovery','denied_primary','bluez_restart'])
+@pytest.mark.parametrize('failure', ['none', 'one_link', 'primary_subscription', 'one_removed', 'no_secondary_ancs', 'secondary_subscription', 'secondary_blocked', 'secondary_unresolved', 'secondary_disconnect', 'late_primary','late_secondary','slow_optional','slow_optional_discovery','denied_primary','bluez_restart','queued_primary','queued_secondary','pending_connect'])
 async def test_five_real_sessions_reconnect_and_isolate_failures(tmp_path, monkeypatch, failure):
     daemon = subprocess.Popen(['dbus-daemon', '--session', '--nofork', '--print-address=1'],
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     bus = task = None
     data_gate=asyncio.Event()
+    connect_gate=asyncio.Event()
     discovery_started=asyncio.Event()
+    held_lock=None
     try:
         assert select.select([daemon.stdout], [], [], 3)[0]
         address = daemon.stdout.readline().strip()
@@ -179,6 +193,8 @@ async def test_five_real_sessions_reconnect_and_isolate_failures(tmp_path, monke
             gatt, char = path+'/service0001', path+'/service0001/char0002'
             device = Device(phone, fail=(failure in {'one_link','late_secondary'} and index == 4)
                 or (failure=='late_primary' and index==0))
+            if failure=='pending_connect' and index==0:
+                device=PendingDevice(phone,connect_gate)
             source = Source(gatt,deny=failure=='denied_primary' and index==0)
             bus.export(path, device)
             if index == 0 or failure != 'no_secondary_ancs':
@@ -211,13 +227,31 @@ async def test_five_real_sessions_reconnect_and_isolate_failures(tmp_path, monke
                 backoff.append(uid)
                 return 120
             runtime.coordinator.failure_delay=long_backoff
+        if failure in {'queued_primary','queued_secondary'}:
+            held_lock=runtime.coordinator._locks.setdefault('hci0',asyncio.Lock())
+            await held_lock.acquire()
         task = asyncio.create_task(runtime.run())
+        if held_lock is not None:
+            index=0 if failure=='queued_primary' else 4
+            incoming=users[index].id
+            await until(lambda:incoming in runtime.coordinator._pending)
+            devices[index].set_connected(True)
+            await until(lambda:runtime.companion_presence(incoming).authorized,timeout=2)
+            assert held_lock.locked() and all(device.disconnects==0 for device in devices)
+            held_lock.release();held_lock=None
+        if failure=='pending_connect':
+            await until(lambda:devices[0].connects==1)
+            devices[0].set_connected(True)
+            await until(lambda:runtime.companion_presence('primary').authorized,timeout=2)
+            assert not connect_gate.is_set() and devices[0].disconnects==0
+            connect_gate.set()
         absent=users[0].id if failure in {'late_primary','denied_primary'} else users[-1].id if failure in {'one_link','late_secondary'} else None
         expected = {user.id for user in users if user.id!=absent}
         await until(lambda: runtime.present_ids() == expected)
         assert adapter.scans == 1
         assert all('Pattern' not in value for value in adapter.filters)
-        assert all(device.connects == 1 for device in devices)
+        assert all(device.connects == (0 if failure=='queued_primary' and i==0
+            or failure=='queued_secondary' and i==4 else 1) for i,device in enumerate(devices))
         assert all(device.disconnects == 0 for device in devices)
         assert sources[0].subscriptions == (0 if failure=='late_primary' else 1)
         assert all(source.subscriptions == 0 for source in sources[1:])
@@ -296,6 +330,9 @@ async def test_five_real_sessions_reconnect_and_isolate_failures(tmp_path, monke
             assert not runtime.companion_presence('primary').authorized
     finally:
         data_gate.set()
+        connect_gate.set()
+        if held_lock is not None and held_lock.locked():
+            held_lock.release()
         if task:
             task.cancel()
             with suppress(asyncio.CancelledError): await task

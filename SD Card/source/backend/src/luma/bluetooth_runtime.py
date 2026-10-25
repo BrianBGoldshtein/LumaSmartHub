@@ -274,17 +274,43 @@ class BluetoothRuntime:
                 # inviting unpaired devices or granting RSSI-based presence.
                 phone_address=None if self.coordinator else address, connect=connect,
                 address_is_current=lambda: self.service.settings.phone_address == address)
-        if self.coordinator:
-            return await self.coordinator.perform(self.profile_id, 'hci0', scan, scan=True, connect=connect)
-        return await scan()
+        async def scheduled():
+            if self.coordinator:
+                return await self.coordinator.perform(self.profile_id, 'hci0', scan, scan=True, connect=connect)
+            return await scan()
+        return await self.radio_or_incoming(manager,phone_path,address,scheduled)
 
     async def _connect_phone(self, manager, device, phone_path, address):
         async def connect():
             return await connect_paired_phone(manager, device, phone_path,
                 address_is_current=lambda: self.service.settings.phone_address == address)
-        if self.coordinator:
-            return await self.coordinator.perform(self.profile_id, 'hci0', connect)
-        return await connect()
+        async def scheduled():
+            if self.coordinator:
+                return await self.coordinator.perform(self.profile_id, 'hci0', connect)
+            return await connect()
+        return await self.radio_or_incoming(manager,phone_path,address,scheduled)
+
+    async def radio_or_incoming(self, manager, phone_path, address, operation):
+        """An incoming link need not wait for a queued/outstanding Connect.
+
+        Cancelling the outgoing helper keeps its existing ownership-aware
+        cleanup: it never disconnects an already-completed incoming link or a
+        different phone. Live bond/service/ANCS verification still follows.
+        """
+        job=asyncio.create_task(operation())
+        try:
+            while True:
+                if await self.wait_signal_or(job,1):
+                    return job.result()
+                objects=await asyncio.wait_for(manager.call_get_managed_objects(),5)
+                props=plain(objects.get(phone_path,{}).get('org.bluez.Device1',{}))
+                if self.service.settings.phone_address==address and trusted_link(props):
+                    job.cancel()
+                    await asyncio.gather(job,return_exceptions=True)
+                    return True  # Link only; never authorization.
+        finally:
+            job.cancel()
+            await asyncio.gather(job,return_exceptions=True)
 
     async def bonded_presence_session(self, manager, interface, phone_path, address):
         """Secondary presence without touching any notification characteristic."""

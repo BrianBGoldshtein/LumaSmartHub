@@ -2,7 +2,7 @@
 
 USB power stays on whenever no registered phone has a verified connection. This keeps the fan and mouse powered in standby, including after a disconnect or reboot. Your saved Automatic cooling preference is not changed. Once a registered phone returns, Automatic resumes its existing 70°C on / 60°C off policy and minimum-on safety delay. There are no periodic USB discovery windows.
 
-Luma now reacts to incoming Bluetooth connection and service signals instead of waiting for the reconnect backoff to finish. Optional notification-detail discovery and subscription no longer delay a verified arrival. Lost connections and Bluetooth service restarts also wake the affected phone workers immediately, without restarting the adapter or disconnecting other users.
+Luma now reacts to incoming Bluetooth connection and service signals instead of waiting for reconnect backoff or an outgoing job queued behind another phone. A completed incoming connection can also leave an outstanding outgoing request without disconnecting that phone. Optional notification-detail discovery and subscription no longer delay a verified arrival. Lost connections and Bluetooth service restarts also wake the affected phone workers immediately, without restarting the adapter or disconnecting other users.
 
 Primary-phone privacy still requires notification-service authorization; secondary users still need only a verified registered Bluetooth connection and their notifications are never read. Luma removes its own avoidable waits, but cannot force iOS to finish Bluetooth services or authorization instantly.
 

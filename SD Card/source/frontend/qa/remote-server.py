@@ -241,7 +241,8 @@ async def qa_only(request,call_next):
     if request.url.path=='/qa/actions':
         return JSONResponse({'actions':actions,'timer':service.timer.snapshot(private=False)})
     if request.url.path=='/qa/fan/reset':
-        return await qa_fan_reset(request)
+        result=await qa_fan_reset(request)
+        return result if isinstance(result,JSONResponse) else JSONResponse(result)
     if request.url.path=='/qa/fan':
         return JSONResponse(qa_fan_status())
     if request.url.path=='/qa/pairing-audit':

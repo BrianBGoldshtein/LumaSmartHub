@@ -11,7 +11,7 @@ socket.onmessage=event=>{const data=JSON.parse(event.data);if(data.method==='Run
   if(data.method==='Page.javascriptDialogOpening')void send('Page.handleJavaScriptDialog',{accept:true});
   const item=pending.get(data.id);if(item){pending.delete(data.id);data.error?item.reject(Error(JSON.stringify(data.error))):item.resolve(data.result);}};
 const send=(method,params={})=>new Promise((resolve,reject)=>{const n=++id;pending.set(n,{resolve,reject});socket.send(JSON.stringify({id:n,method,params}));});
-async function value(expression){const result=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(result.exceptionDetails)throw Error(result.exceptionDetails.text);return result.result.value;}
+async function value(expression){const result=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description??result.exceptionDetails.text);return result.result.value;}
 async function until(expression){const end=Date.now()+25000;while(!await value(expression)){if(Date.now()>end)throw Error('Timed out: '+expression+'\n'+await value('document.body.innerText'));await new Promise(r=>setTimeout(r,80));}}
 const doc=()=>mode==='remote'?"document.querySelector('.all-settings iframe')?.contentDocument":'document';
 const scoped=body=>`(()=>{const d=${doc()};${body}})()`;
@@ -72,6 +72,7 @@ try{
     // Shared settings fetch their theme on mount.
     await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='users'");await inside("d.querySelector('.user-setup')!==null");
     await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='device'");await inside("d.querySelector('.device-setup')!==null");
+    await inside("[...d.querySelectorAll('summary')].some(s=>s.textContent.trim()==='Bluetooth pairing & forgetting')");
     await value(scoped("[...d.querySelectorAll('summary')].find(s=>s.textContent.trim()==='Bluetooth pairing & forgetting').click();"));
     for(const width of [320,390]){
       await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});

@@ -66,6 +66,12 @@ def pairing_audit():
 async def wall_qa_theme(request:Request):
     value=await request.json();core.state.luma.update_settings({'theme':value['theme']})
     return {'theme':value['theme']}
+
+# create_app already installed its SPA fallback. These test-only routes must
+# precede it on the synthetic wall transport, just as the TLS middleware does.
+for qa_path in ('/qa/pairing-audit','/qa/theme'):
+    route=next(route for route in core.router.routes if getattr(route,'path',None)==qa_path)
+    core.router.routes.remove(route);core.router.routes.insert(0,route)
 service=core.state.luma;service.display_clock_trusted=lambda:True
 thermal.CPU_SENSOR=Path(os.environ['REMOTE_QA_DATA'])/'synthetic-cpu-temp'
 thermal.CPU_SENSOR.write_bytes(b'56478\n')

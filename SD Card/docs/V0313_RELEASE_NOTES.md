@@ -6,4 +6,6 @@ USB cooling now keeps all USB ports powered whenever a USB Wi-Fi or Ethernet int
 
 Room-device Wi-Fi sharing already exists as an opt-in two-radio NAT hotspot. See [the researched hardware/setup guide](https://github.com/BrianBGoldshtein/LumaSmartHub/blob/main/SD%20Card/docs/ROOM_WIFI_SETUP.md) for the $9.99-listed RT5370 candidate, price/driver caveats, one-time official firmware prerequisite and UI instructions. Stanford generally restricts routers/DHCP/NAT; obtain explicit approval before buying/enabling, or use an approved IoT network. Nothing enables sharing automatically or changes eduroam settings. No actual adapter/campus forwarding test has been performed.
 
+Qualification also reproduced an event-versus-cancellation race in the Python 3.11 build runtime. The phone-event wait no longer creates the helper task that could swallow shutdown cancellation. A deterministic regression protects this boundary without changing Bluetooth trust or presence rules; it is not evidence of an additional failure on the owner's Pi.
+
 Install through Settings → Luma software, review **0.3.13 Beta**, retain power through reboot, confirm version **0.3.13** and refresh the phone remote. No reflash, reset or re-pairing is required. All prior fault recovery, PIN/role protections and saved accounts/settings remain.

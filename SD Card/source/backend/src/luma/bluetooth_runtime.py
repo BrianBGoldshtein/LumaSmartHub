@@ -382,7 +382,11 @@ class BluetoothRuntime:
 
     async def wait_change(self, seconds):
         try:
-            await asyncio.wait_for(self.change_event.wait(), seconds)
+            # No helper task: Python 3.11 wait_for can swallow an external
+            # cancellation when its inner Event.wait completes concurrently,
+            # stranding a phone worker (and supervisor shutdown) in backoff.
+            async with asyncio.timeout(seconds):
+                await self.change_event.wait()
         except TimeoutError:
             pass
         finally:

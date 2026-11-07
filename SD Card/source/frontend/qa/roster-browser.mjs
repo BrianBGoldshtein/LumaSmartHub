@@ -17,7 +17,11 @@ try{
   await send('Page.enable');await send('Runtime.enable');
   for(const role of ['primary','secondary']){
     const ticket=role==='primary'?'/qa/ticket':'/qa/guest-ticket';
-    await send('Page.navigate',{url:await value(`fetch('${ticket}').then(r=>r.json()).then(v=>v.url)`)});
+    const url=await value(`fetch('${ticket}').then(r=>r.json()).then(v=>v.url)`);
+    // Another phone/Serve identity starts a fresh document, not the old
+    // identity digest retained by a same-document enrollment fragment.
+    await send('Page.navigate',{url:'about:blank'});
+    await send('Page.navigate',{url});
     await click('Enroll this browser');await until("document.body.innerText.includes('Approval code:')");
     await value("fetch('/qa/approve').then(r=>r.json())");await until("document.querySelector('.hero')!==null");
     await roster(4);await until("document.querySelectorAll('.connected-users li').length===5");

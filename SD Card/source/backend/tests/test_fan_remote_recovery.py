@@ -12,7 +12,7 @@ from test_companion_settings import settings,operation,PATH
 def failed_controller(app):
     p=Power();state=SimpleNamespace(now=0,storage=False,updating=False)
     c=USBFanController(lambda:p,lambda:{'celsius':55},lambda:state.storage,
-        lambda:state.updating,lambda:state.now)
+        lambda:state.updating,lambda:state.now,network=lambda:False)
     packet=lambda op,ack=False:{'action':'fan','operation':op,'mode':'always_on',
         'qualified_topology':None,'acknowledged':ack}
     c.request(packet('poll'));p.fail=True
@@ -73,7 +73,7 @@ async def test_observed_fault_disarms_saved_qualification_across_broker_restart(
     assert app.state.fan.preferences()=={'mode':'always_on','qualified_topology':None}
     # A fresh protected controller models the service restart during an app
     # update. Temperature/time would permit off if old qualification survived.
-    fresh=USBFanController(lambda:p,lambda:{'celsius':55},lambda:False,lambda:False,lambda:s.now)
+    fresh=USBFanController(lambda:p,lambda:{'celsius':55},lambda:False,lambda:False,lambda:s.now,network=lambda:False)
     async def wire(value):return fresh.request(value)
     app.state.fan.request=wire;s.now+=120;before=len(p.calls)
     result=(await settings(rig,operation('device/fan'))).json()['results'][0]['body']

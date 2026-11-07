@@ -92,7 +92,7 @@ class CoolingPower:
 def reset_cooling(permanent=False):
     global cooling_controller,cooling_power
     cooling_power=CoolingPower()
-    cooling_controller=USBFanController(lambda:cooling_power,lambda:{'celsius':55},lambda:False,lambda:False)
+    cooling_controller=USBFanController(lambda:cooling_power,lambda:{'celsius':55},lambda:False,lambda:False,network=lambda:False)
     packet=lambda op,ack=False:{'action':'fan','operation':op,'mode':'always_on',
         'qualified_topology':None,'acknowledged':ack}
     cooling_controller.request(packet('poll'));cooling_power.fail_off=True

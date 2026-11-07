@@ -163,6 +163,31 @@ def guest_recolor(**values):
     return replace(task,event_color_id=values['color_id'],event_color='#e1e1e1',etag='"guest-updated"')
 guest_account.google.recolor_task=guest_recolor
 guest_selected=False
+roster_guests=[guest]
+roster_enabled=set()
+if os.environ.get('LUMA_QA_ROSTER')=='1':
+    for index,name in enumerate(['Casey','Alexandria Bell-Robinson','Renée'],3):
+        user=core.state.profiles.create_secondary(name)
+        core.state.profiles.bind_phone(user.id,f'AA:BB:CC:DD:EE:{index:02X}')
+        core.state.profiles.set_setup(user.id,'ready',wall_share_approved=False)
+        roster_guests.append(core.state.profiles.get(user.id))
+
+@core.post('/qa/roster')
+async def qa_roster(request:Request):
+    if os.environ.get('LUMA_QA_ROSTER')!='1':return JSONResponse({'disabled':True},status_code=409)
+    count=(await request.json()).get('count')
+    if type(count) is not int or not 0<=count<=4:return JSONResponse({'invalid':True},status_code=422)
+    roster_enabled.clear();roster_enabled.update(user.id for user in roster_guests[:count])
+    for user in roster_guests:
+        phone=core.state.bluetooth.runtime(user.id)
+        if user.id in roster_enabled:
+            phone.remote_authorized.begin(user.phone_address,'/roster-'+user.id,'/roster-source-'+user.id)
+            phone.remote_authorized.heartbeat(user.phone_address);phone.service.phone_seen()
+        else:phone.remote_authorized.clear()
+    return JSONResponse({'count':count})
+
+route=next(route for route in core.router.routes if getattr(route,'path',None)=='/qa/roster')
+core.router.routes.remove(route);core.router.routes.insert(0,route)
 # Exercise review/confirmation/progress UI without a signed install, network
 # download or root broker. A real archive/switch is a separate release gate.
 update_state={'state':'idle','phase':'idle','target_version':None,'message':''}
@@ -218,6 +243,11 @@ async def qa_only(request,call_next):
     global linked
     if linked:
         core.state.bluetooth.remote_authorized.heartbeat(PHONE);service.phone_seen()
+    for user in roster_guests:
+        if user.id in roster_enabled:
+            phone=core.state.bluetooth.runtime(user.id)
+            phone.remote_authorized.heartbeat(user.phone_address);phone.service.phone_seen()
+    if request.url.path=='/qa/roster':return await qa_roster(request)
     if request.url.path=='/qa/ticket':
         ticket=core.state.companion.issue_ticket('123456',ORIGIN)
         return JSONResponse({'url':ORIGIN+'/remote/#enroll='+ticket})

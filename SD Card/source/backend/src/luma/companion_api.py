@@ -21,7 +21,7 @@ from . import thermal
 from .tailscale_setup import tailscale_request
 from .pi_connect_setup import qr_data
 from .companion_google import CompanionGoogle
-from .companion_profiles import own_operation
+from .companion_profiles import own_operation, connected_people
 from .profiles import PRIMARY_ID, ProfileError
 from .focus_timer import TIMER_COMMANDS
 from .admin_authority import AdminDenied, LEASE_SECONDS, FRESH_PATHS, needs_admin
@@ -142,6 +142,7 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
         result = preview_view(service)
         result.update(profile_id=PRIMARY_ID, nickname=profiles.get(PRIMARY_ID).nickname, role='primary')
         result['timer'] = service.personal_timers.for_user(PRIMARY_ID).snapshot()
+        result['connected_users'] = connected_people(service, PRIMARY_ID)
         return result
 
     def denied(error):

@@ -12,7 +12,7 @@ import type {BrowserCredential,RemoteContext} from '../companionProof';
 import type {GoogleCalendar,GoogleEventColor,GoogleStatus} from '../googleSetupState';
 import {calendarSelection} from '../googleSetupState';
 import {timerText} from '../timerState';
-import {clockText,enrollTicket,safeColor,upcoming,updateOutcome,primaryRemote,personalSteps} from './state';
+import {clockText,enrollTicket,safeColor,upcoming,updateOutcome,primaryRemote,personalSteps,connectedPeople} from './state';
 import type {Preview,RemoteSettings,PersonalSettings,PersonalSetup,UpdateStatus,Candidate} from './state';
 import type {Theme} from '../types';
 import './style.css';
@@ -144,6 +144,7 @@ function RemoteApp(){
   return <div className={`remote theme-${theme}`}>
     <header><a href="/remote/" aria-label="Luma remote home"><i className="remote-orb"/><b>Luma</b><span>remote</span></a><span className="link-status"><ShieldCheck size={16}/>{preview?'Private link':'Locked'}</span></header>
     <main>
+      {preview&&<ConnectedUsers value={preview.connected_users}/>}
       {updateResult&&<div className="notice" role="status"><p>{updateResult}</p><button onClick={()=>setUpdateResult(null)}>Dismiss</button></div>}
       {callbackNote&&<div className="notice" role="status"><p>{callbackNote}</p><button onClick={()=>setCallbackNote('')}>Dismiss</button></div>}
       {!preview?<section className="locked"><LockKeyhole size={36}/><h1>Your hub.<br/>Within reach.</h1><p role="status">{code?`Approval code: ${code}`:notice}</p>
@@ -182,6 +183,15 @@ function RemoteApp(){
     </main>
     <nav aria-label="Remote pages">{([['hub','Hub',Home],['personal','My calendars',CalendarDays],['settings','Settings',Settings],['software','Software',Download]] as const).filter(([id])=>id==='hub'||id==='personal'||primaryRemote(preview)).map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}><Icon size={21}/>{label}</button>)}</nav>
   </div>;
+}
+
+function ConnectedUsers({value}:{value:unknown}){
+  const people=connectedPeople(value);
+  return <section className="connected-users" aria-label="Connected users"><h2>Connected now</h2>
+    {people===null?<p>Connection list unavailable.</p>:people.length===0?<p>No verified phones connected.</p>:
+      <ul>{people.map((person,index)=><li key={`${person.role}-${index}`}><i aria-hidden="true"/><b>{person.nickname}</b>
+        {person.self&&<small>You</small>}{person.role==='primary'&&<small>Primary</small>}</li>)}</ul>}
+  </section>;
 }
 
 function Hub({preview,busy,command,task}:{preview:Preview;busy:boolean;command:(name:string,value?:unknown)=>Promise<void>;task:(event:Preview['todos'][number])=>Promise<void>}){

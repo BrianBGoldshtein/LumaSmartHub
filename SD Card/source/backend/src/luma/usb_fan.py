@@ -188,6 +188,19 @@ def usb_storage_attached(usb=Path('/sys/bus/usb/devices'), blocks=Path('/sys/cla
         return True
 
 
+def usb_network_attached(net=Path('/sys/class/net')):
+    """Any enumerated USB network interface pins ganged USB power on.
+
+    Includes idle/down Wi-Fi and USB Ethernet: cutting power must not remove
+    the very interface needed to detect that internet sharing is in use.
+    """
+    try:
+        return any(any(re.fullmatch(r'usb[0-9]+', part)
+                       for part in path.resolve(strict=True).parts) for path in net.iterdir())
+    except (OSError, ValueError):
+        return True
+
+
 def update_in_progress(root=Path('/opt/luma-releases')):
     """Durable install state plus the updater's live exclusive lock."""
     try:
@@ -215,10 +228,12 @@ def update_in_progress(root=Path('/opt/luma-releases')):
 
 class USBFanController:
     def __init__(self, power_factory=LinuxUSBPower, temperature=read_temperature,
-                 storage=usb_storage_attached, updating=update_in_progress, clock=time.monotonic):
+                 storage=usb_storage_attached, updating=update_in_progress, clock=time.monotonic,
+                 *, network=usb_network_attached):
         self.factory, self.temperature, self.storage, self.updating, self.clock = (
             power_factory, temperature, storage, updating, clock)
         self.lock = threading.RLock()
+        self.network = network
         self.power = None
         self.mode, self.qualified = 'always_on', None
         self.last_seen = -math.inf
@@ -251,6 +266,8 @@ class USBFanController:
             return 'USB access in progress'
         if self.storage():
             return 'USB storage attached · power stays on'
+        if self.network():
+            return 'USB network adapter attached · power stays on'
         if self.updating():
             return 'Software update · power stays on'
         return None

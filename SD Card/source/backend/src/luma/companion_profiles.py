@@ -30,6 +30,17 @@ def own_settings(service, uid):
             'weather_location_label': service.settings.weather_location_label}
 
 
+def connected_people(service, uid):
+    """Names/roles only, shared by enrolled remotes; never account contents.
+
+    Use verified live presence, not pairing, cached UI state, PIN grace or
+    calendar-sharing consent. A connected guest can have no wall calendars.
+    """
+    present = service.present_user_ids()
+    return [{'nickname': user.nickname, 'role': user.role, 'self': user.id == uid}
+            for user in service.profiles.list() if user.id in present]
+
+
 def own_preview(service, uid):
     # The room snapshot supplies only explicitly public clock/weather/style.
     # All private fields come from this user's projection, never flat primary.
@@ -39,6 +50,7 @@ def own_preview(service, uid):
         raise HTTPException(403, 'Connect this user’s authorized iPhone first.')
     user = service.profiles.get(uid)
     return {'server_time': room['server_time'], 'privacy_redacted': False,
+            'connected_users': connected_people(service, uid),
             'device_temperature': thermal.read_temperature(),
             'profile_id': uid, 'nickname': user.nickname, 'role': user.role,
             'weather': room['weather'], 'settings': {key: own_settings(service, uid)[key]

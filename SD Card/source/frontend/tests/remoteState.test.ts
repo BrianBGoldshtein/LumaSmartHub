@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {safeColor,enrollTicket,upcoming,clockText,updateOutcome} from '../src/remote/state.ts';
+import {safeColor,enrollTicket,upcoming,clockText,updateOutcome,connectedPeople} from '../src/remote/state.ts';
 const origin='https://luma.example-tail.ts.net';
+test('connected roster preserves all five names, own marker and roles without extra fields',()=>{
+  const rows=Array.from({length:5},(_,n)=>({nickname:'Person '+n,role:n===0?'primary':'secondary',self:n===1,phone_address:'never forwarded'}));
+  const result=connectedPeople(rows)!;assert.equal(result.length,5);assert.equal(result[1].self,true);
+  assert.deepEqual(Object.keys(result[0]),['nickname','role','self']);
+  assert.equal(connectedPeople(undefined),null);assert.deepEqual(connectedPeople([]),[]);
+  for(const value of [[...rows,rows[0]],[{nickname:'Bad',role:'admin',self:false}],[{nickname:'Bad',role:'primary',self:'true'}],
+    [{nickname:'x'.repeat(25),role:'primary',self:true}]])assert.equal(connectedPeople(value),null);
+});
 test('one-use enrollment accepts only this exact remote URL without query',()=>{
   assert.equal(enrollTicket(`${origin}/remote/#enroll=${'a'.repeat(43)}`,origin),'a'.repeat(43));
   for(const link of [`${origin}/remote/?secret=1#enroll=${'a'.repeat(43)}`,`https://evil.test/remote/#enroll=${'a'.repeat(43)}`,

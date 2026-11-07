@@ -2,7 +2,16 @@ import type {CalendarEvent,Weather,Theme} from '../types';
 import type {TimerState} from '../timerState';
 import type {Departure} from '../departureState';
 import type {DeviceTemperature} from '../temperatureState';
+export type ConnectedPerson={nickname:string;role:'primary'|'secondary';self:boolean};
+export function connectedPeople(value:unknown):ConnectedPerson[]|null{
+  if(!Array.isArray(value)||value.length>5)return null;
+  if(value.some(row=>!row||typeof row!=='object'||typeof row.nickname!=='string'||!row.nickname.trim()||
+    Array.from(row.nickname).length>24||/[\u0000-\u001f\u007f]/.test(row.nickname)||
+    !['primary','secondary'].includes(row.role)||typeof row.self!=='boolean'))return null;
+  return value.map(row=>({nickname:row.nickname,role:row.role,self:row.self}));
+}
 export type Preview={profile_id:string;role:'primary'|'secondary';nickname:string;server_time:string;privacy_redacted:boolean;weather:Weather|null;timer:TimerState;
+  connected_users?:ConnectedPerson[];
   device_temperature?:DeviceTemperature;departure:Departure|null;todo_controls:{can_update:boolean;stale?:boolean};calendar:CalendarEvent[];ongoing:CalendarEvent[];todos:CalendarEvent[];
   settings:{theme:Theme;timezone:string;weather_location_label:string};state:{active_page:string;display_power:string;phone_connected:boolean}};
 export type RemoteSettings={theme:Theme;brightness:number;volume:number;timezone:string;latitude:number|null;longitude:number|null;

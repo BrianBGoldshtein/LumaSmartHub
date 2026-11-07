@@ -119,6 +119,8 @@ elif [[ "${VERSION}" == "0.3.11" ]]; then
   QUALIFY_FROM="0.3.10"
 elif [[ "${VERSION}" == "0.3.12" ]]; then
   QUALIFY_FROM="0.3.11"
+elif [[ "${VERSION}" == "0.3.13" ]]; then
+  QUALIFY_FROM="0.3.12"
 fi
 python3 -c 'import sys; a=tuple(map(int,sys.argv[1].split("."))); b=tuple(map(int,sys.argv[2].split("."))); raise SystemExit(a <= b)' \
   "${VERSION}" "${BASE_VERSION}" || die "the update must be newer than the last full-image version ${BASE_VERSION}"
@@ -374,9 +376,11 @@ if [[ "${VERSION}" == "0.3.10" ]]; then
       --current-version "${LEGACY_VERSION}" --legacy-delivery "${LEGACY_ROOT}/SD Card"
   done
 fi
-if [[ "${VERSION}" == "0.3.11" || "${VERSION}" == "0.3.12" ]]; then
+if [[ "${VERSION}" == "0.3.11" || "${VERSION}" == "0.3.12" || "${VERSION}" == "0.3.13" ]]; then
   LEGACY_BUILDS=("0.3.8:6a688f3b2ef934121e89ced143d97724854267a0")
-  if [[ "${VERSION}" == "0.3.12" ]]; then
+  if [[ "${VERSION}" == "0.3.13" ]]; then
+    LEGACY_BUILDS+=("0.3.12:a74b92702d79956254293bc87ecc8d9d6d72c46e")
+  elif [[ "${VERSION}" == "0.3.12" ]]; then
     LEGACY_BUILDS+=("0.3.11:50921b306f007c0f04c4ce80bba4fc5d29f57e22")
   else
     LEGACY_BUILDS+=("0.3.10:ad16d72969e2af19cfdc099666c6ffd1c7fb4a9f")

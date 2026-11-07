@@ -46,8 +46,9 @@ export function WifiHotspotSetup({demo}:{demo:boolean}){
     finally{setBusy(false);}
   }
   return <section className="wifi-hotspot" id="network-hotspot">
-    <h3><Router aria-hidden="true"/> Levoit Wi-Fi sharing</h3>
-    <p>Create a private 2.4 GHz network for the Core 300S. Luma routes its internet through the Pi’s current Wi-Fi connection; this does not bridge Levoit onto Stanford’s LAN.</p>
+    <h3><Router aria-hidden="true"/> Room-device Wi-Fi sharing</h3>
+    <p>Create a private 2.4 GHz network for compatible room devices, including a Wi-Fi-equipped Levoit Core 300S. Luma shares its current Wi-Fi internet connection without bridging devices onto the upstream LAN.</p>
+    <p className="setup-note"><strong>USB cooling:</strong> select Keep USB on before inserting the Wi-Fi adapter. While a USB network adapter is attached, all USB ports stay powered and the USB fan runs continuously; automatic cooling cannot switch that adapter off.</p>
     <p className="setup-note" role="status">{status.active?`On · ${status.ssid} · 2.4 GHz WPA2`:status.configured?`Saved · ${status.ssid} is currently off`:status.reason}</p>
     <p className="setup-note"><strong>Hardware:</strong> a second, Linux-supported USB Wi-Fi adapter is required. The Pi 4’s built-in radio must stay connected to eduroam; one radio cannot reliably serve the Levoit’s 2.4 GHz network while it is on campus Wi-Fi.</p>
     <p className="setup-note"><strong>Wi-Fi key:</strong> for the requested same-as-PIN setup, Luma’s PIN must be exactly eight digits (WPA2 requires at least eight characters). If your PIN is shorter, choose the separate passphrase; you do not need to change your Luma PIN. A numeric PIN is weaker than a random Wi-Fi password, and anyone you give the shared PIN-key to will also learn your Luma PIN. The NetworkManager Wi-Fi profile is persisted root-only on the Pi; it is not added to Luma backups.</p>

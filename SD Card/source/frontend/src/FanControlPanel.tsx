@@ -30,6 +30,7 @@ export function FanControlPanel({demo=false,request}:{demo?:boolean;request:Requ
     <p>On at {status?.on_celsius??70}°C · off at {status?.off_celsius??60}°C. No periodic USB discovery cycles.</p>
     <p role="status"><b>USB power: {status?.usb_power??'checking'}</b>{status&&<><br/>Mode: {status.mode==='automatic'?'Automatic cooling':'Keep USB on'}</>}<br/>{status?.reason}</p>
     <p className="setup-note">Standby keeps USB power on whenever no registered phone is connected, so the mouse stays available. Your saved cooling mode resumes when a verified phone returns. All four USB ports switch together. Use your phone remote’s Keep USB on control before using an unpowered mouse or plugging in a USB stick while a phone is connected. Detected storage and updates also keep power on.</p>
+    <p className="setup-note">A connected USB Wi-Fi or Ethernet adapter keeps all USB power on, even when idle, so cooling cannot interrupt its network. The USB fan therefore runs continuously while that adapter is attached. Select Keep USB on before plugging one in.</p>
     <button disabled={busy||demo} onClick={()=>void action('always_on')}>Keep USB on · mouse & drives</button>
     <button disabled={controls.automaticDisabled} onClick={()=>void action('automatic')}>Automatic cooling</button>
     <details><summary>Verify physical fan switching</summary>

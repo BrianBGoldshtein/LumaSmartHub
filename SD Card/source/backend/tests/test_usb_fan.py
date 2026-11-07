@@ -26,9 +26,9 @@ class Power:
 @pytest.fixture
 def rig():
     power = Power()
-    state = SimpleNamespace(now=0., temperature=45., storage=False, updating=False)
+    state = SimpleNamespace(now=0., temperature=45., storage=False, updating=False, network=False)
     controller = USBFanController(lambda: power, lambda: {'celsius': state.temperature},
-        lambda: state.storage, lambda: state.updating, lambda: state.now)
+        lambda: state.storage, lambda: state.updating, lambda: state.now, network=lambda:state.network)
     return controller, power, state
 
 

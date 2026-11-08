@@ -24,8 +24,37 @@ After publication, the production `latest_release` downloader checked **0.3.8** 
 
 ## Install and owner checks
 
-1. In Settings → Luma software, Check for updates, review **0.3.13 Beta** and Install. Keep power connected through progress and the verified reboot. Do not reflash or reset settings. If wall access is unavailable, the existing [Pi Connect signed-update procedure](V0311_WORKING_NOTES.md#install-via-pi-connect-without-a-working-wall-mouse) uses the current verified GitHub feed.
+1. In Settings → Luma software, Check for updates, review **0.3.13 Beta** and Install. Keep power connected through progress and the verified reboot. Do not reflash or reset settings. If wall access is unavailable, use the version-pinned [Pi Connect procedure below](#install-via-pi-connect).
 2. Confirm running version **0.3.13**, then refresh the enrolled phone remote. Check Connected now with primary and secondary phones, including a user with no calendars; connect/disconnect and allow normal preview polling. No re-pairing is required.
 3. Follow [ROOM_WIFI_SETUP.md](ROOM_WIFI_SETUP.md) before any adapter purchase or live setup. It explains the separate USB AP radio, current budget candidate, official firmware prerequisites, exact settings path, permission requirement and undo steps. Select Keep USB on before insertion; a USB adapter means continuous power to the shared USB fan. The user's header-power question is documented there; no microphone removal or unqualified power splice is needed.
 
 No source/browser test proves physical Pi radio/fan/iOS behavior, purchased adapter AP support, campus routing permission or Levoit cloud onboarding. No real radio was reconfigured and nothing was bought. The requested remote implementation and researched instructions are delivered; actual campus deployment is a later owner acceptance activity.
+
+## Install via Pi Connect
+
+Prefer the normal Settings updater. If it is inaccessible, run this once in Pi Connect's remote shell. It accepts only the signed **0.3.13** release and uses the existing installer, health checks and rollback. Historical instructions pinned to 0.3.11 will deliberately refuse today's release; do not remove their guard to force an update.
+
+```sh
+sudo -u luma /opt/luma/venv/bin/python - <<'PY'
+import asyncio, base64, json
+from importlib.metadata import version
+from luma.github_updates import latest_release
+from luma.update_broker import update_request
+current = version('luma-smart-screen')
+print('Downloading and verifying Luma 0.3.13...', flush=True)
+release = latest_release(current)
+if release.get('state') != 'available' or release.get('version') != '0.3.13':
+    raise SystemExit('Expected update unavailable; nothing installed. Current: ' + current)
+result = asyncio.run(update_request({'action': 'install',
+    'bundle': base64.b64encode(release['bundle']).decode()}))
+print(json.dumps(result, indent=2))
+PY
+```
+
+Keep power connected through progress and reboot. An accepted request is not installation success. Reopen Connect afterward and check:
+
+```sh
+curl --max-time 15 -fsS http://127.0.0.1:8742/api/v1/health
+```
+
+Require version **0.3.13**, status **ok** and database **ok**, then refresh the phone remote. If the previous version returns or a failure is shown, preserve update/API logs and report it; do not repeatedly retry or erase the card.

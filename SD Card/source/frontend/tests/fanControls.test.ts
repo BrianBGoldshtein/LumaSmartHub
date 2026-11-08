@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fanControls,type Cooling} from '../src/fanControls.ts';
+test('GPIO fan test has a distinct label and still requires observation',()=>{
+  const state:Cooling={available:true,backend:'gpio12',mode:'always_on',usb_power:'on',fan_power:'on',qualified:false,probe:'idle',reason:'Ready'};
+  assert.equal(fanControls(state,false,false,true).testLabel,'Test five-second fan interruption');
+  assert.equal(fanControls(state,false,false,false).testDisabled,true);
+  assert.equal(fanControls(state,false,false,true).testDisabled,false);
+  assert.equal(fanControls(state,false,false,true).automaticDisabled,true);
+});
 const fault:Cooling={available:false,mode:'always_on',usb_power:'on',qualified:false,
   probe:'idle',reason:'Switching failed',standby_override:false,fault:true};
 

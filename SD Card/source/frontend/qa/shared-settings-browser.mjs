@@ -34,7 +34,7 @@ try{
       if(step==='users')await until(`(${child}?.querySelectorAll('.user-list article').length??0)>=2`);
       if(step==='device'){
         await until(`${child}?.body.innerText.includes('Location & display')`);
-        await value(`[...${child}.querySelectorAll('summary')].find(s=>s.textContent.trim()==='USB cooling').click()`);
+        await value(`[...${child}.querySelectorAll('summary')].find(s=>s.textContent.trim()==='Fan cooling').click()`);
         await until(`!!(${child}?.querySelector('.fan-control'))`);
         const cooling=await value(`${child}.querySelector('.fan-control').textContent`);
         assert.ok(cooling.includes('On at 70°C · off at 60°C'));

@@ -74,7 +74,7 @@ try{
   await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Casey')&&document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Pair your iPhone')`);
   await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='device'`);
   await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Your space.')`);
-  for(const panel of ['USB cooling','Wi-Fi & appliance network','Raspberry Pi Connect','Signed software updates','Private Tailscale connection','iPhone remotes','Bluetooth pairing & forgetting','Notification sounds','Hey Luma & voice calibration']){
+  for(const panel of ['Fan cooling','Wi-Fi & appliance network','Raspberry Pi Connect','Signed software updates','Private Tailscale connection','iPhone remotes','Bluetooth pairing & forgetting','Notification sounds','Hey Luma & voice calibration']){
     assert.equal(await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;return [...d.querySelectorAll('summary')].some(e=>e.textContent===${JSON.stringify(panel)});})()`),true,'All advanced controls available');
   }
   assert.equal(await value(`document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.remote-settings-disclosure[open]').length`),0,'Closed advanced panels do not poll');

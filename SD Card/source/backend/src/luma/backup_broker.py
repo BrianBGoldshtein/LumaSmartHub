@@ -12,7 +12,8 @@ from contextlib import suppress
 from .backup_inventory import LinuxUSBInventory
 from .backup_media import BackupMedia, MediaError
 from .backup_envelope import MAX_ARCHIVE_BYTES
-from .usb_fan import USBFanController, validate_fan_request
+from .usb_fan import validate_fan_request
+from .gpio_fan import FanController
 
 
 SOCKET = "/run/luma-backup.sock"
@@ -56,7 +57,7 @@ class BackupBroker:
     def __init__(self, inventory=None, media=None, fan=None):
         self.inventory = inventory or LinuxUSBInventory()
         self.media = media or BackupMedia(self.inventory.current_volumes)
-        self.fan = fan or USBFanController()
+        self.fan = fan or FanController()
 
     def execute(self, request):
         value = validate_request(request)

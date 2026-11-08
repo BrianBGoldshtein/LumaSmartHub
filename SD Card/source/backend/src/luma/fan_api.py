@@ -15,7 +15,7 @@ PREFERENCES = 'usb_fan_v1'
 
 class FanCommand(BaseModel):
     model_config = {'extra': 'forbid'}
-    action: Literal['always_on', 'automatic', 'probe', 'confirm']
+    action: Literal['always_on', 'automatic', 'probe', 'confirm', 'select_usb', 'select_gpio']
     acknowledged: bool = Field(default=False, strict=True)
 
 
@@ -33,12 +33,15 @@ class FanRuntime:
             return True
 
     async def _apply(self, preferences, operation='poll', acknowledged=False):
-        standby = self.standby_override()
+        gpio = preferences.get('backend') == 'gpio12'
+        # GPIO fan power is independent: the coordinator holds mouse/network
+        # USB on, so absence does not need to defeat temperature control.
+        standby = self.standby_override() and not gpio
         wire_operation = ('keep_on' if self.standby is not True or operation=='keep_on' else 'poll') if standby else operation
         result = await self.request({'action':'fan','operation':wire_operation,
             **preferences,'mode':'always_on' if standby else preferences['mode'],
             'acknowledged':acknowledged})
-        if not standby and self.standby_override():
+        if not gpio and not standby and self.standby_override():
             # A disconnect racing an in-flight automatic request wins before
             # returning status; never leave a stale off decision in effect.
             standby = True
@@ -48,7 +51,10 @@ class FanRuntime:
             # A broker restart/update must not revive a qualification from
             # before a real switching fault. Only an acknowledged new probe
             # and explicit physical observation may re-enable automatic off.
-            preferences = {'mode':'always_on','qualified_topology':None}
+            preferences.clear()
+            preferences.update(mode='always_on', qualified_topology=None)
+            if gpio:
+                preferences['backend'] = 'gpio12'
             if self.preferences() != preferences:
                 self.storage.set_cache('device', PREFERENCES, preferences)
         self.standby = standby
@@ -71,7 +77,8 @@ class FanRuntime:
             mode = 'always_on'
         if not isinstance(qualified, str) or not re.fullmatch(r'[a-f0-9]{64}', qualified):
             qualified = None
-        return {'mode': mode, 'qualified_topology': qualified}
+        return {'mode': mode, 'qualified_topology': qualified,
+                **({'backend':'gpio12'} if saved.get('backend') == 'gpio12' else {})}
 
     async def poll(self):
         async with self.lock:
@@ -82,22 +89,30 @@ class FanRuntime:
             require_request_admin()
             preferences = self.preferences()
             action = command.action
+            if action in {'select_usb', 'select_gpio'}:
+                if not command.acknowledged:
+                    raise HTTPException(422, 'Confirm the fan wiring before changing its control connection.')
+                preferences = {'mode':'always_on', 'qualified_topology':None,
+                    **({'backend':'gpio12'} if action == 'select_gpio' else {})}
+                # Record disarmed wiring intent before touching a switch.
+                # An API crash must not forget that the fan moved off the hub.
+                self.storage.set_cache('device', PREFERENCES, preferences)
             if action in {'probe', 'confirm'} and not command.acknowledged:
-                raise HTTPException(422, 'Confirm the USB interruption and fan observation first.')
+                raise HTTPException(422, 'Confirm the fan interruption and physical observation first.')
             if action in {'probe','confirm'} and self.standby_override():
                 raise HTTPException(409, 'Connect a registered phone before testing USB power. Standby keeps the mouse powered.')
             if action == 'probe':
-                preferences = {'mode': 'always_on', 'qualified_topology': None}
+                preferences = {**preferences, 'mode': 'always_on', 'qualified_topology': None}
                 # A crash during testing must not resurrect automatic mode.
                 self.storage.set_cache('device', PREFERENCES, preferences)
             if action in {'always_on', 'automatic'}:
                 preferences['mode'] = action
             result = await self._apply(preferences,
-                'keep_on' if action == 'always_on' else action if action in {'probe','confirm'} else 'poll',
+                'keep_on' if action in {'always_on','select_usb','select_gpio'} else action if action in {'probe','confirm'} else 'poll',
                 command.acknowledged)
             require_request_admin()
             if action == 'automatic' and not result.get('qualified'):
-                raise HTTPException(409, 'Run and confirm the USB fan test before enabling automatic cooling.')
+                raise HTTPException(409, 'Run and confirm the physical fan test before enabling automatic cooling.')
             if action == 'confirm':
                 preferences['qualified_topology'] = result['qualified_topology']
             self.storage.set_cache('device', PREFERENCES, preferences)

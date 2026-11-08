@@ -63,8 +63,8 @@ try{
     await value(`fetch('/qa/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:${JSON.stringify(theme)}})}).then(r=>r.json())`);
     await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='users'");await inside("d.querySelector('.user-setup')!==null");
     await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='device'");await inside("d.querySelector('.device-setup')!==null");
-    await inside("[...d.querySelectorAll('summary')].some(s=>s.textContent.trim()==='USB cooling')");
-    await value(scoped("[...d.querySelectorAll('summary')].find(s=>s.textContent.trim()==='USB cooling').click();"));
+    await inside("[...d.querySelectorAll('summary')].some(s=>s.textContent.trim()==='Fan cooling')");
+    await value(scoped("[...d.querySelectorAll('summary')].find(s=>s.textContent.trim()==='Fan cooling').click();"));
     for(const width of [320,390]){await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});await exercise(theme,width);}
   }
   // A persistently failing simulated switch must not silently requalify.

@@ -38,9 +38,11 @@ class FanError(ValueError):
 
 
 def validate_fan_request(value):
-    if (not isinstance(value, dict) or set(value) != {
+    if (not isinstance(value, dict) or set(value) - {'backend'} != {
             'action', 'operation', 'mode', 'qualified_topology', 'acknowledged'}
             or value['action'] != 'fan'
+            or not isinstance(value.get('backend', 'usb'), str)
+            or value.get('backend', 'usb') not in {'usb', 'gpio12'}
             or not isinstance(value['operation'], str)
             or value['operation'] not in {'poll', 'probe', 'confirm', 'keep_on'}
             or not isinstance(value['mode'], str)

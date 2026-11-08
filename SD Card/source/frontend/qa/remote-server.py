@@ -5,6 +5,7 @@ Start on isolated Linux with an explicit temporary data/frontend directory.
 """
 import os
 import asyncio
+import time
 from contextlib import asynccontextmanager
 import uvicorn
 from dataclasses import replace
@@ -20,6 +21,7 @@ from luma.shortcut_gateway import create_gateway
 from luma import update_api
 from luma import thermal
 from luma.usb_fan import USBFanController,FanError
+from luma.gpio_fan import FanController,GPIOFanController
 
 # Synthetic crowded discovery for pairing UI qualification only. No system
 # Bluetooth connection, agent registration, actual trust or phone selection.
@@ -118,6 +120,54 @@ if os.environ.get('LUMA_QA_COOLING')=='1':
     reset_cooling()
     async def cooling_wire(value):return await asyncio.to_thread(cooling_controller.request,value)
     core.state.fan.request=cooling_wire
+
+# GPIO qualification uses the actual coordinator and signed settings bridge.
+# Only power objects/temperature/clock are fake; no device nodes are opened.
+gpio_state={'offset':0.,'temperature':55.}
+gpio_board=None
+def reset_gpio():
+    global cooling_controller,cooling_power,gpio_board
+    if cooling_controller:cooling_controller.close()
+    cooling_power=CoolingPower();gpio_board=CoolingPower();gpio_board.fingerprint='b'*64
+    gpio_state.update(offset=0.,temperature=55.)
+    clock=lambda:time.monotonic()+gpio_state['offset']
+    temperature=lambda:{'celsius':gpio_state['temperature']}
+    usb=USBFanController(lambda:cooling_power,temperature,lambda:True,lambda:False,clock,network=lambda:True)
+    gpio=GPIOFanController(lambda:gpio_board,temperature=temperature,updating=lambda:False,clock=clock)
+    cooling_controller=FanController(usb,gpio)
+    core.state.fan.storage.set_cache('device','usb_fan_v1',{'mode':'always_on','qualified_topology':None})
+
+@core.post('/qa/gpio/reset')
+async def qa_gpio_reset():
+    if os.environ.get('LUMA_QA_GPIO')!='1':return JSONResponse({'disabled':True},status_code=409)
+    reset_gpio();return {'reset':True}
+
+@core.post('/qa/gpio/advance')
+async def qa_gpio_advance(request:Request):
+    if os.environ.get('LUMA_QA_GPIO')!='1':return JSONResponse({'disabled':True},status_code=409)
+    data=await request.json()
+    gpio_state['temperature']=data.get('temperature',gpio_state['temperature'])
+    remaining=max(0,min(float(data.get('seconds',0)),3600))
+    while remaining:
+        step=min(5,remaining);gpio_state['offset']+=step;remaining-=step
+        if data.get('heartbeat') is True:
+            await core.state.fan.poll()  # Real API heartbeat at normal cadence.
+        cooling_controller.tick()
+    cooling_controller.tick();return qa_gpio_status()
+
+@core.get('/qa/gpio')
+def qa_gpio_status():
+    if os.environ.get('LUMA_QA_GPIO')!='1':return {'disabled':True}
+    return {'status':cooling_controller.status(),'usb_calls':cooling_power.calls,
+            'fan_calls':gpio_board.calls,'fan_on':gpio_board.on,'usb_on':cooling_power.on}
+
+for qa_path in ('/qa/gpio/reset','/qa/gpio/advance','/qa/gpio'):
+    route=next(route for route in core.router.routes if getattr(route,'path',None)==qa_path)
+    core.router.routes.remove(route);core.router.routes.insert(0,route)
+if os.environ.get('LUMA_QA_GPIO')=='1':
+    reset_gpio()
+    async def gpio_wire(value):return await asyncio.to_thread(cooling_controller.request,value)
+    core.state.fan.request=gpio_wire
 service.update_settings({'phone_address':PHONE,'visible_calendar_ids':['classes'],
                          'todo_calendar_id':'tasks','todo_completed_color_id':'8','onboarding_completed':True})
 linked=True
@@ -248,6 +298,9 @@ async def qa_only(request,call_next):
             phone=core.state.bluetooth.runtime(user.id)
             phone.remote_authorized.heartbeat(user.phone_address);phone.service.phone_seen()
     if request.url.path=='/qa/roster':return await qa_roster(request)
+    if request.url.path=='/qa/gpio/reset':return JSONResponse(await qa_gpio_reset())
+    if request.url.path=='/qa/gpio/advance':return JSONResponse(await qa_gpio_advance(request))
+    if request.url.path=='/qa/gpio':return JSONResponse(qa_gpio_status())
     if request.url.path=='/qa/ticket':
         ticket=core.state.companion.issue_ticket('123456',ORIGIN)
         return JSONResponse({'url':ORIGIN+'/remote/#enroll='+ticket})

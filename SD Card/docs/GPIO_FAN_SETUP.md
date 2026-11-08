@@ -1,6 +1,6 @@
 # Independent USB fan switching — BCM12
 
-Researched 2026-11-07. Development target: 0.4.0 Beta. Do not select GPIO mode until the switch is wired; software readback is not proof that a fan runs.
+Researched 2026-11-07. Available in [0.4.0 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.4.0). Do not select GPIO mode until the switch is wired; software readback is not proof that a fan runs. [Release evidence and Pi Connect update](V040_WORKING_NOTES.md).
 
 ## Buy a switch, keep the existing fan and microphone
 
@@ -34,9 +34,9 @@ In **All hub settings → Device → Fan cooling → Move fan to a GPIO switch**
 
 Open **Verify physical fan switching**, acknowledge, and run the five-second fan-only interruption. The independent broker restores the fan even if the browser closes. Actually observe the fan stop and restart, then acknowledge that observation and confirm. Only then enable **Automatic cooling**. Confirm the Wi-Fi link, mouse and any drive remain powered through both the test and later thermal cycling. Reported GPIO/USB bits are not an RPM/voltage sensor.
 
-In GPIO mode, all onboard USB power stays on. The fan alone turns on at **70°C**, stays on for at least **60 seconds**, and turns off at **60°C or below**. It stays off until 70°C without discovery windows. This continues in privacy standby, since mouse power is now separate. Software updates, an invalid temperature reading or expiry of the API heartbeat request fan-on. A detected fault disarms automatic qualification and requires a fresh observed test.
+In GPIO mode, all onboard USB power stays on. The fan alone turns on at **70°C**, stays on for at least **60 seconds**, and turns off at **60°C or below**. It stays off until 70°C without discovery windows. This continues in privacy standby, since mouse power is now separate. While the protected broker is running, software updates, an invalid temperature reading or expiry of the API heartbeat request fan-on. The service restart/reboot portion of an update can interrupt that output, as explained below. A detected fault disarms automatic qualification and requires a fresh observed test.
 
-The board defaults OFF during boot before the controller claims BCM12. If the entire broker is killed, GPIO is released, the kernel crashes, wiring fails or the Pi is rebooting, software cannot guarantee fan-on. [Linux documents line state as uncontrolled after its request descriptor closes](https://docs.kernel.org/userspace-api/gpio/gpio-v2-get-line-ioctl.html). This inexpensive switch is **not a hardware fail-on thermostat**. If fan-on is not restored or status is unavailable, plug the fan directly into powered Pi USB and use Keep USB on until repaired. Do not claim software watchdog tests prove protection against total OS/power failure.
+The board defaults OFF during boot before the controller claims BCM12, including service restarts/reboots during an update. If the entire broker is killed, GPIO is released, the kernel crashes, wiring fails or the Pi is rebooting, software cannot guarantee fan-on. [Linux documents line state as uncontrolled after its request descriptor closes](https://docs.kernel.org/userspace-api/gpio/gpio-v2-get-line-ioctl.html). This inexpensive switch is **not a hardware fail-on thermostat**. If fan-on is not restored or status is unavailable, plug the fan directly into powered Pi USB and use Keep USB on until repaired. Do not claim software watchdog tests prove protection against total OS/power failure.
 
 ## Returning to the old connection
 

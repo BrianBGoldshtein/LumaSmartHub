@@ -1,6 +1,16 @@
 # Luma development status — 2026-11-07
 
-## Current published Beta — 0.3.13 connected remote and room Wi-Fi
+## Current published Beta — 0.4.0 independent fan switch
+
+[0.4.0 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.4.0) from immutable source **`7f25edef2f4d3156be12707ec7fcbda2afd8711e`**. An opt-in fixed BCM12 backend controls the 8086 USB2 inline switch, with USB supplying fan current and GPIO supplying only a 3.3V EN signal. All Pi USB ports remain on, preserving Wi-Fi/mouse/drives while the fan follows 70°C-on/60°C-off thermal control, including privacy standby. The existing USB-hub connection remains default and installation claims no pin.
+
+Shared wall/primary-remote Fan cooling settings guide the wiring, require explicit acknowledgment, durably save a disarmed connection before a broker call, clear qualification on migration/fault, and require a new physically observed five-second test before Automatic. Exclusive GPIO ABI v2 access verifies Pi4/chip/BCM12 identity and refuses busy/unknown devices; no caller-selected pin/path/polarity/PWM, /dev/mem, dependency or service-unit change. The root protocol adds only the bounded usb/gpio12 backend enum; durable data schema remains 1. Secondary users cannot change global wiring.
+
+Final gates: **2,437 backend / 224 frontend / 43 packaging tests**, both builds, [exact-source CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/42435069863), nine GPIO wall/mobile layouts including aligned acknowledgments, nine existing cooling cases, 24 shared-settings cases, full private remote lifecycle, 18 connected-roster cases and 12 pairing cases. All six browser suites passed without JavaScript exceptions. Candidate and pinned 0.3.8/0.3.13 installers passed switch/forced rollback with the same signed archive. Production updater checks from both version inputs verified identical **2,162,781 bytes**, **92 payload files**, SHA-256 **`7ddedf7aa36cd6e8ed4c99536f51fbf7d2ebfc310efe06bf7acf294d1cf776ce`**. Offline key never uploaded.
+
+Install normally, confirm 0.4.0 after reboot and refresh the phone remote. Keep the existing connection selected until hardware is actually wired with Pi power removed. [Ordering/wiring guide](docs/GPIO_FAN_SETUP.md): board listed at $3.45 before shipping, micro-USB power cable and Grove-to-jumper leads for the installed ReSpeaker V1. BCM12 is physical pin 32, not audio pin 12; microphone stays installed. The board defaults OFF before service startup or if the GPIO request is released, so software watchdogs cannot promise hardware fail-on during total OS/broker failure. No live GPIO, board or physical fan test was performed. See [release evidence / exact Pi Connect steps](docs/V040_WORKING_NOTES.md). Purchase and physical acceptance remain owner-led; software, instructions and publication are delivered.
+
+## Previous published Beta — 0.3.13 connected remote and room Wi-Fi
 
 [0.3.13 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.13) from immutable source `1fbde838a8e0dd9249ff613b7b8e1f5fce514b78`. Every authenticated remote page shows a themed Connected now roster of verified primary/secondary phones, including users without calendars or wall-sharing consent. Only nicknames, roles and the own-user marker are included; other accounts' contents remain isolated. Normal preview polling updates the list; hidden, offline and unauthorized remotes clear it. No presence history or new public endpoint is introduced.
 

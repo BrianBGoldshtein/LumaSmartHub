@@ -24,19 +24,21 @@ Do not buy by “Raspberry Pi compatible” alone. For example, [The Pi Hut's ad
 
 Luma currently controls all onboard USB ports as one power group. It cannot switch only the USB fan while keeping a USB Wi-Fi adapter powered. **0.3.13 holds USB power on whenever a USB network interface is present**, including down/idle Wi-Fi or Ethernet, and refuses/cancels interruption tests. Saved cooling preferences are retained; the network protection takes precedence. Therefore the existing USB fan runs continuously while the dongle is attached. Choose a tolerable physical low-speed setting and monitor CPU temperature. Software cannot provide independent quiet fan switching on this wiring.
 
+**0.4.0 adds a separate option:** keep all Pi USB ports on and control an inline fan switch through BCM12. The existing fan still draws its power from USB, while Wi-Fi/mouse/drives stay connected. See [the cheap switch board, cables, wiring and guided setup](GPIO_FAN_SETUP.md). This requires the additional board and a new observed test; installing the update alone keeps the original connection. The board's normally-off startup behavior is documented there and is not hardware fail-on protection.
+
 Before inserting the adapter, choose **Keep USB on · mouse & drives** in the primary remote. An unpowered dongle cannot enumerate, so no detector can recognize it while USB is already off. A powered USB hub is not an assumed workaround: many do not keep data/devices alive when upstream power is cut, and backfeeding is hazardous. Independent temperature-controlled fan wiring would require a separate hardware decision; do not connect a fan motor directly to a GPIO signal pin.
 
 ### Could the header power Wi-Fi instead?
 
 The [Pi header has 5 V supply pins](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html), but they are not a USB data interface. A USB Wi-Fi adapter still needs its USB data connection. Feeding it separately would require carefully isolated wiring and would not establish that the hub retains the link when its ports are disabled; do not splice 5 V onto a normal USB cable or rely on that arrangement for networking. The [Pi 4's onboard USB ports switch together](https://github.com/mvp/uhubctl#raspberry-pi-4b).
 
-The useful alternative is to leave USB networking powered and move **fan switching** to a suitable separately controlled fan power circuit, such as a rated transistor/MOSFET controller. The 5 V supply and a GPIO control signal serve different purposes; the GPIO must not carry motor current. This could retain 70°C-on/60°C-off cooling independently of Wi-Fi. It is an option for a later hardware change, not installed support in 0.3.13. Keep the microphone: removing it alone does not supply USB networking, and its exact HAT pin usage/accessibility must be checked before choosing a controller or shared-header wiring.
+The useful alternative is to leave USB networking powered and move **fan switching** to a suitable separately controlled fan power circuit. The 5 V supply and GPIO signal serve different purposes; GPIO must not carry motor current. This is implemented as opt-in BCM12 control in 0.4.0, retaining 70°C-on/60°C-off cooling independently of Wi-Fi. [The setup guide](GPIO_FAN_SETUP.md) uses the installed V1 ReSpeaker's digital Grove connector, so the microphone stays installed. No physical board or wiring has been tested by the software qualification.
 
 ## Setup without erasing the card
 
 1. Obtain network-owner approval, or use the approved campus IoT network instead.
 2. Install 0.3.13 or newer through Luma's signed GitHub updater. Confirm the running version after reboot and refresh the phone remote. No SD reflash is needed.
-3. From the primary remote, unlock All hub settings → Device → USB cooling and select Keep USB on. Insert the USB adapter. The built-in radio should remain on the existing upstream Wi-Fi.
+3. From the primary remote, unlock All hub settings → Device → Fan cooling (called USB cooling before 0.4.0) and select Keep USB on in the original connection mode. GPIO mode already keeps the hub on. Insert the USB adapter. The built-in radio should remain on the existing upstream Wi-Fi.
 4. A stock existing image explicitly installed Realtek firmware, not all MediaTek firmware. In Pi Connect's shell, install the official Debian packages once if missing:
 
    ```sh

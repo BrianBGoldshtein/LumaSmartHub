@@ -13,24 +13,33 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.13 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.13).
+Latest: [Luma 0.4.0 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.4.0).
 Use **Settings → Luma software → Check for updates**;
-review **0.3.13**, install and keep power connected through the verified reboot.
+review **0.4.0**, install and keep power connected through the verified reboot.
 Confirm the installed version, then refresh the phone remote. Do not reflash its SD card.
-The remote now shows currently connected primary and secondary users on every
-authenticated page, including users without shared calendars. Only nicknames,
-roles and the You marker are shared. A USB network adapter now keeps USB power
-on, protecting room Wi-Fi from the fan's shared power switch. This also keeps
-the USB fan running while the adapter is attached. See the
+Optional **BCM12 inline fan switching** controls only the fan while USB Wi-Fi,
+mouse and drives stay powered. The shared wall/primary-phone settings include
+wiring guidance, an acknowledgment and a new observed fan-only test. The existing
+USB-hub connection remains the default; installing alone claims no GPIO pin.
+See [the switch board, cables and wiring guide](SD%20Card/docs/GPIO_FAN_SETUP.md)
+and [0.4.0 qualification / Pi Connect update](SD%20Card/docs/V040_WORKING_NOTES.md).
+Both modes use 70°C on / 60°C off. GPIO mode continues thermal control in standby;
+its low-cost switch defaults off before the service starts and is not a hardware
+fail-on thermostat. Physical board/fan acceptance remains necessary.
+
+The remote retains connected primary/secondary names on every authenticated
+page, including users without shared calendars. A USB network adapter holds
+the hub powered. A fan plugged directly into USB consequently runs continuously
+with that adapter; use the optional separate switch for independent control. See the
 [room Wi-Fi hardware and setup guide](SD%20Card/docs/ROOM_WIFI_SETUP.md) for
-the two-radio design, budget adapter, campus approval and firmware steps, and
-[0.3.13 release evidence](SD%20Card/docs/V0313_WORKING_NOTES.md).
-The fan test can now recover a latched fault from the primary remote. USB3 readback
+the two-radio design, budget adapter, campus approval and firmware steps.
+The fan test can recover a latched fault from the primary remote. USB3 readback
 gets a bounded settling delay; persistent faults disarm saved automatic qualification.
-Remove USB drives, acknowledge the five-second test, and confirm only after seeing
+For the original whole-hub test, remove USB drives and adapters first. Acknowledge
+the five-second test, and confirm only after seeing
 the fan physically stop and restart. Automatic cooling stays disabled until then.
 70°C on / 60°C off, standby mouse power and the crowded pairing-list fixes remain.
-See [release evidence and Pi Connect procedure](SD%20Card/docs/V0312_WORKING_NOTES.md).
+See [current release evidence and Pi Connect procedure](SD%20Card/docs/V040_WORKING_NOTES.md).
 The owner's 0.3.9 attempt failed health verification and restored 0.3.8;
 0.3.10 fixes a reproduced expensive Bluetooth signal/database path without
 weakening the health gate. Its software and signed install/rollback checks

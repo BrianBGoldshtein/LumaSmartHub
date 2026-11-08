@@ -1,6 +1,6 @@
 # Stanford network deployment
 
-For room appliances, see the [researched two-radio room Wi-Fi guide](ROOM_WIFI_SETUP.md): network-owner approval/approved IoT alternative, the $9.99-listed RT5370 candidate, official firmware prerequisites, UI setup and undo steps. The built-in radio stays on upstream Wi-Fi; a separate USB AP supplies WPA2/DHCP/NAT. From 0.3.13, USB networking pins USB power on, so the existing USB fan runs continuously while a dongle is attached. No live campus hotspot was enabled or qualified by these software tests.
+For room appliances, see the [researched two-radio room Wi-Fi guide](ROOM_WIFI_SETUP.md): network-owner approval/approved IoT alternative, the $9.99-listed RT5370 candidate, official firmware prerequisites, UI setup and undo steps. The built-in radio stays on upstream Wi-Fi; a separate USB AP supplies WPA2/DHCP/NAT. From 0.3.13, USB networking pins USB power on, so a directly connected USB fan runs continuously with a dongle. From 0.4.0, an [optional BCM12 inline switch](GPIO_FAN_SETUP.md) can control the fan independently while all USB stays powered. No live campus hotspot or physical switch was qualified by these software tests.
 
 The intended location has **Stanford Visitor** or **eduroam**, not an assumed home LAN or Ethernet connection. The owner confirmed a **Stanford SUNet account** for eduroam. Never request a SUNet password in chat, store one in source, or bundle one in the image.
 

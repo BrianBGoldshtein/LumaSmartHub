@@ -48,8 +48,9 @@ async function exercise(theme,width){
   await inside(`d.querySelector('.fan-control')?.textContent.includes('Mode: Automatic cooling')`);
   assert.equal(row.usb_on,true);assert.ok(row.usb_calls.every(Boolean));
   await value(scoped(`d.querySelector('.fan-connection').scrollIntoView({block:'center'});return d.fonts.ready;`));
-  const layout=await value(scoped(`const n=d.querySelector('.fan-connection').getBoundingClientRect();return {width:d.defaultView.innerWidth,scroll:d.documentElement.scrollWidth,left:n.left,right:n.right};`));
+  const layout=await value(scoped(`const n=d.querySelector('.fan-connection').getBoundingClientRect(),check=d.querySelector('.fan-connection input').getBoundingClientRect(),label=d.querySelector('.fan-connection input').parentElement.getBoundingClientRect();return {width:d.defaultView.innerWidth,scroll:d.documentElement.scrollWidth,left:n.left,right:n.right,checkWidth:check.width,checkOffset:check.left-label.left};`));
   assert.ok(layout.scroll<=layout.width+1&&layout.left>=0&&layout.right<=layout.width+1,JSON.stringify({mode,theme,width,layout}));
+  assert.ok(layout.checkWidth>=20&&layout.checkWidth<=24&&Math.abs(layout.checkOffset)<=1,'Checkbox must align with its label, not float centered above it.');
   if(width===390||mode==='wall'){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`${process.env.REMOTE_QA_OUTPUT}/gpio-${mode}-${theme}.png`,Buffer.from(shot.data,'base64'));}
   await click('Keep fan on');await inside(`d.querySelector('.fan-control')?.textContent.includes('Mode: Keep fan on')`);
   assert.equal((await audit()).fan_on,true);

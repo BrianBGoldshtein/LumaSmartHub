@@ -13,10 +13,18 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.3.12 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.12).
+Latest: [Luma 0.3.13 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.13).
 Use **Settings → Luma software → Check for updates**;
-review **0.3.12**, install and keep power connected through the verified reboot.
+review **0.3.13**, install and keep power connected through the verified reboot.
 Confirm the installed version, then refresh the phone remote. Do not reflash its SD card.
+The remote now shows currently connected primary and secondary users on every
+authenticated page, including users without shared calendars. Only nicknames,
+roles and the You marker are shared. A USB network adapter now keeps USB power
+on, protecting room Wi-Fi from the fan's shared power switch. This also keeps
+the USB fan running while the adapter is attached. See the
+[room Wi-Fi hardware and setup guide](SD%20Card/docs/ROOM_WIFI_SETUP.md) for
+the two-radio design, budget adapter, campus approval and firmware steps, and
+[0.3.13 release evidence](SD%20Card/docs/V0313_WORKING_NOTES.md).
 The fan test can now recover a latched fault from the primary remote. USB3 readback
 gets a bounded settling delay; persistent faults disarm saved automatic qualification.
 Remove USB drives, acknowledge the five-second test, and confirm only after seeing

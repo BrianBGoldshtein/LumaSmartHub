@@ -1,5 +1,7 @@
 # Stanford network deployment
 
+For room appliances, see the [researched two-radio room Wi-Fi guide](ROOM_WIFI_SETUP.md): network-owner approval/approved IoT alternative, the $9.99-listed RT5370 candidate, official firmware prerequisites, UI setup and undo steps. The built-in radio stays on upstream Wi-Fi; a separate USB AP supplies WPA2/DHCP/NAT. From 0.3.13, USB networking pins USB power on, so the existing USB fan runs continuously while a dongle is attached. No live campus hotspot was enabled or qualified by these software tests.
+
 The intended location has **Stanford Visitor** or **eduroam**, not an assumed home LAN or Ethernet connection. The owner confirmed a **Stanford SUNet account** for eduroam. Never request a SUNet password in chat, store one in source, or bundle one in the image.
 
 The image configuration now explicitly sets the pinned generator's `ieee80211.regdom` to `US` for Stanford, California. Its wireless-regulatory layer writes `options cfg80211 ieee80211_regdom=US` in `/etc/modprobe.d/cfg80211_regdomain.conf`; older candidates used the worldwide `00` default. Confirm the effective radio domain on the real Pi before testing campus channels. This is not a bypass of firmware/regulatory limits. Before deploying outside the US, rebuild with the actual installation country's setting.

@@ -1,6 +1,16 @@
-# Luma development status — 2026-10-25
+# Luma development status — 2026-11-07
 
-## Current published Beta — 0.3.12 USB cooling recovery
+## Current published Beta — 0.3.13 connected remote and room Wi-Fi
+
+[0.3.13 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.13) from immutable source `1fbde838a8e0dd9249ff613b7b8e1f5fce514b78`. Every authenticated remote page shows a themed Connected now roster of verified primary/secondary phones, including users without calendars or wall-sharing consent. Only nicknames, roles and the own-user marker are included; other accounts' contents remain isolated. Normal preview polling updates the list; hidden, offline and unauthorized remotes clear it. No presence history or new public endpoint is introduced.
+
+USB Wi-Fi/Ethernet interfaces hold the ganged USB power on, including down/idle interfaces, and refuse/cancel interruption probes. This protects room-device networking but means the existing USB fan runs continuously with a dongle. Before insertion, select Keep USB on. The ordinary 70°C/60°C thresholds and saved cooling mode are retained. A reproduced Python 3.11 event/cancellation race is fixed with a directly awaited timeout context and deterministic regression; this is not evidence of an additional owner's Pi failure.
+
+Qualification: **2,403 backend / 223 frontend / 43 packaging tests**, both production builds, [exact-source CI](https://github.com/BrianBGoldshtein/LumaSmartHub/actions/runs/42412470388), 18 roster layouts, 24 shared-settings layouts, nine cooling cases, 12 pairing cases and the full private remote lifecycle. Candidate and pinned published 0.3.8/0.3.12 installers passed switch and forced rollback with the same signed archive. Production downloads checked from both version inputs matched **2,155,799 bytes**, **92 files**, SHA-256 `e52e5ddbdbc10b09f708e6e1d8496263ccfda19cac3c30a40fdf91726135d213`. The key stayed offline; no dependency, durable schema, service-unit or root-request expansion.
+
+Install normally, retain power through reboot, confirm 0.3.13 and refresh the phone remote. [Room Wi-Fi instructions](docs/ROOM_WIFI_SETUP.md) cover the built-in-upstream plus USB-AP architecture, $9.99-listed RT5370 candidate, actual chipset/AP checks, one-time official firmware prerequisites, network-owner approval and undo steps. No adapter was purchased or live radio reconfigured. Actual iPhone/radio behavior, hardware power, campus NAT and device onboarding remain owner acceptance; the implemented remote and researched deployment instructions are complete. See [release evidence](docs/V0313_WORKING_NOTES.md).
+
+## Previous published Beta — 0.3.12 USB cooling recovery
 
 [0.3.12 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.3.12) from immutable source `a74b92702d79956254293bc87ecc8d9d6d72c46e`. The shared wall/primary-phone fan test no longer deadlocks when a fault makes the controller unavailable. Explicit acknowledgment permits recovery; independent five-second restoration and a new physical-observation confirmation remain mandatory. Duplicate probes cannot extend the interruption, stale polls cannot overwrite a new action, and persistent faults durably disarm automatic qualification across controller restarts. Primary PIN/presence, secondary exclusion, storage/update guards and standby mouse power are retained.
 

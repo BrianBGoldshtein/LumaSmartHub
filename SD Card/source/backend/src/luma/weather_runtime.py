@@ -5,6 +5,8 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
+
 from .integrations.open_meteo import OpenMeteoClient
 from .service import LumaService
 
@@ -15,6 +17,7 @@ class WeatherRuntime:
         self.client = client
         self.lock = asyncio.Lock()
         self.status: dict[str, Any] = {"last_synced": None, "error": None}
+        self.retry_soon = False
         self.changed = asyncio.Event()
 
     def location(self) -> tuple:
@@ -28,8 +31,12 @@ class WeatherRuntime:
                 raise ValueError("Set a weather location first")
             try:
                 forecast = await asyncio.to_thread(self.client.fetch, latitude=location[0], longitude=location[1], timezone=location[2])
-            except Exception:
+            except Exception as error:
+                if self.location() != location:
+                    self.changed.set()
+                    return {"updated": False}
                 self.status["error"] = "Weather unavailable; retaining the last forecast."
+                self.retry_soon = isinstance(error, httpx.TransportError)
                 if self.service.weather:
                     self.service.weather.stale = True
                     self.service.publish("weather.stale")
@@ -40,12 +47,14 @@ class WeatherRuntime:
                 return {"updated": False}
             self.service.replace_weather(forecast)
             self.status.update(last_synced=datetime.now(UTC).isoformat(), error=None)
+            self.retry_soon = False
             return {"updated": True}
 
     def location_changed(self) -> None:
         self.service.weather = None
         self.service.storage.set_cache("weather", "forecast", None)
         self.status.update(last_synced=None, error=None)
+        self.retry_soon = False
         self.changed.set()
 
     async def run(self) -> None:
@@ -57,6 +66,6 @@ class WeatherRuntime:
                 except Exception:
                     pass  # Diagnostics retain a safe message, never provider secrets.
             try:
-                await asyncio.wait_for(self.changed.wait(), timeout=900)
+                await asyncio.wait_for(self.changed.wait(), timeout=60 if self.retry_soon else 900)
             except asyncio.TimeoutError:
                 pass

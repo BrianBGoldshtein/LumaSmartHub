@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -44,6 +45,21 @@ async def test_weather_requires_location_and_location_change_clears_cache(servic
     runtime.location_changed()
     assert service.weather is None
     assert LumaService(service.storage).weather is None
+
+
+@pytest.mark.asyncio
+async def test_weather_retries_transport_failures_early_and_recovers(service):
+    service.update_settings({"latitude": 0.0, "longitude": 0.0})
+    forecast = WeatherSnapshot(datetime.now(UTC), 70, 70, 75, 60, 0, "Clear")
+    client = Mock()
+    client.fetch.side_effect = [httpx.ConnectError("offline"), forecast]
+    runtime = WeatherRuntime(service, client)
+    with pytest.raises(httpx.ConnectError):
+        await runtime.refresh()
+    assert runtime.retry_soon
+    assert await runtime.refresh() == {"updated": True}
+    assert not runtime.retry_soon
+    assert runtime.status["error"] is None
 
 
 def test_sleep_begins_and_ends_without_new_calendar_fetch(service):

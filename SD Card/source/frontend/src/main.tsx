@@ -196,8 +196,8 @@ function WeatherHint({weather}:{weather:Weather}){
   return hint?<p className="weather-hint"><strong>{hint.title}</strong><small>{hint.detail} · {hint.window}</small></p>:<p>{weatherLabel(weather.weather_code)}</p>;
 }
 
-function WeatherCard({ weather, compact = false }: { weather: Weather | null; compact?: boolean }) {
-  if (!weather) return <section className="card weather-card empty"><span>Weather will appear after setup</span></section>;
+function WeatherCard({ weather, configured, compact = false }: { weather: Weather | null; configured: boolean; compact?: boolean }) {
+  if (!weather) return <section className="card weather-card empty"><span>{configured ? "Forecast unavailable" : "Set weather location"}</span></section>;
   return (
     <section className={`card weather-card ${compact ? "compact" : ""}`}>
       {weather.stale && <div className="eyebrow">Last updated</div>}
@@ -246,7 +246,7 @@ function HomePage({ snapshot }: { snapshot: Snapshot }) {
   return (
     <main className="page home-page">
       <section className="hero card"><Clock snapshot={snapshot} large /></section>
-      <WeatherCard weather={snapshot.weather} compact />
+      <WeatherCard weather={snapshot.weather} configured={snapshot.settings.latitude!=null && snapshot.settings.longitude!=null} compact />
       {snapshot.user_panels?.length?<UserPanels snapshot={snapshot} mode="home"/>:<AgendaCard events={snapshot.calendar} limit={3} timezone={snapshot.settings.timezone} />}
     </main>
   );
@@ -256,7 +256,7 @@ function WeatherPage({ snapshot }: { snapshot: Snapshot }) {
   const weather = snapshot.weather;
   return (
     <main className="page focus-page weather-page">
-      <section className="weather-overview"><div><span className="eyebrow">{snapshot.settings.weather_location_label || "Home"}{weather?.stale ? " · Last known" : ""}</span><h1>{weather ? `${Math.round(weather.temperature)}°` : "—"}</h1>{weather?<WeatherHint weather={weather}/>:<p>Set location</p>}</div><WeatherIcon code={weather?.weather_code} />{weather && <div className="weather-detail"><span>High {Math.round(weather.high)}°</span><span>Low {Math.round(weather.low)}°</span></div>}</section>
+      <section className="weather-overview"><div><span className="eyebrow">{snapshot.settings.weather_location_label || "Home"}{weather?.stale ? " · Last known" : ""}</span><h1>{weather ? `${Math.round(weather.temperature)}°` : "—"}</h1>{weather?<WeatherHint weather={weather}/>:<p>{snapshot.settings.latitude!=null && snapshot.settings.longitude!=null ? "Forecast unavailable" : "Set weather location"}</p>}</div><WeatherIcon code={weather?.weather_code} />{weather && <div className="weather-detail"><span>High {Math.round(weather.high)}°</span><span>Low {Math.round(weather.low)}°</span></div>}</section>
       <section className="card hourly-card">
         {(weather?.hourly || []).slice(0, 4).map((hour) => <div className="hour" key={hour.time}><span>{new Intl.DateTimeFormat("en-US", {hour:"numeric",timeZone:snapshot.settings.timezone}).format(new Date(hour.time))}</span><WeatherIcon code={hour.weather_code}/><strong>{Math.round(hour.temperature)}°</strong><small><Droplets />{precipitationLabel(hour.precipitation_probability)}</small></div>)}
         {!weather?.hourly.length && <div className="empty-message"><span>Forecast unavailable.</span></div>}
@@ -271,7 +271,7 @@ function AmbientPage({ snapshot }: { snapshot: Snapshot }) {
 }
 
 function PrivacyStandby({ snapshot }: { snapshot: Snapshot }) {
-  return <main className="page privacy-page"><section className="card privacy-clock"><Clock snapshot={snapshot} large /></section><WeatherCard weather={snapshot.weather} compact /><div className="privacy-note"><LockKeyhole/><b>Private standby</b></div></main>;
+  return <main className="page privacy-page"><section className="card privacy-clock"><Clock snapshot={snapshot} large /></section><WeatherCard weather={snapshot.weather} configured={snapshot.settings.latitude!=null && snapshot.settings.longitude!=null} compact /><div className="privacy-note"><LockKeyhole/><b>Private standby</b></div></main>;
 }
 
 function AssistantOrb({ phase, onClick }: { phase: string; onClick: () => void }) {

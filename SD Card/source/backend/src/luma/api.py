@@ -66,6 +66,7 @@ from .voice_adaptation import PhraseAdaptations
 from . import mic_hardware
 from .network import network_request, validate_request
 from .network_runtime import NetworkRuntime
+from .provider_connectivity import check_providers
 from .tailscale_setup import tailscale_request, validate_request as validate_tailscale_request
 from .pi_connect_setup import pi_connect_request
 from .pairing import PairingFlow
@@ -777,6 +778,11 @@ def create_app(
     @app.get("/api/v1/network/status", dependencies=[Depends(local_only)])
     def network_status() -> dict:
         return network.snapshot()
+
+    @app.post("/api/v1/network/providers", dependencies=[Depends(local_only)])
+    async def network_providers(request: Request) -> dict:
+        remote_guard(request)
+        return await check_providers(weather.client)
 
     @app.post("/api/v1/tailscale", dependencies=[Depends(local_only)])
     async def private_connection(request: Request):

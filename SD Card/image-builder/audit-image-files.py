@@ -16,6 +16,8 @@ import subprocess
 
 SYSTEM = {
     "luma-api.service": "/etc/systemd/system/luma-api.service",
+    "luma-grow-root": "/usr/local/sbin/luma-grow-root",
+    "luma-grow-root.service": "/etc/systemd/system/luma-grow-root.service",
     "luma-shortcut-gateway.service": "/etc/systemd/system/luma-shortcut-gateway.service",
     "luma-tailscaled.service": "/etc/systemd/system/luma-tailscaled.service",
     "luma-tailscale-firewall.service": "/etc/systemd/system/luma-tailscale-firewall.service",
@@ -50,7 +52,7 @@ SYSTEM = {
     "build-keyboard.sh": "/opt/luma/third-party/wvkbd/build-keyboard.sh",
     "wvkbd-overlay.patch": "/opt/luma/third-party/wvkbd/wvkbd-overlay.patch",
 }
-BUILD_ONLY_SYSTEM = {"install.sh", "luma-hardware.txt"}
+BUILD_ONLY_SYSTEM = {"install.sh", "luma-hardware.txt", "configure-bluez-le.py"}
 
 
 def sha_file(path):

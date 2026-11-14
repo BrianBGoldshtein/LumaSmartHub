@@ -1,11 +1,16 @@
 from unittest.mock import AsyncMock
+import socket
+import ssl
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from luma.api import create_app
 from luma.network import NetworkManager, network_request, validate_request
 from luma.network_runtime import NetworkRuntime
+from luma.integrations.open_meteo import OpenMeteoClient
+from luma.provider_connectivity import _failure, _weather
 
 
 @pytest.mark.asyncio
@@ -93,3 +98,32 @@ async def test_non_linux_preview_degrades_without_crashing_background_workers(mo
     monkeypatch.delattr("asyncio.open_unix_connection", raising=False)
     with pytest.raises(ValueError, match="Linux appliance"):
         await network_request({"action": "status"})
+
+
+def test_provider_checks_require_local_setup(tmp_path, monkeypatch):
+    app = create_app(data_dir=tmp_path)
+    check = AsyncMock(return_value={"google": "reachable", "weather": "dns"})
+    monkeypatch.setattr("luma.api.check_providers", check)
+    remote = TestClient(app, client=("192.0.2.2", 4200))
+    assert remote.post("/api/v1/network/providers").status_code == 403
+    check.assert_not_awaited()
+    reply = TestClient(app).post("/api/v1/network/providers")
+    assert reply.json() == {"google": "reachable", "weather": "dns"}
+    check.assert_awaited_once()
+
+
+def test_forecast_probe_sends_no_location_and_does_not_follow_redirects():
+    def response(request):
+        assert request.url.host == "api.open-meteo.com"
+        assert not request.url.query
+        return httpx.Response(302, headers={"location": "https://example.test/"})
+
+    with httpx.Client(transport=httpx.MockTransport(response)) as client:
+        assert _weather(OpenMeteoClient(client)) == "http"
+
+
+def test_probe_reports_wrapped_dns_tls_and_timeout_failures():
+    for cause, expected in ((socket.gaierror(), "dns"), (ssl.SSLError(), "tls"), (TimeoutError(), "timeout")):
+        error = httpx.ConnectError("private network detail")
+        error.__cause__ = cause
+        assert _failure(error) == expected

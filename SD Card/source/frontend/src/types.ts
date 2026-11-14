@@ -71,6 +71,8 @@ export interface Settings {
   volume: number;
   timezone: string;
   weather_location_label: string;
+  latitude?: number | null;
+  longitude?: number | null;
   cycle: { page: Page; seconds: number }[];
 }
 

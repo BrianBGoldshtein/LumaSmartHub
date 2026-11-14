@@ -23,7 +23,7 @@ voice/call-trial voice/speaker-trial countdowns transit room scenes backups/medi
 updates/status user-self/status user-self/google/calendars user-self/google/colors
 user-self/remote/pending'''.split())
 POSTS = frozenset('''onboarding security/pin security/unlock security/lan-token/rotate users/manage
-network network/portal network/hotspot tailscale pi-connect device/fan companion/local
+network network/portal network/hotspot network/providers tailscale pi-connect device/fan companion/local
 bluetooth/forget bluetooth/pairing/start bluetooth/pairing/select bluetooth/pairing/confirm
 bluetooth/pairing/cancel voice/hardware/gain voice/calibration/start voice/calibration/cancel
 voice/calibration/finish-wake-only voice/calibration/confirm-correction voice/calibration/save-audio

@@ -26,6 +26,8 @@ mmdebstrap:
     - libspa-0.2-modules
     - python3
     - python3-venv
+    - cloud-guest-utils
+    - e2fsprogs
     - wlr-randr
     - ddcutil
     - dbus-user-session
@@ -42,6 +44,7 @@ mmdebstrap:
     # Optional USB Wi-Fi AP adapters using in-kernel Realtek drivers need
     # this firmware; no out-of-tree kernel module is installed.
     - firmware-realtek
+    - firmware-mediatek
     # Optional owner-enrolled remote shell/screen sharing; stays off until
     # explicitly linked and enabled by the owner.
     - rpi-connect-lite

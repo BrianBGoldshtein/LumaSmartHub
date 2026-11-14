@@ -171,3 +171,8 @@ button:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
 .theme-neon-grid .voice-notice { border-radius:0; padding:calc(3*var(--pixel)) calc(4*var(--pixel)); font-size:calc(7*var(--pixel)); }
 .voice-notice-layer { position:fixed; inset:0; z-index:90; pointer-events:none; background:transparent; }
 html.luma-cursor-idle, html.luma-cursor-idle *, html.luma-cursor-idle *::before, html.luma-cursor-idle *::after { cursor: none !important; }
+.hotspot-summary{display:grid;gap:.3rem;margin:0 0 1rem;padding:1rem;border:1px solid var(--line);border-radius:var(--radius)}
+.hotspot-summary strong{font:700 clamp(1.35rem,5vw,1.85rem) var(--heading);overflow-wrap:anywhere}
+.hotspot-summary span,.hotspot-summary p{margin:0;color:var(--muted)}
+.wifi-hotspot details{margin:1rem 0}
+.wifi-hotspot details summary{cursor:pointer;font-weight:700}

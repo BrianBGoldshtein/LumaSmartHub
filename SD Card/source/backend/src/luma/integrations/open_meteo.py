@@ -8,6 +8,7 @@ import httpx
 
 from ..models import WeatherHour, WeatherSnapshot
 
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 DESCRIPTIONS = {
     0: "Clear skies.", 1: "Mostly clear.", 2: "Partly cloudy.", 3: "Overcast.",
@@ -24,7 +25,7 @@ class OpenMeteoClient:
 
     def fetch(self, *, latitude: float, longitude: float, timezone: str) -> WeatherSnapshot:
         response = self.client.get(
-            "https://api.open-meteo.com/v1/forecast",
+            FORECAST_URL,
             params={
                 "latitude": latitude,
                 "longitude": longitude,

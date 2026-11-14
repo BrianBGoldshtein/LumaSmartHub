@@ -4,11 +4,11 @@ import {Wifi,LockKeyhole,Check} from "lucide-react";
 import {TouchField} from "./TouchField";
 import {SystemKeyboardControl} from "./SystemKeyboardControl";
 import {networkDescription,type NetworkStatus} from "./networkStatus";
-import {WifiHotspotSetup} from "./WifiHotspotSetup";
 
 type Network={device:string;access_point:string;ssid:string;security:string;strength:number;connected:boolean};
 type Scan={wifi_enabled:boolean;hardware_enabled:boolean;connectivity:number;wifi_device_count:number;scan_complete:boolean;networks:Network[]};
 const sample:Scan={wifi_enabled:true,hardware_enabled:true,connectivity:2,wifi_device_count:1,scan_complete:true,networks:[{device:"preview",access_point:"visitor",ssid:"Stanford Visitor",security:"open",strength:91,connected:false},{device:"preview",access_point:"eduroam",ssid:"eduroam",security:"stanford-eduroam",strength:88,connected:false}]};
+const providerLabels:Record<string,string>={reachable:"Reachable",dns:"DNS lookup failed",tls:"TLS check failed · verify date and time",timeout:"Timed out",http:"Unexpected server response",connection:"Connection failed"};
 
 export function NetworkSetup({demo}:{demo:boolean}){
   const [scan,setScan]=useState<Scan>(),[selected,setSelected]=useState<Network>(),[password,setPassword]=useState("");
@@ -60,6 +60,12 @@ export function NetworkSetup({demo}:{demo:boolean}){
     try{
       const result=demo?{state:demoScan.connectivity===4?"online":"portal",checking_enabled:true}:await send({action:"check"});
       setStatus({...result,stale:false,checked_at:new Date().toISOString()});
+      if(!demo){
+        const response=await fetch("/api/v1/network/providers",{method:"POST",cache:"no-store"});
+        if(!response.ok)throw Error("Could not check Google and Weather from Luma.");
+        const providers=await response.json();
+        setMessage(`Google sign-in · ${providerLabels[providers.google] || "Unavailable"}. Weather · ${providerLabels[providers.weather] || "Unavailable"}.`);
+      }
     }catch(error){setMessage(error instanceof Error?error.message:"Could not check internet access");}finally{setBusy(false);}
   }
   return <section className="network-setup" id="network"><h2><Wifi/> Wi-Fi</h2><p>Use eduroam with your Stanford SUNet account, or Stanford Visitor with browser sign-in.</p>
@@ -86,7 +92,6 @@ export function NetworkSetup({demo}:{demo:boolean}){
     {scan?.connectivity===2 && <p className="setup-note">This network requires browser sign-in.</p>}
     <p className="setup-note">Stanford Visitor sessions last up to 12 hours; you may need to accept the terms again. Luma never accepts them automatically. The sign-in browser opens an HTTP page to trigger the network’s redirect; verify the destination before entering credentials.</p>
     <p className="setup-note">Eduroam setup supports Stanford SUNet accounts only. If authentication fails, check your account, the Pi’s date and time, and the installed certificate profile; never bypass a certificate warning. Real campus connectivity still requires testing.</p>
-    <WifiHotspotSetup demo={demo}/>
   </section>;
 }
 import {setupFetch as fetch} from './setupTransport';

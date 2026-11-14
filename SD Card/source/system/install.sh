@@ -31,6 +31,9 @@ apt-get install -y --no-install-recommends \
   libwayland-dev libpango1.0-dev libxkbcommon-dev pkg-config make patch xz-utils nftables iptables \
   udisks2 polkitd gvfs-backends util-linux exfatprogs ntfs-3g firmware-realtek dnsmasq-base
 apt-get install -y --no-install-recommends rpi-connect-lite qrencode
+if [[ ${LUMA_IMAGE_BUILD:-0} == 1 ]]; then
+  python3 "${SOURCE_ROOT}/system/configure-bluez-le.py"
+fi
 
 bash "${SOURCE_ROOT}/system/build-keyboard.sh" "${SOURCE_ROOT}/assets/keyboard/wvkbd_0.15.orig.tar.xz" \
   "${INSTALL_ROOT}/bin" "${INSTALL_ROOT}/third-party/wvkbd"

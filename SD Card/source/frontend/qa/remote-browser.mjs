@@ -46,7 +46,7 @@ try{
   await click('Enroll this browser');await until(`document.body.innerText.includes('Approval code:')`);
   await value(`fetch('/qa/approve').then(r=>r.json())`);await until(`document.querySelector('.hero')!==null`);
   await wallValue(`location.assign('/?setup=device')`);
-  await wallUntil(`document.querySelector('.primary-admin-bar')?.innerText.includes('Primary iPhone verified')&&document.querySelector('#iphone-remote')`);
+  await wallUntil(`document.querySelector('.primary-admin-bar')?.innerText.includes('Primary iPhone verified')&&document.querySelector('#iphone-remote')!==null`);
   const onWallButton=label=>wallValue(`Array.from(document.querySelectorAll('button')).find(button=>button.textContent.trim()===${JSON.stringify(label)}&&!button.disabled)?.click()`);
   await onWallButton('Set up iPhone remote');
   await wallUntil(`Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Sign in to Tailscale'&&!button.disabled)`);
@@ -61,7 +61,7 @@ try{
   await onWallButton('Set up hotspot');
   await wallUntil(`document.activeElement?.id==='hotspot-editor'&&document.activeElement.getBoundingClientRect().top<innerHeight`);
   await wallValue(`location.assign('/')`);
-  await wallUntil(`!location.search&&document.querySelector('.app')`);
+  await wallUntil(`!location.search&&document.querySelector('.app')!==null`);
   assert.ok((await value('document.body.innerText')).includes('A very long lecture title'));
   await until(`document.querySelector('.temperature-readout')?.textContent.includes('56.5°C')`);
   const credentialFields=await value(`new Promise((resolve,reject)=>{const r=indexedDB.open('luma-remote-key-v1',1);r.onsuccess=()=>{const db=r.result;const tx=db.transaction('credentials');const q=tx.objectStore('credentials').get('selected');q.onsuccess=()=>{resolve(Object.keys(q.result).sort());db.close();};};r.onerror=reject;})`);

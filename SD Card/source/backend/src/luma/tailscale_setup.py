@@ -26,6 +26,10 @@ PNG_DATA = re.compile(r"data:image/png;base64,[A-Za-z0-9+/=]{1,32000}\Z")
 ACTIONS = {"status", "connect", "enable", "disconnect"}
 
 
+class TailscaleSetupError(ValueError):
+    """An actionable error with no raw account or CLI output."""
+
+
 def validate_request(value):
     if not isinstance(value, dict) or set(value) != {"action"} or not isinstance(value["action"], str) or value["action"] not in ACTIONS:
         raise ValueError("Invalid private connection request")
@@ -87,7 +91,7 @@ class TailscaleSetup:
     async def system(self, *args, checked=True):
         code, output = await self.run(SYSTEMCTL, *args, timeout=20)
         if checked and code:
-            raise ValueError("Private connection service could not start; check device diagnostics")
+            raise TailscaleSetupError("Tailscale could not start on Luma. Check Wi-Fi and try again.")
         return code, output
 
     async def cli(self, *args, checked=True):
@@ -113,7 +117,7 @@ class TailscaleSetup:
             gateway_active, _ = await self.system("is-active", "--quiet", GATEWAY, checked=False)
             if expected_serve(json.loads(raw), hostname) and gateway_active == 0:
                 result["command_url"] = f"https://{hostname}/command"
-        if state != "NeedsLogin" or self.clock() > self.login_until:
+        if state not in {"NeedsLogin", "Starting", "NoState"} or self.clock() > self.login_until:
             self.login = {}
         return {**result, **self.login}
 
@@ -128,12 +132,12 @@ class TailscaleSetup:
             gateway, _ = await self.system("disable", "--now", GATEWAY, checked=False)
             daemon, _ = await self.system("disable", "--now", DAEMON, checked=False)
             if gateway or daemon:
-                raise ValueError("Could not stop every connection service; administrator attention is required")
+                raise TailscaleSetupError("Could not stop every private connection service. Refresh status and try again.")
             return {"state": "off", "command_url": None}
         if action == "connect":
             await self.system("enable", "--now", DAEMON)
             # No --reset, auth key, route, operator, exit node or enrollment tag.
-            code, raw = await self.cli("up", "--json", "--timeout=8s", "--hostname=luma",
+            code, raw = await self.cli("up", "--json", "--timeout=12s", "--hostname=luma",
                                        "--accept-dns=false", "--accept-routes=false", "--ssh=false", checked=False)
             self.login = {}
             for value in json_objects(raw):
@@ -146,11 +150,11 @@ class TailscaleSetup:
                     self.login_until = self.clock() + 300
             result = await self.status()
             if code and not self.login and result["state"] not in {"Running", "NeedsMachineAuth"}:
-                raise ValueError("Sign-in could not start. Check campus internet access, then try again")
+                raise TailscaleSetupError("Tailscale did not issue a sign-in code. Check internet access in Luma’s Wi-Fi settings, then try again.")
             return result
         # Enable is a separate physical action after HTTPS/account policy setup.
         if (await self.status())["state"] != "Running":
-            raise ValueError("Sign in and approve Luma in your Tailscale account first")
+            raise TailscaleSetupError("Sign in and approve Luma in your Tailscale account first.")
         await self.cli("serve", "reset")  # Dedicated Luma daemon; clears any old sharing.
         try:
             await self.system("enable", "--now", GATEWAY)
@@ -161,7 +165,7 @@ class TailscaleSetup:
             return result
         except (ValueError, OSError, TimeoutError):
             await self.system("disable", "--now", GATEWAY, checked=False)
-            raise ValueError("Commands remain off. Enable MagicDNS and HTTPS certificates in Tailscale's DNS settings, then try again") from None
+            raise TailscaleSetupError("Commands remain off. Enable MagicDNS and HTTPS certificates in Tailscale's DNS settings, then try again.") from None
 
 
 async def tailscale_request(request):
@@ -203,6 +207,8 @@ async def serve():
             else:
                 async with lock:
                     result = await asyncio.wait_for(manager.execute(request), 90)
+        except TailscaleSetupError as error:
+            result = {"error": str(error)}
         except ValueError:
             result = {"error": "Check campus internet, sign-in and Tailscale HTTPS settings, then try again"}
         except Exception:

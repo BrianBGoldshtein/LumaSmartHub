@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {WifiHotspotSetup} from './WifiHotspotSetup';
-import {isRemoteSetup} from './setupTransport';
+import {isRemoteSetup,setupFetch as fetch,setupNavigate} from './setupTransport';
 import {useSetupActivity} from "./setupActivity";
-import { ArrowLeft, Check, CloudSun, Settings, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowLeft, Check, CloudSun, Settings, ShieldCheck, Smartphone, UserPlus } from "lucide-react";
 import {VoiceSetup} from "./VoiceSetup";
 import {NetworkSetup} from "./NetworkSetup";
 import {BluetoothSetup} from "./BluetoothSetup";
@@ -62,6 +62,8 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
   return <TouchInputProvider><div className={section?"setup-embedded":`app theme-${theme} setup-page`}>{!section && <a className="setup-back" href={setupLink(demo,theme)}><ArrowLeft/> Dashboard</a>}<Panel className={section?"device-setup":"setup-content device-setup"}>
     {!section && <><Settings size={40}/><h1>Your space.</h1><p>Set up once. Saved on your Luma.</p><a href={setupLink(demo,theme,"onboarding")}>Open guided setup →</a>
     {demo && <p className="setup-note">Preview only — no device settings will change.</p>}
+    <div className="device-setup-shortcuts"><button type="button" onClick={()=>setupNavigate('/?setup=users'+(demo?`&demo=1&theme=${theme}`:''))}><UserPlus/> Add or manage users</button>{!isRemoteSetup()&&<button type="button" onClick={()=>document.getElementById('iphone-remote')?.scrollIntoView({block:'start'})}><Smartphone/> Set up iPhone remote</button>}</div>
+    {!isRemoteSetup()&&<div id="iphone-remote"><TailscaleSetup demo={demo} pinConfigured={pinConfigured}/></div>}
     <DeviceTemperaturePanel demo={demo}/>{advanced('fan','Fan cooling',<FanControlPanel demo={demo} request={coolingRequest}/>)}{advanced('network','Connect Luma to Wi-Fi',<NetworkSetup demo={demo}/>)}{advanced('hotspot','Room-device hotspot',<WifiHotspotSetup demo={demo}/>)}</>}
     {(!section || section==="space") && <form onSubmit={event=>{event.preventDefault();void run(async()=>{
       const locationCoordinates=coordinates(form.latitude,form.longitude);
@@ -84,7 +86,6 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
       {pinConfigured && <form onSubmit={event=>{event.preventDefault();void run(async()=>{const submitted=unlockPin;setUnlockPin("");if(!demo)await api("security/unlock","POST",{pin:submitted});setMessage(demo?"Preview unlock only.":"Private display unlocked for 15 minutes. Return to the dashboard.");});}}><TouchField label="Unlock with PIN" secret mode="digits" pattern="[0-9]{4,8}" minLength={4} maxLength={8} required value={unlockPin} onChange={setUnlockPin} disabled={busy}/><button disabled={busy}>Unlock for 15 minutes</button></form>}
     </section>}
     {!section && <><section><h2><Smartphone/> Connections</h2><a href={setupLink(demo,theme,"google")}>Connect Google Calendar →</a>
-      <p><a href={setupLink(demo,theme,'users')}>Users · add someone or rename phones →</a></p>
       <details><summary>Advanced phone selection</summary><form onSubmit={event=>{event.preventDefault();void run(async()=>{if(!demo)await api("settings","PATCH",{phone_address:phoneAddress.trim() || null});setMessage(demo?"Preview phone selection only.":"Phone selection saved. Private content stays hidden until an authorized notification connection is established.");});}}><TouchField label="Previously paired iPhone address" placeholder="AA:BB:CC:DD:EE:FF" pattern="([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}" maxLength={17} value={phoneAddress} onChange={setPhoneAddress} disabled={busy}/><p className="setup-note">For administrator-managed bonds only. Leave blank to disable presence detection. This field never pairs or trusts a device.</p><button disabled={busy}>Save phone</button></form></details>
       <p>Use this token only with the private HTTPS command address configured below. Never send it over campus HTTP or share it. Hide it when finished.</p><button disabled={busy} onClick={()=>run(async()=>{setToken(demo?"Preview — no real token":(await api("security/lan-token")).token);})}>Show Shortcut token</button>{token && <><code className="setup-token">{token}</code><button onClick={()=>setToken("")}>Hide token</button></>}</section>
     <section><h2>Replace Shortcut token</h2><p className="setup-note">Use this if a token or Shortcut was shared accidentally. Existing Shortcuts stop working until updated with the new token.</p>
@@ -95,8 +96,8 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
     </section>
     {advanced('connect','Raspberry Pi Connect',<PiConnectSetup demo={demo}/>)}
     {advanced('updates','Signed software updates',<UpdateSetup demo={demo}/>)}
-    {advanced('tailscale','Private Tailscale connection',<TailscaleSetup demo={demo}/>)}
-    {advanced('remote','iPhone remotes',<CompanionSetup demo={demo} pinConfigured={pinConfigured}/>)}
+    {isRemoteSetup()&&advanced('tailscale','Private Tailscale connection',<TailscaleSetup demo={demo}/>)}
+    {isRemoteSetup()&&advanced('remote','iPhone remotes',<CompanionSetup demo={demo} pinConfigured={pinConfigured}/>)}
     {advanced('bluetooth','Bluetooth pairing & forgetting',<BluetoothSetup demo={demo} pinConfigured={pinConfigured}/>)}
     {advanced('sound','Notification sounds',<NotificationSoundSetup demo={demo}/>)}
     {advanced('voice','Hey Luma & voice calibration',<VoiceSetup demo={demo}/>)}
@@ -106,4 +107,3 @@ export function DeviceSetup({demo,section,onSaved}:{demo:boolean;section?:"space
     {message && <p className="setup-message" role="status">{message}</p>}
   </Panel></div></TouchInputProvider>;
 }
-import {setupFetch as fetch} from './setupTransport';

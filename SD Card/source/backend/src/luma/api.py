@@ -633,7 +633,7 @@ def create_app(
             return parsed.name.value if parsed else None
         return body.get('name') if isinstance(body.get('name'), str) else None
 
-    install_admin_api(app, service, security, local_only, administration_command)
+    install_admin_api(app, service, security, local_only, administration_command, bluetooth.companion_presence)
 
     install_countdown_api(app,service,google,google_sync_lock,local_only)
     install_transit_api(app,service,local_only)

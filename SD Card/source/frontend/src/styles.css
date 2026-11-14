@@ -176,3 +176,11 @@ html.luma-cursor-idle, html.luma-cursor-idle *, html.luma-cursor-idle *::before,
 .hotspot-summary span,.hotspot-summary p{margin:0;color:var(--muted)}
 .wifi-hotspot details{margin:1rem 0}
 .wifi-hotspot details summary{cursor:pointer;font-weight:700}
+.device-setup-shortcuts{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-block:18px 26px}
+.device-setup-shortcuts button,.user-editor button:not(.keyboard-toggle){display:inline-flex;align-items:center;gap:10px;min-height:48px}
+.setup-content .setup-action{color:var(--ink);text-decoration:underline;text-underline-offset:.2em;font-weight:700}
+.wifi-hotspot form{scroll-margin-top:16px;margin-block:18px;padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg)}
+.wifi-hotspot form:focus{outline:2px solid var(--accent);outline-offset:3px}
+.wifi-hotspot h4{margin:0 0 12px;color:var(--ink);font:700 23px var(--heading)}
+.user-setup .user-editor{margin-block:20px 32px;padding:18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.user-setup .user-editor h2{margin-top:0;color:var(--ink)}

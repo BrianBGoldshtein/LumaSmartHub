@@ -1,6 +1,6 @@
 import {isRemoteSetup,setupNavigate} from './setupTransport';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowLeft,Check,Smartphone,Users,CalendarDays,ShieldCheck} from 'lucide-react';
+import {ArrowLeft,Check,Smartphone,Users,UserPlus,CalendarDays,ShieldCheck} from 'lucide-react';
 import {TouchField,TouchInputProvider} from './TouchField';
 import {announceAdminNeeded} from './adminState';
 import {setupTheme,setupLink} from './setupTheme';
@@ -31,13 +31,16 @@ async function api<T>(path:string,method='GET',body?:unknown):Promise<T>{
 export function UsersSetup({demo}:{demo:boolean}){
   const [theme,setTheme]=useState(()=>setupTheme(new URLSearchParams(location.search).get('theme')));
   const [users,setUsers]=useState<User[]>([]),[name,setName]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[rename,setRename]=useState<string|null>(null);
+  const [ready,setReady]=useState(false);
+  const editor=useRef<HTMLFormElement>(null);
   useSetupActivity(busy);
   async function load(){
     if(demo){setUsers([{profile_id:'primary',nickname:'Brian',role:'primary',phone_registered:true,setup_stage:'ready',wall_share_approved:true,connected:true}]);return;}
     const [data,settings]=await Promise.all([api<{users:User[]}>('users'),api<{theme:string}>('settings')]);
     setUsers(data.users);setTheme(setupTheme(settings.theme));
   }
-  useEffect(()=>{void load().catch(()=>{setUsers([]);setMessage('Unlock primary settings to manage users.');});},[demo]);
+  useEffect(()=>{void load().then(()=>setReady(true)).catch(error=>setMessage(error instanceof Error?error.message:'Could not load users.'));},[demo]);
+  useEffect(()=>{if(rename)editor.current?.scrollIntoView({block:'start'});},[rename]);
   async function action(value:Record<string,unknown>,open=false){
     setBusy(true);setMessage('');
     try{
@@ -50,7 +53,13 @@ export function UsersSetup({demo}:{demo:boolean}){
     finally{setBusy(false);}
   }
   return <TouchInputProvider><div className={`app theme-${theme} setup-page`}><a className="setup-back" href={setupLink(demo,theme,'device')}><ArrowLeft/> Settings</a>
-    <main className="setup-content device-setup user-setup"><Users size={40}/><h1>Your people.</h1><p>One primary. Up to four secondary users. Each keeps their own calendars, to-dos and timer.</p>
+    <main className="setup-content device-setup user-setup"><Users size={40}/><h1>Users</h1>
+      <form ref={editor} className="user-editor" onSubmit={event=>{event.preventDefault();void action(rename?{action:'rename',profile_id:rename,nickname:name}:{action:'create',nickname:name},!rename);}}>
+        <section><h2>{rename?'Rename user':'Add a secondary user'}</h2><TouchField label="Nickname" required maxLength={24} value={name} onChange={setName} disabled={!ready||busy||(!rename&&users.length>=5)} placeholder="e.g. Alex"/>
+          <p className="setup-note">{users.length>=5&&!rename?'All four secondary slots are in use.':rename?'This name appears when their phone connects.':'They’ll pair their iPhone, then can connect Google and choose what to show on Luma.'}</p>
+          <button disabled={!ready||busy||!name.trim()||(!rename&&users.length>=5)}>{rename?<Check/>:<UserPlus/>}{rename?'Save name':'Add user and start setup'}</button>{rename&&<button type="button" disabled={busy} onClick={()=>{setRename(null);setName('');}}>Cancel</button>}
+          {message&&<p role="status" className="setup-message">{message}</p>}
+        </section></form>
       <section><h2>Registered users · {users.length}/5</h2><div className="user-list">{users.map(user=><article key={user.profile_id}>
         <div><h3>{user.nickname}</h3><p>{user.role==='primary'?'Primary · hub settings and updates':'Secondary · personal calendars and timer'}<br/>{user.connected?'Authorized iPhone connected':user.phone_registered?'iPhone registered · not currently authorized':'Phone setup needed'}</p></div>
         <div className="user-actions"><button disabled={busy} onClick={()=>void action({action:'resume',profile_id:user.profile_id},true)}>Open personal setup</button>
@@ -58,11 +67,6 @@ export function UsersSetup({demo}:{demo:boolean}){
           {user.phone_registered&&<button disabled={busy} onClick={()=>{if(confirm(`Clear ${user.nickname}’s phone registration? Their Google choices stay saved; old browser and personal-setup access are revoked. The Bluetooth bond itself is not erased.`))void action({action:'clear_phone',profile_id:user.profile_id},true);}}>Change phone…</button>}
           {user.role!=='primary'&&<button className="user-danger" disabled={busy} onClick={()=>{if(confirm(`Remove ${user.nickname}? This deletes their Luma Google credentials, saved events, timer and browser grants. It does not delete Google calendar events or the Bluetooth bond.`))void action({action:'remove',profile_id:user.profile_id});}}>Remove user…</button>}
         </div></article>)}</div></section>
-      <form onSubmit={event=>{event.preventDefault();void action(rename?{action:'rename',profile_id:rename,nickname:name}:{action:'create',nickname:name},!rename);}}>
-        <section><h2>{rename?'Rename user':'Add someone'}</h2><TouchField label="Nickname" required maxLength={24} value={name} onChange={setName} disabled={busy||(!rename&&users.length>=5)} placeholder="e.g. Alex"/>
-          <p className="setup-note">{isRemoteSetup()?'Approve here, then follow the guide on this phone together. They pair their own iPhone, enroll their own remote and optionally sign into Google there. Keep your primary phone authorized while using these administrator controls.':'Approve once here, then hand the wall screen to that person. They pair their own iPhone, optionally connect their Google account and choose what to share. You don’t need to stay nearby.'}</p>
-          <button disabled={busy||!name.trim()||(!rename&&users.length>=5)}><Check/>{rename?'Save name':'Approve & begin guided setup'}</button>{rename&&<button type="button" disabled={busy} onClick={()=>{setRename(null);setName('');}}>Cancel</button>}
-        </section></form>{message&&<p role="status" className="setup-message">{message}</p>}
     </main></div></TouchInputProvider>;
 }
 

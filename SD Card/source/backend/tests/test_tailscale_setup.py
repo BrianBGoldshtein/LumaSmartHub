@@ -97,9 +97,19 @@ async def test_enrollment_fixed_flags_and_expiring_memory_only_qr():
     result = await manager.execute({"action": "connect"})
     assert result["auth_url"] == AUTH
     up = next(c for c in fake.calls if c[:3] == (*CLI, "up"))
-    assert up[3:] == ("--json", "--timeout=8s", "--hostname=luma", "--accept-dns=false", "--accept-routes=false", "--ssh=false")
+    assert up[3:] == ("--json", "--timeout=12s", "--hostname=luma", "--accept-dns=false", "--accept-routes=false", "--ssh=false")
     assert not fake.gateway
     clock[0] = 311
+    assert "auth_url" not in await manager.status()
+
+
+@pytest.mark.asyncio
+async def test_enrollment_code_stays_visible_while_tailscale_starts():
+    fake = FakeCommands()
+    fake.state = "Starting"
+    manager = TailscaleSetup(fake)
+    assert (await manager.execute({"action": "connect"}))["auth_url"] == AUTH
+    fake.state = "NeedsMachineAuth"
     assert "auth_url" not in await manager.status()
 
 

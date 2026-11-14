@@ -24,7 +24,7 @@ export function PrimaryAdminGate({children,demo=false,inline=false,theme=setupTh
     };
     const needed=(event:Event)=>{const fresh=(event as CustomEvent<{fresh:boolean}>).detail?.fresh;
       revision.current++;
-      if(fresh)setConfirm(true);else setStatus(previous=>previous?{...previous,unlocked:false}:null);
+      if(fresh)setConfirm(true);else setStatus(previous=>previous?{...previous,unlocked:false,via_phone:false}:null);
       setPin('');setMessage(fresh?'Confirm your PIN, then review and try the action again.':'Primary access expired. Enter your PIN again.');};
     void poll();const timer=setInterval(()=>void poll(),5000);
     window.addEventListener(ADMIN_NEEDED,needed);
@@ -54,9 +54,9 @@ export function PrimaryAdminGate({children,demo=false,inline=false,theme=setupTh
   </section></TouchInputProvider>;
   if(!allowed)return inline?prompt:<div className={`app theme-${theme} setup-page`}><main className="setup-content device-setup">{prompt}</main></div>;
   const unlocked=<><div className={`primary-admin-bar ${inline?'inline':''}`}>
-    <ShieldCheck aria-hidden="true"/><span>{access==='bootstrap'?'Initial setup':'Primary settings unlocked · 5 minutes'}</span>
-    {access==='unlock'&&<><button onClick={()=>{setConfirm(true);setPin('');setMessage('');}}>Confirm PIN</button>
-      <button onClick={()=>{revision.current++;setPin('');setConfirm(false);setStatus(previous=>previous?{...previous,unlocked:false}:null);
+    <ShieldCheck aria-hidden="true"/><span>{access==='bootstrap'?'Initial setup':access==='phone'?'Primary iPhone verified':'Primary settings unlocked · 5 minutes'}</span>
+    {(access==='unlock'||access==='phone')&&<><button onClick={()=>{setConfirm(true);setPin('');setMessage('');}}>Confirm PIN</button>
+      <button onClick={()=>{revision.current++;setPin('');setConfirm(false);setStatus(previous=>previous?{...previous,unlocked:false,via_phone:false}:null);
         void fetch('/api/v1/admin/lock',{method:'POST',cache:'no-store'}).catch(()=>setMessage('Access will expire automatically.'));}}>Lock</button></>}
   </div>{children}{confirm&&<div className="primary-admin-shade" role="dialog" aria-modal="true" aria-label="Confirm primary PIN">{prompt}</div>}</>;
   return inline?unlocked:<div className={`app theme-${theme} primary-admin-shell`}>{unlocked}</div>;

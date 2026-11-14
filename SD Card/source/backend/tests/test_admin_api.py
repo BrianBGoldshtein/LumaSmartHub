@@ -95,6 +95,28 @@ async def test_actual_guest_presence_cannot_unlock_wall_settings(app_rig):
 
 
 @pytest.mark.asyncio
+async def test_verified_primary_phone_unlocks_wall_and_respects_lock_and_sensitive_actions(app_rig):
+    app, users, link, _ = app_rig
+    app.state.security.set_pin('123456')
+    link('primary')
+    async with client(app) as connection:
+        status = (await connection.get('/api/v1/admin/status')).json()
+        assert status['unlocked'] and status['via_phone']
+        assert (await connection.get('/api/v1/settings')).status_code == 200
+        assert (await connection.patch('/api/v1/settings', json={'brightness':38})).status_code == 200
+        replace_phone = await connection.patch('/api/v1/settings', json={'phone_address':None})
+        assert replace_phone.status_code == 403 and replace_phone.json()['fresh']
+        install = await connection.post('/api/v1/updates/install', json={'candidate_id':'a'*40})
+        assert install.status_code == 403 and install.json()['fresh']
+        assert (await connection.post('/api/v1/admin/lock')).status_code == 200
+        assert (await connection.get('/api/v1/settings')).status_code == 403
+        link('primary')
+        assert (await connection.get('/api/v1/settings')).status_code == 200
+        app.state.bluetooth.children['primary'].remote_authorized.clear()
+        assert (await connection.get('/api/v1/settings')).status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_forged_headers_lan_token_and_cross_origin_are_not_primary_authority(protected):
     app, _ = protected
     async with client(app) as connection:

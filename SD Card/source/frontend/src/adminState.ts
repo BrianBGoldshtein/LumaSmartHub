@@ -1,8 +1,9 @@
-export type AdminStatus={configured:boolean;unlocked:boolean;bootstrap:boolean;expires_in_seconds:number};
+export type AdminStatus={configured:boolean;unlocked:boolean;bootstrap:boolean;expires_in_seconds:number;via_phone?:boolean};
 export const ADMIN_NEEDED='luma-primary-admin-needed';
-export function adminAccess(value:unknown):'unlock'|'bootstrap'|'locked'{
+export function adminAccess(value:unknown):'phone'|'unlock'|'bootstrap'|'locked'{
   if(!value||typeof value!=='object')return 'locked';
   const row=value as Partial<AdminStatus>;
+  if(row.configured===true&&row.unlocked===true&&row.via_phone===true)return 'phone';
   if(row.configured===true&&row.unlocked===true&&typeof row.expires_in_seconds==='number'
       &&Number.isFinite(row.expires_in_seconds)&&row.expires_in_seconds>0&&row.expires_in_seconds<=300)return 'unlock';
   return row.configured===false&&row.bootstrap===true?'bootstrap':'locked';

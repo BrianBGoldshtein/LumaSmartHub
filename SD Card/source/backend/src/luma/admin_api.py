@@ -22,8 +22,17 @@ def set_admin_cookie(response, token, request):
                         secure=request.url.scheme == 'https', samesite='strict', path='/api/v1')
 
 
-def install_admin_api(app, service, security, local_only, decode_command):
+def install_admin_api(app, service, security, local_only, decode_command, phone_presence):
     admin = app.state.admin = AdminAuthority(service.storage)
+    locked_phone_session = ''
+
+    def verified_phone():
+        presence = phone_presence()
+        if (presence.authorized and presence.profile_id == 'primary' and presence.role == 'primary'
+                and presence.generation and presence.generation != locked_phone_session
+                and not service.state.forced_private):
+            return presence
+        return None
 
     def bootstrap():
         return (not security.pin_is_configured() and not service.settings.onboarding_completed
@@ -35,8 +44,10 @@ def install_admin_api(app, service, security, local_only, decode_command):
             remaining = admin.require_local(request.cookies.get(COOKIE), request_origin(request))
         except AdminDenied:
             remaining = 0
-        return JSONResponse({'configured': security.pin_is_configured(), 'unlocked': remaining > 0,
-                             'expires_in_seconds': remaining, 'bootstrap': bootstrap()},
+        phone = security.pin_is_configured() and verified_phone() is not None
+        return JSONResponse({'configured': security.pin_is_configured(), 'unlocked': remaining > 0 or phone,
+                             'expires_in_seconds': remaining, 'bootstrap': bootstrap(),
+                             **({'via_phone': True} if phone else {})},
                             headers={'Cache-Control': 'no-store'})
 
     @app.post('/api/v1/admin/unlock', dependencies=[Depends(local_only)])
@@ -51,6 +62,10 @@ def install_admin_api(app, service, security, local_only, decode_command):
 
     @app.post('/api/v1/admin/lock', dependencies=[Depends(local_only)])
     def lock(request: Request):
+        nonlocal locked_phone_session
+        presence = phone_presence()
+        if presence.authorized:
+            locked_phone_session = presence.generation
         admin.lock_local(request.cookies.get(COOKIE))
         response = JSONResponse({'unlocked': False}, headers={'Cache-Control':'no-store'})
         response.delete_cookie(COOKIE, path='/api/v1')
@@ -83,8 +98,22 @@ def install_admin_api(app, service, security, local_only, decode_command):
                         if not bootstrap(): raise AdminDenied()
                 else:
                     token, origin = request.cookies.get(COOKIE), request_origin(request)
+                    phone_selection_change = False
+                    if path == '/api/v1/settings' and method == 'PATCH':
+                        try:
+                            body = await request.json()
+                            phone_selection_change = isinstance(body, dict) and 'phone_address' in body
+                        except ValueError:
+                            pass  # The settings endpoint validates malformed JSON.
+                    fresh = path in FRESH_PATHS or method == 'DELETE' or phone_selection_change
+                    phone = verified_phone() if not fresh and path != '/api/v1/shortcut-command' else None
                     def check():
-                        admin.require_local(token, origin, fresh=path in FRESH_PATHS or method == 'DELETE')
+                        if phone is not None and verified_phone() == phone:
+                            return
+                        try:
+                            admin.require_local(token, origin, fresh=fresh)
+                        except AdminDenied:
+                            raise AdminDenied(fresh=fresh) from None
                 request.scope['luma_admin_check'] = check
             check()
             context = REQUEST_ADMIN.set(check)

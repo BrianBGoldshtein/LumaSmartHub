@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useState} from "react";
+import {useCallback,useEffect,useRef,useState} from "react";
 import {Router,ShieldAlert,Wifi} from "lucide-react";
 import {TouchField} from "./TouchField";
 import {useSetupActivity} from "./setupActivity";
@@ -11,6 +11,7 @@ const preview:HotspotStatus={...unavailable,upstream_connected:true,can_enable:t
 export function WifiHotspotSetup({demo}:{demo:boolean}){
   const [status,setStatus]=useState<HotspotStatus>(demo?preview:unavailable);
   const [editing,setEditing]=useState(false);
+  const editor=useRef<HTMLFormElement>(null);
   const [statusError,setStatusError]=useState("");
   const [pin,setPin]=useState("");
   const [sameAsPin,setSameAsPin]=useState(false);
@@ -31,6 +32,11 @@ export function WifiHotspotSetup({demo}:{demo:boolean}){
     }catch(error){setStatusError(error instanceof Error?error.message:"Hotspot status is unavailable.");}
   },[demo]);
   useEffect(()=>{if(!busy&&!editing)void refresh();},[refresh,busy,editing]);
+  useEffect(()=>{
+    if(!editing)return;
+    editor.current?.scrollIntoView({block:'start'});
+    editor.current?.focus({preventScroll:true});
+  },[editing]);
   async function change(action:"enable"|"disable"){
     const submitted=pin;
     setPin("");setBusy(true);setMessage("");
@@ -61,8 +67,9 @@ export function WifiHotspotSetup({demo}:{demo:boolean}){
       <p role="status">{statusError || (status.active?"Hotspot on":status.configured?"Saved · hotspot off":status.can_enable?"Ready to set up":status.reason)}</p>
     </div>
     {status.active&&!status.upstream_connected&&<p className="setup-note" role="alert">The hotspot is on. Reconnect Luma to its upstream Wi-Fi to restore internet for room devices.</p>}
-    {!status.active&&!editing&&<button disabled={busy||!!statusError||!status.can_enable} onClick={()=>{setMessage("");setEditing(true);}}>Set up hotspot</button>}
-    {!status.active&&editing&&<>
+    {!status.active&&!editing&&<button type="button" aria-controls="hotspot-editor" disabled={busy||!!statusError||!status.can_enable} onClick={()=>{setMessage("");setEditing(true);}}>Set up hotspot</button>}
+    {!status.active&&editing&&<form id="hotspot-editor" ref={editor} tabIndex={-1} aria-label="Set up room Wi-Fi" onSubmit={event=>{event.preventDefault();void change('enable');}}>
+      <h4>Set up {status.ssid}</h4>
       <fieldset className="hotspot-key-mode"><legend>Network password</legend>
         <label><input type="radio" name="hotspot-key" checked={sameAsPin} disabled={busy} onChange={()=>{setSameAsPin(true);setWifiPassword("");setRevealWifiPassword(false);}}/><span>Use my Luma PIN · exactly 8 digits</span></label>
         <label><input type="radio" name="hotspot-key" checked={!sameAsPin} disabled={busy} onChange={()=>setSameAsPin(false)}/><span>Use a separate, stronger Wi-Fi passphrase</span></label>
@@ -70,15 +77,15 @@ export function WifiHotspotSetup({demo}:{demo:boolean}){
       <TouchField label="Confirm current Luma PIN" secret mode="digits" pattern="[0-9]{4,8}" minLength={4} maxLength={8} required value={pin} onChange={setPin} autoComplete="current-password" disabled={busy}/>
       {!sameAsPin&&<><TouchField label="Wi-Fi passphrase · 16–63 ASCII characters" secret={!revealWifiPassword} minLength={16} maxLength={63} required value={wifiPassword} onChange={setWifiPassword} autoComplete="new-password" disabled={busy}/><button type="button" disabled={busy||!wifiPassword} onClick={()=>setRevealWifiPassword(value=>!value)}>{revealWifiPassword?"Hide":"Show"} Wi-Fi passphrase</button></>}
       <label className="hotspot-ack"><input type="checkbox" checked={acknowledged} disabled={busy} onChange={event=>setAcknowledged(event.target.checked)}/><span>The upstream network owner has approved this private hotspot.</span></label>
-      <button disabled={busy||!!statusError||!acknowledged||!status.can_enable||!/^[0-9]{4,8}$/.test(pin)||(sameAsPin?pin.length!==8:!(/^[\x20-\x7e]{16,63}$/.test(wifiPassword)))} onClick={()=>void change("enable")}>{busy?"Starting…":"Start hotspot"}</button>
-      <button disabled={busy} onClick={()=>{setEditing(false);setPin("");setWifiPassword("");setRevealWifiPassword(false);setAcknowledged(false);}}>Cancel</button>
-    </>}
+      <button type="submit" disabled={busy||!!statusError||!acknowledged||!status.can_enable||!/^[0-9]{4,8}$/.test(pin)||(sameAsPin?pin.length!==8:!(/^[\x20-\x7e]{16,63}$/.test(wifiPassword)))}>{busy?"Starting…":"Start hotspot"}</button>
+      <button type="button" disabled={busy} onClick={()=>{setEditing(false);setPin("");setWifiPassword("");setRevealWifiPassword(false);setAcknowledged(false);}}>Cancel</button>
+    </form>}
     {status.active&&<>
       <details><summary>Connect the Levoit</summary><ol><li>Join <strong>{status.ssid}</strong> on your iPhone.</li><li>Add the purifier in VeSync and enter {status.same_as_pin?"your eight-digit Luma PIN":"the Wi-Fi passphrase you selected"} when prompted.</li><li>After the purifier is online, rejoin your usual Wi-Fi.</li></ol>{isRemoteSetup()&&<p>Keep this passphrase handy before leaving the remote.</p>}</details>
       {!sameAsPin&&wifiPassword&&<div className="hotspot-passphrase"><strong>Separate Wi-Fi passphrase</strong><code>{revealWifiPassword?wifiPassword:"••••••••••••••••"}</code><button type="button" onClick={()=>setRevealWifiPassword(value=>!value)}>{revealWifiPassword?"Hide":"Show"} passphrase</button><small>This is held in this page only. If you lose it, turn off the hotspot and set it again.</small></div>}
       {status.same_as_pin===false&&!wifiPassword&&<p className="setup-note">This hotspot uses a separate key that is not retained in the dashboard. If you no longer have it, turn the hotspot off and create it again with a key you know.</p>}
       <TouchField label="Confirm current Luma PIN" secret mode="digits" pattern="[0-9]{4,8}" minLength={4} maxLength={8} required value={pin} onChange={setPin} autoComplete="current-password" disabled={busy}/>
-      <button disabled={busy||pin.length<4} onClick={()=>void change("disable")}>{busy?"Stopping…":"Turn off and remove hotspot"}</button>
+      <button type="button" disabled={busy||pin.length<4} onClick={()=>void change("disable")}>{busy?"Stopping…":"Turn off and remove hotspot"}</button>
     </>}
     <button type="button" disabled={busy} onClick={()=>void refresh()}><Wifi aria-hidden="true"/> Check hotspot</button>
     <details className="setup-note"><summary><ShieldAlert aria-hidden="true"/> Adapter, password and campus Wi-Fi</summary>

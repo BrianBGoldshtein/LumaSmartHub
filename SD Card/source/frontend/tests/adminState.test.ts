@@ -5,6 +5,7 @@ import {primaryRemote} from '../src/remote/state.ts';
 
 test('only a bounded explicit server lease or initial bootstrap opens settings',()=>{
   assert.equal(adminAccess({configured:true,unlocked:true,expires_in_seconds:300}),'unlock');
+  assert.equal(adminAccess({configured:true,unlocked:true,via_phone:true,expires_in_seconds:0}),'phone');
   assert.equal(adminAccess({configured:false,bootstrap:true}),'bootstrap');
   for(const value of [null,{}, {unlocked:true}, {configured:true,bootstrap:true},
       {configured:true,unlocked:true,expires_in_seconds:0}, {configured:true,unlocked:true,expires_in_seconds:301},

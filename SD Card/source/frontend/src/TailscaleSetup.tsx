@@ -1,10 +1,12 @@
 import {useEffect, useState} from "react";
 import {useSetupActivity} from "./setupActivity";
 import {ShieldCheck} from "lucide-react";
+import {CompanionSetup} from './CompanionSetup';
+import {setupFetch as fetch} from './setupTransport';
 
 type Connection = {state:string; command_url:string|null; auth_url?:string; qr?:string};
 const labels:Record<string,string> = {
-  off:"Not connected", Running:"Private connection ready", NeedsLogin:"Sign in on your iPhone",
+  off:"Not connected", Running:"Signed in to Tailscale", NeedsLogin:"Sign in on your iPhone",
   NeedsMachineAuth:"Approve Luma in Tailscale", Stopped:"Connection paused", Starting:"Connecting…", NoState:"Not signed in",
 };
 async function request(action:string):Promise<Connection> {
@@ -14,7 +16,7 @@ async function request(action:string):Promise<Connection> {
   return value;
 }
 
-export function TailscaleSetup({demo}:{demo:boolean}) {
+export function TailscaleSetup({demo,pinConfigured}:{demo:boolean;pinConfigured?:boolean}) {
   const [connection,setConnection]=useState<Connection>({state:"loading",command_url:null});
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
@@ -42,27 +44,25 @@ export function TailscaleSetup({demo}:{demo:boolean}) {
     } catch(error) {setMessage(error instanceof Error?error.message:"Please try again.");}
     finally {setBusy(false);}
   }
-  return <section className="private-connection"><h2><ShieldCheck/> Private iPhone connection</h2>
-    <p>Siri Shortcuts, securely from your iPhone. Optional Tailscale Personal account — free for personal use. Hey Luma and touch work without it.</p>
-    <p role="status"><strong>{labels[connection.state] || (connection.state==="loading"?"Checking…":"Connection unavailable")}</strong>{connection.command_url?" · Commands enabled":" · Commands not enabled"}</p>
-    <p className="setup-note">Install Tailscale on your iPhone and use a personal account on its free plan. Tap Connect, then scan the code here using your phone’s camera. Do not share the sign-in code.</p>
+  return <><section className="private-connection"><h2><ShieldCheck/> Set up your iPhone remote</h2>
+    <p role="status"><strong>{connection.command_url?"Private HTTPS ready":labels[connection.state] || (connection.state==="loading"?"Checking…":"Connection unavailable")}</strong></p>
+    {!connection.command_url&&<p className="setup-note">Install the Tailscale app on your iPhone and connect it to your account. Add Luma to that same account using the sign-in code below.</p>}
     <div className="private-connection-actions">
-      <button disabled={busy || connection.state==="loading"} onClick={()=>void run("connect")}>{busy?"Working…":connection.state==="Running"?"Reconnect":"Connect / sign in"}</button>
-      <button disabled={busy} onClick={()=>void run("status")}>Refresh</button>
-      {connection.state!=="off" && connection.state!=="loading" && <button disabled={busy} onClick={()=>void run("disconnect")}>Disconnect</button>}
+      {connection.state!=="Running"&&connection.state!=="NeedsMachineAuth"&&<button type="button" disabled={busy || connection.state==="loading"} onClick={()=>void run("connect")}>{busy?"Working…":connection.auth_url?"Get a new sign-in code":"Sign in to Tailscale"}</button>}
+      <button type="button" disabled={busy} onClick={()=>void run("status")}>Refresh status</button>
     </div>
     {connection.auth_url && <div className="private-enrollment">
       {connection.qr && <img src={connection.qr} alt="Scan privately with your iPhone camera to sign in to Tailscale" width="256" height="256"/>}
-      <p>On your iPhone, open this address if the camera cannot scan:</p><code className="setup-token">{connection.auth_url}</code>
-      <p className="setup-note">Sign-in stays on your phone. Luma never asks for your account password. This code hides after five minutes; reconnect to request another.</p>
+      <p>Scan with your iPhone camera. If scanning is unavailable, open the sign-in link.</p><a className="setup-action" href={connection.auth_url} target="_blank" rel="noreferrer">Open Tailscale sign-in</a>
+      <p className="setup-note">The code expires after five minutes. Return here after sign-in and check the status.</p>
     </div>}
-    {connection.state==="Running" && <>
-      <p className="setup-note">In Tailscale’s admin console → DNS, enable MagicDNS and HTTPS certificates. The certificate’s Luma hostname is public in certificate-transparency logs; the service itself stays private. Limit access to your own phone/account (see the included Tailscale guide), then enable commands.</p>
-      <button disabled={busy} onClick={()=>void run("enable")}>{connection.command_url?"Reconfigure private commands":"Enable private commands"}</button>
+    {connection.state==="NeedsMachineAuth"&&<p>Approve Luma under <a className="setup-action" href="https://login.tailscale.com/admin/machines" target="_blank" rel="noreferrer">Tailscale Devices</a>, then refresh here.</p>}
+    {connection.state==="Running" && !connection.command_url && <>
+      <p className="setup-note">Open <a className="setup-action" href="https://login.tailscale.com/admin/dns" target="_blank" rel="noreferrer">Tailscale DNS settings</a> and enable MagicDNS and HTTPS certificates. The certificate publishes Luma’s Tailscale hostname. Access stays on your private Tailscale network.</p>
+      <button type="button" disabled={busy} onClick={()=>void run("enable")}>Enable private HTTPS</button>
     </>}
-    {connection.command_url && <><p>Use this HTTPS address in your Apple Shortcut, with the Shortcut token in All settings → Connections:</p><code className="setup-token">{connection.command_url}</code></>}
-    <p className="setup-note">No public sharing or remote SSH. The optional iPhone remote below requires separate PIN-approved browser enrollment and live authorized Bluetooth; Tailscale alone never reveals private details. Campus Wi-Fi must be online first.</p>
-    {message && <p className="setup-message" role="status">{message}</p>}
-  </section>;
+    {message && <p className="setup-message" role="alert">{message}</p>}
+    {connection.command_url && <details><summary>Siri Shortcuts address</summary><code className="setup-token">{connection.command_url}</code></details>}
+    {connection.state!=="off" && connection.state!=="loading" && <details><summary>Manage Tailscale connection</summary><button type="button" disabled={busy} onClick={()=>void run("disconnect")}>Disconnect Tailscale</button></details>}
+  </section>{pinConfigured!==undefined&&connection.command_url&&<CompanionSetup demo={demo} pinConfigured={pinConfigured}/>}</>;
 }
-import {setupFetch as fetch} from './setupTransport';

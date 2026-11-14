@@ -69,6 +69,9 @@ test('retry after refresh rejection permits editing only after a complete catalo
 
 test('unfinished OAuth callback never claims saved credentials changed',()=>{
   assert.match(googleCallbackMessage('1'),/saved connection has not changed/);
+  assert.match(googleCallbackMessage('permission'),/allow Calendar access/);
+  assert.match(googleCallbackMessage('offline'),/refresh token/);
+  assert.match(googleCallbackMessage('network'),/internet access/);
   assert.equal(googleCallbackMessage(null),'');
 });
 

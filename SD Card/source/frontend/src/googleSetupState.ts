@@ -1,5 +1,13 @@
 export function googleCallbackMessage(flag:unknown):string {
-  return flag==="1" ? "Sign-in didn’t finish. Try again. Your saved connection has not changed." : "";
+  switch(flag) {
+    case "1": return "Sign-in didn’t finish. Try again. Your saved connection has not changed.";
+    case "expired": return "This Google sign-in attempt expired or could not be used. Start a new sign-in here.";
+    case "permission": return "Google returned different permissions than Luma requested. Start again and allow Calendar access on the consent screen.";
+    case "offline": return "Google didn’t return a refresh token. Try signing in again so Luma can keep syncing after setup.";
+    case "client": return "Google rejected the OAuth client. Check that your Desktop app client is enabled in Google Cloud.";
+    case "network": return "Luma couldn’t reach Google to finish sign-in. Check internet access on the Pi and try again.";
+    default: return "";
+  }
 }
 
 export type GoogleStatus = {configured:boolean;authorized:boolean;task_updates:boolean;reconnect_required?:boolean;web_configured?:boolean;redirect_uri?:string};

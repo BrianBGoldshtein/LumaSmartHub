@@ -19,6 +19,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket,
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
+from oauthlib.oauth2 import InvalidClientError, InvalidGrantError
+from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout as RequestsTimeout
 
 from .models import AssistantPhase, Command, CommandName, Orientation, Theme, Page
 from .voice import parse_local_command
@@ -41,7 +43,7 @@ from .storage import Storage
 from .serde import to_primitive
 from . import thermal
 from .cursor_refresh import notify_cursor_refresh
-from .integrations.google_calendar import GoogleCalendarClient, TaskConflict
+from .integrations.google_calendar import GoogleCalendarClient, GoogleSignInError, TaskConflict
 from .integrations.open_meteo import OpenMeteoClient
 from .weather_runtime import WeatherRuntime
 from .voice_calibration import VoiceCalibration
@@ -1793,16 +1795,28 @@ def create_app(
 
     @app.get("/api/v1/google/callback", dependencies=[Depends(local_only)])
     def calendar_callback(request: Request, state: str = "") -> RedirectResponse:
+        reason = ""
         try:
             google.finish_authorization(str(request.url), state)
             service.todo_write_authorized = google.task_write_authorized()
             google_status.update(error=None, error_kind=None, reconnect_required=False)
+        except GoogleSignInError as error:
+            reason = error.reason
+        except InvalidClientError:
+            reason = "client"
+        except InvalidGrantError:
+            reason = "expired"
+        except (RequestsConnectionError, RequestsTimeout):
+            reason = "network"
+        except Warning:
+            # OAuthlib warns and aborts the exchange when Google returns a
+            # different scope set. Keep its potentially sensitive text local.
+            reason = "permission"
         except Exception:
-            # A kiosk has no browser Back button. Return to the themed setup
-            # instead of stranding a cancelled/expired sign-in on raw JSON.
-            return RedirectResponse("/?setup=google&google_error=1", status_code=303,
-                                    headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
-        return RedirectResponse("/?setup=google", status_code=303,
+            reason = "1"
+        # Only fixed, application-defined reason codes leave the callback.
+        destination = f"/?setup=google&google_error={reason}" if reason else "/?setup=google"
+        return RedirectResponse(destination, status_code=303,
                                 headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
     @app.get("/api/v1/google/calendars", dependencies=[secured])

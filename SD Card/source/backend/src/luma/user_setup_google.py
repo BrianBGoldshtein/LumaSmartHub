@@ -68,7 +68,7 @@ class UserSetupGoogle:
             flow = self.flow_factory(config, scopes=scopes, state=state,
                                      code_verifier=verifier, autogenerate_code_verifier=False)
             flow.redirect_uri = CALLBACK
-            url, _ = flow.authorization_url(access_type='offline', prompt='consent', include_granted_scopes='true')
+            url, _ = flow.authorization_url(access_type='offline', prompt='consent')
             target = urlsplit(url)
             if target.scheme != 'https' or target.netloc != 'accounts.google.com' or len(url) > 8192:
                 raise ValueError('Google sign-in is unavailable.')

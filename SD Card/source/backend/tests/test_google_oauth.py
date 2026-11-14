@@ -27,6 +27,8 @@ def test_real_sdk_pkce_survives_recreated_client_and_saves_refresh_token(tmp_pat
     query = parse_qs(urlsplit(initial.begin_authorization()).query)
     assert query["code_challenge_method"] == ["S256"]
     assert query["access_type"] == ["offline"]
+    assert query["prompt"] == ["consent"]
+    assert "include_granted_scopes" not in query
     restored = GoogleCalendarClient(Storage(db))
 
     def token_exchange(session, request, **kwargs):
@@ -234,8 +236,39 @@ def test_cancelled_sign_in_returns_to_touch_setup_without_echoing_provider_detai
         response = browser.get("/api/v1/google/callback", params={"state": state, "error": "access_denied", "error_description": "synthetic-private-detail"}, follow_redirects=False)
     exchange.assert_not_called()
     assert response.status_code == 303
-    assert response.headers["location"] == "/?setup=google&google_error=1"
+    assert response.headers["location"] == "/?setup=google&google_error=permission"
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert "synthetic-private-detail" not in response.text
     assert not app.state.google.authorized()
+
+
+@pytest.mark.parametrize(("token_reply", "reason"), [
+    ({"error": "invalid_client"}, "client"),
+    ({"error": "invalid_grant"}, "expired"),
+    ({"access_token": "synthetic", "token_type": "Bearer"}, "offline"),
+    ({"access_token": "synthetic", "refresh_token": "synthetic-refresh",
+      "token_type": "Bearer", "scope": "https://www.googleapis.com/auth/calendar.events"}, "permission"),
+])
+def test_google_callback_reports_safe_exchange_failure(tmp_path, token_reply, reason):
+    app = create_app(data_dir=tmp_path)
+    google = app.state.google
+    google.set_client_config(CONFIG)
+    google.storage.set_secret(TOKEN_KEY, "saved-credentials")
+    state = parse_qs(urlsplit(google.begin_authorization()).query)["state"][0]
+    browser = TestClient(app, base_url="http://127.0.0.1:8742")
+
+    def reply(session, request, **kwargs):
+        response = requests.Response()
+        response.request = request
+        response.status_code = 400 if "error" in token_reply else 200
+        response._content = json.dumps(token_reply).encode()
+        return response
+
+    with patch.object(requests.Session, "send", reply):
+        response = browser.get("/api/v1/google/callback",
+                               params={"state": state, "code": "synthetic-code"},
+                               follow_redirects=False)
+    assert response.headers["location"] == f"/?setup=google&google_error={reason}"
+    assert "synthetic" not in response.text
+    assert google.storage.get_secret(TOKEN_KEY) == "saved-credentials"

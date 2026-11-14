@@ -106,7 +106,7 @@ def test_google_management_is_local_primary_only_and_bad_oauth_state_is_rejected
     local = TestClient(app)
     failed = local.get("/api/v1/google/callback?state=wrong&code=fake", follow_redirects=False)
     assert failed.status_code == 303
-    assert failed.headers["location"] == "/?setup=google&google_error=1"
+    assert failed.headers["location"] == "/?setup=google&google_error=expired"
     assert local.get("/api/v1/google/status").json()["authorized"] is False
 
 

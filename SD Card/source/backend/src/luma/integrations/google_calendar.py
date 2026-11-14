@@ -30,6 +30,12 @@ TOKEN_KEY = "google_credentials"
 OAUTH_STATE_KEY = "google_oauth_state"
 
 
+class GoogleSignInError(ValueError):
+    def __init__(self, reason: str, message: str):
+        super().__init__(message)
+        self.reason = reason
+
+
 def calendar_failure_status(error: Exception) -> dict[str, Any]:
     """Classify structured SDK errors without exposing tokens/provider text."""
     rejected = isinstance(error, RefreshError) and any(
@@ -82,7 +88,7 @@ class GoogleCalendarClient:
             flow = Flow.from_client_config(config, scopes=scopes, state=state,
                                           code_verifier=verifier, autogenerate_code_verifier=False)
             flow.redirect_uri = self.redirect_uri
-            url, _ = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true")
+            url, _ = flow.authorization_url(access_type="offline", prompt="consent")
             # One atomic record survives a restart during the short setup window.
             # Do not depend on SDK defaults or retain the verifier only in a Flow.
             self.storage.set_secret(OAUTH_STATE_KEY, json.dumps({
@@ -113,7 +119,7 @@ class GoogleCalendarClient:
                 raise ValueError("Missing verifier")
             age = (datetime.now(UTC) - datetime.fromisoformat(pending["issued_at"])).total_seconds()
             if not 0 <= age < 15 * 60:
-                raise ValueError("Expired attempt")
+                raise GoogleSignInError("expired", "Google sign-in expired. Start sign-in again.")
             config = self._client_config()
             if pending["config_sha256"] != self._config_digest(config):
                 raise ValueError("Client configuration changed")
@@ -125,26 +131,30 @@ class GoogleCalendarClient:
                 raise ValueError("Wrong callback")
             query = parse_qs(response.query, keep_blank_values=True, max_num_fields=32)
             codes = query.get("code", [])
+            if query.get("state") == [state] and query.get("error") == ["access_denied"]:
+                raise GoogleSignInError("permission", "Google Calendar access was declined.")
             if query.get("state") != [state] or "error" in query or len(codes) != 1 or not 0 < len(codes[0]) <= 4096:
                 raise ValueError("Invalid callback parameters")
+        except GoogleSignInError:
+            raise
         except (ValueError, TypeError, KeyError):
-            raise ValueError("Google sign-in expired or did not match. Start sign-in again.") from None
+            raise GoogleSignInError("expired", "Google sign-in expired or did not match. Start sign-in again.") from None
         # Claim exactly this pending attempt once, even across separate clients.
         # Failed exchange requires a fresh consent attempt; existing tokens stay.
         if not self.storage.consume_secret(OAUTH_STATE_KEY, encoded):
-            raise ValueError("Google sign-in was already handled. Start sign-in again.")
+            raise GoogleSignInError("expired", "Google sign-in was already handled. Start sign-in again.")
         flow = Flow.from_client_config(config, scopes=scopes, state=state,
                                       code_verifier=verifier, autogenerate_code_verifier=False)
         flow.redirect_uri = self.redirect_uri
         flow.oauth2session.trust_env = False
         # Permitted HTTP loopback redirect; the token exchange remains HTTPS.
-        flow.fetch_token(code=codes[0], timeout=15)
+        token = flow.fetch_token(code=codes[0], timeout=15)
+        if not token.get("refresh_token"):
+            raise GoogleSignInError("offline", "Google did not grant offline access. Start sign-in again.")
         credentials = flow.credentials
-        if not credentials.refresh_token:
-            raise ValueError("Google did not grant offline access. Start sign-in again.")
         granted = credentials.granted_scopes if credentials.granted_scopes is not None else credentials.scopes
         if not set(scopes).issubset(set(granted or [])):
-            raise ValueError("Google did not grant the requested permissions. Existing connection retained.")
+            raise GoogleSignInError("permission", "Google did not grant the requested permissions. Existing connection retained.")
         saved = json.loads(credentials.to_json())
         saved['scopes'] = list(granted or [])
         self.storage.set_secret(TOKEN_KEY, json.dumps(saved))

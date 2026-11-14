@@ -31,7 +31,7 @@ try{
   for(const digit of ['1','2','3','4','5','6'])await click(digit);
   await click('Unlock settings');await until(`document.body.innerText.includes('Your people.')`);
   await value(`(()=>{const input=document.querySelector('input[placeholder="e.g. Alex"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Alex');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-  await click('Approve & begin guided setup');await until(`location.search==='?setup=personal'&&document.body.innerText.includes('Alex’s space.')`);
+  await click('Add user and start setup');await until(`location.search==='?setup=personal'&&document.body.innerText.includes('Alex’s space.')`);
   await screenshot('phone');
   assert.ok(!(await value('document.cookie')).includes('luma_personal_setup'),'Personal cookie must be HttpOnly');
   await fixture('expire-primary');

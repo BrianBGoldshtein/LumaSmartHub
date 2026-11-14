@@ -60,6 +60,26 @@ ORIGIN='https://luma.example-tail.ts.net'
 PHONE='AA:BB:CC:DD:EE:FF'
 core=create_app(data_dir=os.environ['REMOTE_QA_DATA'],frontend_dir=os.environ['REMOTE_QA_FRONTEND'])
 hotspot_active = False
+tailscale_state = "off"
+
+
+async def qa_tailscale(request):
+    global tailscale_state
+    action = request["action"]
+    if action == "connect":
+        tailscale_state = "NeedsLogin"
+    if action == "enable":
+        assert tailscale_state == "Running"
+        tailscale_state = "https"
+    if action == "disconnect":
+        tailscale_state = "off"
+    if tailscale_state == "https":
+        return {"state":"Running", "command_url":f"{ORIGIN}/command"}
+    return {"state":tailscale_state, "command_url":None,
+            **({"auth_url":"https://login.tailscale.com/a/synthetic123"} if tailscale_state == "NeedsLogin" else {})}
+
+
+luma_api.tailscale_request = qa_tailscale
 
 
 async def fake_network(request):
@@ -349,6 +369,10 @@ async def qa_only(request,call_next):
         return JSONResponse({'theme':value['theme']})
     if request.url.path=='/qa/actions':
         return JSONResponse({'actions':actions,'timer':service.timer.snapshot(private=False)})
+    if request.url.path=='/qa/tailscale-approved':
+        global tailscale_state
+        tailscale_state = 'Running'
+        return JSONResponse({'approved':True})
     if request.url.path=='/qa/fan/reset':
         result=await qa_fan_reset(request)
         return result if isinstance(result,JSONResponse) else JSONResponse(result)

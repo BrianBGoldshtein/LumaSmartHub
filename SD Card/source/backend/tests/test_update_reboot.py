@@ -56,3 +56,29 @@ def test_active_checkout_outside_managed_releases_never_reboots(committed,tmp_pa
     (outside/'.luma-release.json').write_text(json.dumps({'version':'0.3.2'}))
     committed['app_root'].unlink();committed['app_root'].symlink_to(outside,target_is_directory=True)
     assert not reboot_after_verified_upgrade(**committed,runner=lambda *args,**kwargs:pytest.fail('Unmanaged checkout'))
+
+
+@pytest.mark.parametrize('helper_fails', [False, True])
+def test_042_runs_fixed_bluez_migration_before_the_one_reboot(committed, helper_fails):
+    current = committed['app_root'].resolve()
+    (current / '.luma-release.json').write_text(json.dumps({'version': '0.4.2'}))
+    store = ProgressStore(committed['status_path'])
+    saved = store.read()
+    saved['target_version'] = '0.4.2'
+    store.write(saved)
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        if command[0] == '/usr/bin/systemd-run' and helper_fails:
+            raise subprocess.CalledProcessError(1, command)
+
+    assert reboot_after_verified_upgrade(**committed, runner=run)
+    assert len(commands) == 2
+    assert commands[0][0] == '/usr/bin/systemd-run'
+    assert '--property=ReadWritePaths=/etc/bluetooth' in commands[0]
+    assert commands[0][-5:] == [str(current / 'venv/bin/python'), '-I', '-B', '-m', 'luma.bluez_config']
+    assert commands[1] == ['/usr/bin/systemctl', '--no-block', 'reboot']
+    assert store.read() == saved
+    assert not reboot_after_verified_upgrade(**committed, runner=run)
+    assert len(commands) == 2

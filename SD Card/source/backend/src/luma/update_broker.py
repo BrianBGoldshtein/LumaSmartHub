@@ -263,9 +263,20 @@ def reboot_after_verified_upgrade(*,status_path:Path=STATUS_PATH,app_root:Path=A
         if releases_root.is_symlink() or not releases_root.is_dir() or not app_root.is_symlink():return False
         root=releases_root.resolve(strict=True);current=app_root.resolve(strict=True)
         if not current.is_relative_to(root):return False
-        manifest=json.loads((current/'.luma-release.json').read_text(encoding='utf-8'))
+        metadata = current / '.luma-release.json'
+        if metadata.is_symlink():return False
+        manifest=json.loads(metadata.read_text(encoding='utf-8'))
         if not isinstance(manifest,dict) or manifest.get('version')!=version:return False
         marker=root/f'.luma-reboot-requested-{version}'
+        if marker.exists() or marker.is_symlink():
+            return False
+        if tuple(map(int, version.split('.'))) >= (0, 4, 2):
+            try:
+                apply_bluez_reconnect(current, runner=runner)
+            except (OSError, subprocess.SubprocessError):
+                # The healthy app has already committed. Keep the backup and
+                # report the platform step separately from app installation.
+                log.exception('Could not configure BlueZ reconnect after update')
         descriptor=os.open(marker,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0),0o600)
         with os.fdopen(descriptor,'wb') as stream:
             stream.write(b'Verified update completed; one graceful reboot requested.\n')
@@ -281,6 +292,21 @@ def reboot_after_verified_upgrade(*,status_path:Path=STATUS_PATH,app_root:Path=A
     except (OSError,ValueError,TypeError,subprocess.SubprocessError):
         log.exception('Post-update reboot could not be requested; release remains installed')
         return False
+
+
+def apply_bluez_reconnect(release: Path, *, runner=subprocess.run) -> None:
+    """Apply one fixed, signed migration with only the BlueZ directory writable."""
+    # The deployed update service is read-only outside /opt. PID 1 starts
+    # this fixed helper with its own narrow filesystem scope. Use the exact
+    # committed release path so a later pointer change cannot alter the code.
+    runner([
+        '/usr/bin/systemd-run', '--quiet', '--wait', '--collect',
+        '--unit=luma-bluez-reconnect', '--service-type=exec',
+        '--property=ProtectSystem=strict', '--property=ProtectHome=yes',
+        '--property=ReadWritePaths=/etc/bluetooth', '--property=PrivateNetwork=yes',
+        '--property=NoNewPrivileges=yes', '--property=RuntimeMaxSec=15s',
+        str(release / 'venv/bin/python'), '-I', '-B', '-m', 'luma.bluez_config',
+    ], check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def refresh_connect_broker_after_027_upgrade(*, status_path: Path = STATUS_PATH,

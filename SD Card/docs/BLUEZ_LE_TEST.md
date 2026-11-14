@@ -1,6 +1,12 @@
-# Reversible BlueZ LE-preference test — 2026-10-08
+# Bluetooth Low Energy reconnect on Luma
 
-The interface became available and PreferredBearer became le on the old card, but reconnect still failed. A later controller capture isolated PIN or Key Missing during encryption. A one-time two-sided fresh pairing then recovered automatic return. A newly flashed 0.4.0 card can have this option unset again. Check the current configuration before using the reversible procedure below. Future fresh images install the option during image assembly. The signed application update leaves BlueZ's system configuration to the administrator.
+Starting with Luma 0.4.2, install the signed update from **Settings → Luma software**. After the application passes its health check, the update broker backs up the BlueZ config to `/etc/bluetooth/main.conf.luma-before-le` and enables the D-Bus option if it is unset. The usual post-update reboot loads the new setting. Existing pairings and explicit BlueZ settings are preserved. Check automatic return with your registered iPhone nearby by turning Bluetooth off and on in iPhone Settings and leaving Luma untapped for a minute. The update can enable the reconnect option even when the card was flashed before that option was added to image builds.
+
+For an administrator investigating the system step, `journalctl -u luma-bluez-reconnect.service -b -1` shows the result from the boot that installed the update when that boot's journal is available. To restore the backup, copy `/etc/bluetooth/main.conf.luma-before-le` over `main.conf` and restart `bluetooth.service` after checking for subsequent local edits. To explicitly disable the setting across future updates, set `Experimental=false` under `[General]`.
+
+## Earlier releases and manual diagnosis
+
+The interface became available and PreferredBearer became le on the old card, but reconnect still failed. A later controller capture isolated PIN or Key Missing during encryption. A one-time two-sided fresh pairing then recovered automatic return. A newly flashed 0.4.0 card can have this option unset again. Check the current configuration before using the reversible procedure below.
 
 Owner's Pi runs BlueZ 5.82 and Luma 0.2.9. The selected trusted iPhone has a dual-mode bond, LE/classic keys and an identity-resolution key, but PreferredBearer is absent. General.Experimental is unset and bluetooth.service starts `/usr/libexec/bluetooth/bluetoothd` without additional arguments. This establishes a missing interface dependency, not proof of the cause of automatic reconnect failure.
 
@@ -68,4 +74,4 @@ sudo systemctl restart bluetooth.service
 
 Backup is mode 0600 for containment. Plain cp into the existing regular config retains its permissions; do not replace this with cp --preserve=mode. The original pairing is never deleted. Do not delete the backup while diagnosis is ongoing. If PreferredBearer was set to le during the experiment, that bond preference can persist; restoring daemon config alone does not erase it. A full preference rollback, if needed, requires reading/restoring the previous bearer through D-Bus before disabling the experimental interface, not deleting the bond.
 
-References: [BlueZ 5.82 configuration](https://raw.githubusercontent.com/bluez/bluez/5.82/src/main.conf), [Device1 API](https://raw.githubusercontent.com/bluez/bluez/5.82/doc/org.bluez.Device.rst). The signed app updater excludes OS configuration; this is an explicit owner-run diagnostic change, not a silently expanded update scope.
+References: [BlueZ 5.82 configuration](https://raw.githubusercontent.com/bluez/bluez/5.82/src/main.conf), [Device1 API](https://raw.githubusercontent.com/bluez/bluez/5.82/doc/org.bluez.Device.rst).

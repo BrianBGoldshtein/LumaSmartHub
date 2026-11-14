@@ -52,7 +52,7 @@ SYSTEM = {
     "build-keyboard.sh": "/opt/luma/third-party/wvkbd/build-keyboard.sh",
     "wvkbd-overlay.patch": "/opt/luma/third-party/wvkbd/wvkbd-overlay.patch",
 }
-BUILD_ONLY_SYSTEM = {"install.sh", "luma-hardware.txt", "configure-bluez-le.py"}
+BUILD_ONLY_SYSTEM = {"install.sh", "luma-hardware.txt"}
 
 
 def sha_file(path):

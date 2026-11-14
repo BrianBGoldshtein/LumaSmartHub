@@ -5,7 +5,7 @@ import sys
 import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux image configuration")
-enable = run_path(str(Path(__file__).resolve().parents[1] / "source/system/configure-bluez-le.py"))["enable"]
+enable = run_path(str(Path(__file__).resolve().parents[1] / "source/backend/src/luma/bluez_config.py"))["enable"]
 
 
 @pytest.mark.parametrize("original,expected", [
@@ -30,3 +30,29 @@ def test_existing_opt_out_is_preserved(tmp_path):
     with pytest.raises(ValueError, match="explicit"):
         enable(conf)
     assert conf.read_bytes() == original
+
+
+def test_update_keeps_an_exact_backup_and_is_idempotent(tmp_path):
+    conf = tmp_path / "main.conf"
+    backup = tmp_path / "main.conf.luma-before-le"
+    original = b"[General]\n#Experimental = false\n#KernelExperimental = false\n"
+    conf.write_bytes(original)
+    assert enable(conf, backup=True)
+    assert backup.read_bytes() == original
+    assert backup.stat().st_mode & 0o777 == 0o600
+    assert not enable(conf, backup=True)
+    assert backup.read_bytes() == original
+
+
+def test_update_resumes_after_backup_and_rejects_conflicting_backup(tmp_path):
+    conf = tmp_path / "main.conf"
+    backup = tmp_path / "main.conf.luma-before-le"
+    original = b"[General]\n#Experimental = false\n"
+    conf.write_bytes(original)
+    backup.write_bytes(b"different configuration")
+    with pytest.raises(ValueError, match="backup differs"):
+        enable(conf, backup=True)
+    assert conf.read_bytes() == original
+    backup.write_bytes(original)
+    assert enable(conf, backup=True)
+    assert backup.read_bytes() == original

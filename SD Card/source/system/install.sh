@@ -32,7 +32,7 @@ apt-get install -y --no-install-recommends \
   udisks2 polkitd gvfs-backends util-linux exfatprogs ntfs-3g firmware-realtek dnsmasq-base
 apt-get install -y --no-install-recommends rpi-connect-lite qrencode
 if [[ ${LUMA_IMAGE_BUILD:-0} == 1 ]]; then
-  python3 "${SOURCE_ROOT}/system/configure-bluez-le.py"
+  python3 "${SOURCE_ROOT}/backend/src/luma/bluez_config.py" --image-build
 fi
 
 bash "${SOURCE_ROOT}/system/build-keyboard.sh" "${SOURCE_ROOT}/assets/keyboard/wvkbd_0.15.orig.tar.xz" \

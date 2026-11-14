@@ -20,6 +20,7 @@ from luma.models import CalendarEvent, WeatherSnapshot
 from luma.shortcut_gateway import create_gateway
 from luma import update_api
 from luma import thermal
+from luma import api as luma_api
 from luma.usb_fan import USBFanController,FanError
 from luma.gpio_fan import FanController,GPIOFanController
 
@@ -58,6 +59,24 @@ class NearbyDriver:
 ORIGIN='https://luma.example-tail.ts.net'
 PHONE='AA:BB:CC:DD:EE:FF'
 core=create_app(data_dir=os.environ['REMOTE_QA_DATA'],frontend_dir=os.environ['REMOTE_QA_FRONTEND'])
+hotspot_active = False
+
+
+async def fake_network(request):
+    global hotspot_active
+    if request["action"] == "hotspot-start":
+        assert request["password"] == "synthetic-network-key"
+        hotspot_active = True
+    if request["action"] == "hotspot-stop":
+        hotspot_active = False
+    if request["action"].startswith("hotspot-"):
+        return {"ssid":"Luma-Devices", "configured":hotspot_active, "active":hotspot_active,
+                "same_as_pin":False if hotspot_active else None, "upstream_connected":True,
+                "can_enable":True, "reason":"Ready to share"}
+    return {"state":"online", "checking_enabled":True}
+
+
+luma_api.network_request = fake_network
 core.state.pairing.driver_factory=NearbyDriver
 core.state.user_setup.pairing.driver_factory=NearbyDriver
 @core.get('/qa/pairing-audit')

@@ -78,6 +78,16 @@ try{
     assert.equal(await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;return [...d.querySelectorAll('summary')].some(e=>e.textContent===${JSON.stringify(panel)});})()`),true,'All advanced controls available');
   }
   assert.equal(await value(`document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.remote-settings-disclosure[open]').length`),0,'Closed advanced panels do not poll');
+  await value(`[...document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('summary')].find(e=>e.textContent==='Room-device hotspot').click()`);
+  await until(`document.querySelector('.all-settings iframe').contentDocument.querySelector('.hotspot-summary')?.innerText.includes('Ready to set up')`);
+  await value(`[...document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.wifi-hotspot button')].find(b=>b.textContent==='Set up hotspot').click()`);
+  assert.equal(await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;const p=d.querySelector('.wifi-hotspot');return p.querySelectorAll('.keyboard-toggle').length===0&&p.querySelector('input[autocomplete="new-password"]').type==='password'&&[...p.querySelectorAll('button')].find(b=>b.textContent==='Start hotspot').disabled;})()`),true,'Hotspot setup uses native phone input and requires confirmation');
+  const hotspotAction=async(action)=>value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;const p=d.querySelector('.wifi-hotspot');const set=(query,text)=>{const node=p.querySelector(query);Object.getOwnPropertyDescriptor(d.defaultView.HTMLInputElement.prototype,'value').set.call(node,text);node.dispatchEvent(new d.defaultView.Event('input',{bubbles:true}));};set('input[autocomplete="current-password"]','123456');if(${JSON.stringify(action)}==='Start hotspot'){set('input[autocomplete="new-password"]','synthetic-network-key');p.querySelector('input[type="checkbox"]').click();}[...p.querySelectorAll('button')].find(b=>b.textContent===${JSON.stringify(action)}).click();})()`);
+  await hotspotAction('Start hotspot');
+  await until(`document.querySelector('.all-settings iframe').contentDocument.querySelector('.hotspot-summary')?.innerText.includes('Hotspot on')`);
+  assert.ok(!(await value(`document.querySelector('.all-settings iframe').contentDocument.querySelector('.wifi-hotspot').innerText`)).includes('synthetic-network-key'));
+  await hotspotAction('Turn off and remove hotspot');
+  await until(`document.querySelector('.all-settings iframe').contentDocument.querySelector('.wifi-hotspot')?.innerText.includes('saved Wi-Fi key removed')`);
   // The wall receives a published snapshot before the phone's save response.
   // Hold only that synthetic response to exercise tab clicks during this gap.
   for(const [name,theme] of [['Glass','luma-glass'],['Hearth','hearth'],['Neon','neon-grid']]){

@@ -69,7 +69,8 @@ try{
   await outerClick('Unlock primary settings');await inside("d.querySelector('.settings-groups')!==null");
   for(const theme of ['luma-glass','hearth','neon-grid']){
     await value(`fetch('/qa/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:${JSON.stringify(theme)}})}).then(r=>r.json())`);
-    await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='users'");await inside("d.querySelector('.user-setup')!==null");
+    await until(`document.querySelector('.theme-${theme}')!==null`);
+    await inside(`d.querySelector('.settings-hub.theme-${theme}')!==null`);
     await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='device/${theme}/bluetooth'`);await inside("d.querySelector('.bluetooth-setup')!==null");
     for(const width of [320,390]){
       await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});

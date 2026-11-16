@@ -70,7 +70,8 @@ try{
   await outer('Unlock primary settings');await inside("d.querySelector('.device-setup')!==null");
   for(const theme of ['luma-glass','hearth','neon-grid']){
     await post('/qa/theme',{theme});
-    await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='users'");await inside("d.querySelector('.user-setup')!==null");
+    await until(`document.querySelector('.theme-${theme}')!==null`);
+    await inside(`d.querySelector('.settings-hub.theme-${theme}')!==null`);
     await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='device/${theme}/cooling'`);await inside("d.querySelector('.fan-control')!==null");
     for(const width of [320,390]){await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});await exercise(theme,width);}
   }

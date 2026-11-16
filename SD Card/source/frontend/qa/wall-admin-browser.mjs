@@ -34,15 +34,15 @@ try{
   await send('Emulation.setDeviceMetricsOverride',{width:1024,height:768,deviceScaleFactor:1,mobile:false});
   await click('Type on screen');await until(`document.querySelector('.touch-keyboard')!==null`);
   for(const digit of ['1','2','3','4','5','6'])await click(digit);
-  await click('Unlock settings');await until(`document.body.innerText.includes('Your space.')`);
+  await click('Unlock settings');await until(`document.querySelector('.settings-groups')!==null`);
   const keyStorage=await value(`({local:Object.keys(localStorage),session:Object.keys(sessionStorage),cookie:document.cookie})`);
   assert.ok(!keyStorage.cookie.includes('luma_primary_admin'),'Admin cookie must be HttpOnly');
   assert.ok(!JSON.stringify(keyStorage).includes('123456'),'No PIN in browser storage');
   await click('Confirm PIN');await until(`document.querySelector('[role="dialog"]')!==null`);
   await click('Cancel');await until(`document.querySelector('[role="dialog"]')===null`);
-  assert.ok((await value('document.body.innerText')).includes('Your space.'));
+  assert.ok(await value("document.querySelector('.settings-groups')!==null"));
   await value(`fetch('/qa/expire',{method:'POST'}).then(r=>r.json())`);
-  await until(`document.querySelector('.primary-admin-prompt')!==null&&!document.body.innerText.includes('Your space.')`);
+  await until(`document.querySelector('.primary-admin-prompt')!==null&&document.querySelector('.settings-groups')===null`);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({scope:'Disposable Chromium/storage/PIN; no Pi workers or accounts',themes:3,sizes:[1024,2048],touchKeypadUnlock:true,httponlyCookie:true,pinNotStored:true,confirmationPreservesPanel:true,expiryLocksPanel:true,errors},null,2));
 }finally{socket.close();await fetch(debug+'/json/close/'+target.id);}

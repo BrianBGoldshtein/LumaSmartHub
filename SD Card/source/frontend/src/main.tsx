@@ -17,7 +17,8 @@ import "@fontsource/pixelify-sans/latin-700.css";
 import { Sun, CloudSun, Cloud, CloudFog, CloudRain, CloudSnow, CloudLightning, Droplets, CalendarDays, ListChecks, LockKeyhole, Volume2, SlidersHorizontal } from "lucide-react";
 import { AmbientVisual, LumaGlow } from "./Interludes";
 import { GoogleSetup } from "./GoogleSetup";
-import { DeviceSetup } from "./DeviceSetup";
+import {SettingsHub} from './SettingsHub';
+import {wallSettingsSection} from './settingsRoutes';
 import { Onboarding } from "./Onboarding";
 import { NetworkNotice } from "./NetworkNotice";
 import {VoiceNotice} from './VoiceNotice';
@@ -41,7 +42,7 @@ import {agendaDemo} from './agendaState';
 import {visibleDates,disconnectedDates,sampleDates,dateCycle} from './countdownState';
 import {precipitationLabel} from './weatherState';
 import {STANDBY_CYCLE,standbyPage} from './standbyCycle';
-import {setupLink} from "./setupTheme";
+import {setupLink,setupTheme} from "./setupTheme";
 import { fetchSnapshot, sendCommand, watchSnapshots } from "./api";
 import { demoSnapshot } from "./demo";
 import type { CalendarEvent, Page, Snapshot, Theme, Weather } from "./types";
@@ -304,7 +305,7 @@ function ControlIsland({ snapshot, onUpdate, open, setOpen, onTimer }: { snapsho
         <button className="privacy-button" onClick={()=>act('good_morning')}>Good morning</button>
         <button className="privacy-button" onClick={()=>act('screen_off')}>Screen off</button>
         <a className="calendar-setup-link" href={setupLink(demoMode,snapshot.settings.theme,"google")}><CalendarDays/> Google Calendar</a>
-        <a className="calendar-setup-link" href={setupLink(demoMode,snapshot.settings.theme,"device")}><SlidersHorizontal/> Device setup</a>
+        <a className="calendar-setup-link" href={setupLink(demoMode,snapshot.settings.theme,"device")}><SlidersHorizontal/> Settings</a>
       </div>}
     </div>
   );
@@ -385,7 +386,7 @@ function App() {
   if(snapshot?.display?.mode==='off')return <button className="sleep-screen" onClick={()=>void wake()} aria-label="Wake Luma"/>;
   if(snapshot?.display?.mode==='night-clock' || snapshot?.display?.mode==='waking')return <div className={`app theme-${snapshot.settings.theme} night-screen`}><NightDisplay snapshot={snapshot} onWake={()=>void wake()}/><VoiceNotice notice={snapshot.voice_notice}/><VoiceAccountChoice choice={snapshot.voice_account_choice}/>{snapshot.state.assistant_phase!=='idle'&&<AssistantOrb phase={snapshot.state.assistant_phase} onClick={()=>void wake()}/>}</div>;
   if (demoParameters.get("setup") === "google") return withVoiceNotice(primarySetup(<GoogleSetup demo={demoMode}/>));
-  if (demoParameters.get("setup") === "device") return withVoiceNotice(primarySetup(<DeviceSetup demo={demoMode}/>));
+  if (demoParameters.get("setup") === "device") return withVoiceNotice(primarySetup(<SettingsHub demo={demoMode} theme={snapshot?.settings.theme??setupTheme(demoParameters.get('theme'))} section={wallSettingsSection(demoParameters,location.hash)}/>));
   if (demoParameters.get("setup") === "users") return withVoiceNotice(primarySetup(<UsersSetup demo={demoMode}/>));
   if (demoParameters.get("setup") === "personal") return withVoiceNotice(<PersonalSetup demo={demoMode}/>);
   if (demoParameters.get("setup") === "onboarding") return withVoiceNotice(primarySetup(<Onboarding demo={demoMode}/>));

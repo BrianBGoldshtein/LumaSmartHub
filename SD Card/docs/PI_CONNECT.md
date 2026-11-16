@@ -36,7 +36,7 @@ After the corrected image is installed, first connect the Pi to Wi-Fi with
 working Internet. Stanford eduroam or a Visitor session with its terms
 accepted can provide that connection. Then:
 
-1. Open **Device setup → Connections → Raspberry Pi Connect**.
+1. Open **Settings → System & updates → Raspberry Pi Connect**.
 2. Tap **Start Pi Connect sign-in**. Luma starts the official client and shows
    a locally generated, short-lived QR code and verification link.
 3. Scan the QR code with your iPhone, sign in to your Raspberry Pi account,

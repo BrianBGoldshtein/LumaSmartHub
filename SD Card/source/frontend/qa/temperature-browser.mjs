@@ -25,7 +25,7 @@ try{
   }
   const layouts=[];
   for(const theme of ['luma-glass','hearth','neon-grid']){
-    await send('Page.navigate',{url:base+'/?setup=device&demo=1&theme='+theme});
+    await send('Page.navigate',{url:base+'/?setup=device&section=cooling&demo=1&theme='+theme});
     await until(`document.querySelector('.temperature-readout')?.textContent.includes('56.5°C')`);
     assert.ok(await value(`document.querySelector('.temperature-readout').textContent.includes('Example')`));
     assert.ok(await value(`document.documentElement.scrollWidth<=innerWidth`),'Wall overflow');

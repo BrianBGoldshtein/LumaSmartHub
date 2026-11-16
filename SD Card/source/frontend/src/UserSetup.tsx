@@ -28,7 +28,7 @@ async function api<T>(path:string,method='GET',body?:unknown):Promise<T>{
   }finally{clearTimeout(timer);}
 }
 
-export function UsersSetup({demo}:{demo:boolean}){
+export function UsersSetup({demo,embedded=false}:{demo:boolean;embedded?:boolean}){
   const [theme,setTheme]=useState(()=>setupTheme(new URLSearchParams(location.search).get('theme')));
   const [users,setUsers]=useState<User[]>([]),[name,setName]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[rename,setRename]=useState<string|null>(null);
   const [ready,setReady]=useState(false);
@@ -52,8 +52,9 @@ export function UsersSetup({demo}:{demo:boolean}){
     }catch(error){setMessage(error instanceof Error?error.message:'Please try again.');}
     finally{setBusy(false);}
   }
-  return <TouchInputProvider><div className={`app theme-${theme} setup-page`}><a className="setup-back" href={setupLink(demo,theme,'device')}><ArrowLeft/> Settings</a>
-    <main className="setup-content device-setup user-setup"><Users size={40}/><h1>Users</h1>
+  const Panel=embedded?'div':'main';
+  return <TouchInputProvider><div className={embedded?'setup-embedded':`app theme-${theme} setup-page`}>{!embedded&&<a className="setup-back" href={setupLink(demo,theme,'device','people')}><ArrowLeft/> People & privacy</a>}
+    <Panel className={embedded?'device-setup user-setup':'setup-content device-setup user-setup'}>{!embedded&&<><Users size={40}/><h1>Users</h1></>}
       <form ref={editor} className="user-editor" onSubmit={event=>{event.preventDefault();void action(rename?{action:'rename',profile_id:rename,nickname:name}:{action:'create',nickname:name},!rename);}}>
         <section><h2>{rename?'Rename user':'Add a secondary user'}</h2><TouchField label="Nickname" required maxLength={24} value={name} onChange={setName} disabled={!ready||busy||(!rename&&users.length>=5)} placeholder="e.g. Alex"/>
           <p className="setup-note">{users.length>=5&&!rename?'All four secondary slots are in use.':rename?'This name appears when their phone connects.':'They’ll pair their iPhone, then can connect Google and choose what to show on Luma.'}</p>
@@ -67,7 +68,7 @@ export function UsersSetup({demo}:{demo:boolean}){
           {user.phone_registered&&<button disabled={busy} onClick={()=>{if(confirm(`Clear ${user.nickname}’s phone registration? Their Google choices stay saved; old browser and personal-setup access are revoked. The Bluetooth bond itself is not erased.`))void action({action:'clear_phone',profile_id:user.profile_id},true);}}>Change phone…</button>}
           {user.role!=='primary'&&<button className="user-danger" disabled={busy} onClick={()=>{if(confirm(`Remove ${user.nickname}? This deletes their Luma Google credentials, saved events, timer and browser grants. It does not delete Google calendar events or the Bluetooth bond.`))void action({action:'remove',profile_id:user.profile_id});}}>Remove user…</button>}
         </div></article>)}</div></section>
-    </main></div></TouchInputProvider>;
+    </Panel></div></TouchInputProvider>;
 }
 
 export function PersonalSetup({demo}:{demo:boolean}){

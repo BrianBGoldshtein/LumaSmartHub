@@ -71,18 +71,14 @@ try{
   for(const theme of ['luma-glass','hearth','neon-grid']){
     await post('/qa/theme',{theme});
     await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='users'");await inside("d.querySelector('.user-setup')!==null");
-    await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='device'");await inside("d.querySelector('.device-setup')!==null");
-    await inside("[...d.querySelectorAll('summary')].some(n=>n.textContent.trim()==='Fan cooling')");
-    await value(scoped(`[...d.querySelectorAll('summary')].find(n=>n.textContent.trim()==='Fan cooling').click();`));
+    await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='device/${theme}/cooling'`);await inside("d.querySelector('.fan-control')!==null");
     for(const width of [320,390]){await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});await exercise(theme,width);}
   }
   mode='wall';await send('Emulation.setDeviceMetricsOverride',{width:1024,height:768,deviceScaleFactor:1,mobile:false});
-  await send('Page.navigate',{url:wall+'/?setup=device'});await until("document.querySelector('.app')!==null");
+  await send('Page.navigate',{url:wall+'/?setup=device&section=cooling'});await until("document.querySelector('.app')!==null");
   assert.equal(await value("fetch('/api/v1/admin/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:'123456'})}).then(r=>r.status)"),200);
   for(const theme of ['luma-glass','hearth','neon-grid']){
-    await post('/qa/theme',{theme});await send('Page.navigate',{url:wall+'/?setup=device'});
-    // The wall renders the controls directly; only the compact phone view
-    // wraps each section in an outer accordion.
+    await post('/qa/theme',{theme});await send('Page.navigate',{url:wall+'/?setup=device&section=cooling'});
     await inside("d.querySelector('.fan-control')!==null");
     await exercise(theme,1024);
   }

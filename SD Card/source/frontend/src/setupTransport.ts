@@ -1,5 +1,6 @@
 // Explicit setup-only transport. The wall keeps native fetch; the companion
 // settings entry delegates bounded JSON operations to its authenticated parent.
+import {settingsDestination} from './settingsRoutes.ts';
 export type SetupOperation={method:string;path:string;body:Record<string,unknown>;confirmed:boolean};
 export type SetupResult={status:number;body:unknown};
 let transport:((operation:SetupOperation)=>Promise<SetupResult>)|null=null;
@@ -30,5 +31,8 @@ export function setupNavigate(url:string){
   }
   if(target.origin!==location.origin)throw Error('Setup navigation is invalid.');
   const step=target.searchParams.get('setup');
-  location.hash=step&&['device','onboarding','google','extras','users','personal'].includes(step)?step:'close';
+  const selected=step&&['device','onboarding','google','extras','users','personal'].includes(step)?step:'close';
+  const theme=location.hash.slice(1).split('/')[1]||'luma-glass';
+  const section=target.searchParams.get('section');
+  location.hash=selected+'/'+theme+(selected==='device'&&settingsDestination(section)?'/'+section:'');
 }

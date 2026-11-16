@@ -46,9 +46,11 @@ try{
   await click('Enroll this browser');await until(`document.body.innerText.includes('Approval code:')`);
   await value(`fetch('/qa/approve').then(r=>r.json())`);await until(`document.querySelector('.hero')!==null`);
   await wallValue(`location.assign('/?setup=device')`);
-  await wallUntil(`document.querySelector('.primary-admin-bar')?.innerText.includes('Primary iPhone verified')&&document.querySelector('#iphone-remote')!==null`);
+  await wallUntil(`document.querySelector('.primary-admin-bar')?.innerText.includes('Primary iPhone verified')&&document.querySelector('.settings-groups')!==null`);
   const onWallButton=label=>wallValue(`Array.from(document.querySelectorAll('button')).find(button=>button.textContent.trim()===${JSON.stringify(label)}&&!button.disabled)?.click()`);
-  await onWallButton('Set up iPhone remote');
+  await wallValue("[...document.querySelectorAll('.settings-group')].find(a=>a.href.endsWith('section=networking')).click()");
+  await wallUntil("location.search.includes('section=networking')&&!!document.querySelector('.settings-options')");
+  await wallValue("[...document.querySelectorAll('.settings-options a')].find(a=>a.href.endsWith('section=iphone-remote')).click()");
   await wallUntil(`Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Sign in to Tailscale'&&!button.disabled)`);
   await onWallButton('Sign in to Tailscale');
   await wallUntil(`document.querySelector('.private-enrollment a')?.textContent==='Open Tailscale sign-in'`);
@@ -57,6 +59,7 @@ try{
   await wallUntil(`document.querySelector('.private-connection')?.innerText.includes('Enable private HTTPS')`);
   await onWallButton('Enable private HTTPS');
   await wallUntil(`document.querySelector('.companion-setup')?.innerText.includes('Create enrollment QR')`);
+  await wallValue(`location.assign('/?setup=device&section=hotspot')`);
   await wallUntil(`document.querySelector('.hotspot-summary')?.innerText.includes('Ready to set up')`);
   await onWallButton('Set up hotspot');
   await wallUntil(`document.activeElement?.id==='hotspot-editor'&&document.activeElement.getBoundingClientRect().top<innerHeight`);
@@ -81,21 +84,19 @@ try{
   await click('Settings');await until(`document.body.innerText.includes('Primary settings')`);
   await value(`(()=>{const field=document.querySelector('input[type="password"]');const native=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;native.call(field,'123456');field.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await click('Unlock primary settings');await until(`document.querySelector('.themes')!==null`);
-  await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Your space.')`);
+  await until(`document.querySelector('.all-settings iframe')?.contentDocument?.querySelector('.settings-groups')!==null`);
   await value(`document.querySelector('.quick-settings').open=true`);
   assert.equal(await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;return d.querySelector('.keyboard-toggle')===null&&d.documentElement.scrollWidth<=d.defaultView.innerWidth;})()`),true,'Shared settings fit phone and use native keyboard');
-  await value(`[...document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('button')].find(b=>b.textContent.trim()==='Add or manage users').click()`);
+  await value(`[...document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.settings-group')].find(a=>a.href.endsWith('/people')).click()`);
+  await until(`!!document.querySelector('.all-settings iframe')?.contentDocument?.querySelector('.settings-options')`);
+  await value(`[...document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.settings-options a')].find(a=>a.href.endsWith('/user-accounts')).click()`);
   await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Add a secondary user')`);
   await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;const field=d.querySelector('input');const native=Object.getOwnPropertyDescriptor(d.defaultView.HTMLInputElement.prototype,'value').set;native.call(field,'Casey');field.dispatchEvent(new d.defaultView.Event('input',{bubbles:true}));})()`);
   await value(`document.querySelector('.all-settings iframe').contentDocument.querySelector('form').requestSubmit()`);
   await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Casey')&&document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Pair your iPhone')`);
-  await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='device'`);
-  await until(`document.querySelector('.all-settings iframe')?.contentDocument?.body.innerText.includes('Your space.')`);
-  for(const panel of ['Fan cooling','Connect Luma to Wi-Fi','Room-device hotspot','Raspberry Pi Connect','Signed software updates','Private Tailscale connection','iPhone remotes','Bluetooth pairing & forgetting','Notification sounds','Hey Luma & voice calibration']){
-    assert.equal(await value(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;return [...d.querySelectorAll('summary')].some(e=>e.textContent===${JSON.stringify(panel)});})()`),true,'All advanced controls available');
-  }
-  assert.equal(await value(`document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.remote-settings-disclosure[open]').length`),0,'Closed advanced panels do not poll');
-  await value(`[...document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('summary')].find(e=>e.textContent==='Room-device hotspot').click()`);
+  await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='device/neon-grid/networking'`);
+  await until(`document.querySelector('.all-settings iframe').contentDocument.querySelector('.settings-options')!==null`);
+  await value(`[...document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.settings-options a')].find(a=>a.href.endsWith('/hotspot')).click()`);
   await until(`document.querySelector('.all-settings iframe').contentDocument.querySelector('.hotspot-summary')?.innerText.includes('Ready to set up')`);
   await value(`[...document.querySelector('.all-settings iframe').contentDocument.querySelectorAll('.wifi-hotspot button')].find(b=>b.textContent==='Set up hotspot').click()`);
   await until(`(()=>{const d=document.querySelector('.all-settings iframe').contentDocument;return d.activeElement?.id==='hotspot-editor'&&d.activeElement.getBoundingClientRect().top<d.defaultView.innerHeight;})()`);

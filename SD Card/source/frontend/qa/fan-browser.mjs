@@ -58,13 +58,11 @@ try{
   await value("fetch('/qa/approve').then(r=>r.json())");await until("document.querySelector('.hero')!==null");
   await outerClick('Settings');await until("document.querySelector('input[type=password]')!==null");
   await value("(()=>{const f=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(f,'123456');f.dispatchEvent(new Event('input',{bubbles:true}));})()");
-  await outerClick('Unlock primary settings');await inside("d.querySelector('.device-setup')!==null");
+  await outerClick('Unlock primary settings');await inside("d.querySelector('.settings-groups')!==null");
   for(const theme of ['luma-glass','hearth','neon-grid']){
     await value(`fetch('/qa/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:${JSON.stringify(theme)}})}).then(r=>r.json())`);
     await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='users'");await inside("d.querySelector('.user-setup')!==null");
-    await value("document.querySelector('.all-settings iframe').contentWindow.location.hash='device'");await inside("d.querySelector('.device-setup')!==null");
-    await inside("[...d.querySelectorAll('summary')].some(s=>s.textContent.trim()==='Fan cooling')");
-    await value(scoped("[...d.querySelectorAll('summary')].find(s=>s.textContent.trim()==='Fan cooling').click();"));
+    await value(`document.querySelector('.all-settings iframe').contentWindow.location.hash='device/${theme}/cooling'`);await inside("d.querySelector('.fan-control')!==null");
     for(const width of [320,390]){await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});await exercise(theme,width);}
   }
   // A persistently failing simulated switch must not silently requalify.
@@ -75,11 +73,11 @@ try{
   const failed=await audit();assert.equal(failed.status.qualified,false);assert.equal(failed.status.usb_power,'on');
   await click('Keep USB on · mouse & drives');
   mode='wall';await send('Emulation.setDeviceMetricsOverride',{width:1024,height:768,deviceScaleFactor:1,mobile:false});
-  await send('Page.navigate',{url:wall+'/?setup=device'});await until("document.querySelector('.app')!==null");
+  await send('Page.navigate',{url:wall+'/?setup=device&section=cooling'});await until("document.querySelector('.app')!==null");
   assert.equal(await value("fetch('/api/v1/admin/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:'123456'})}).then(r=>r.status)"),200);
   for(const theme of ['luma-glass','hearth','neon-grid']){
     await value(`fetch('/qa/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:${JSON.stringify(theme)}})}).then(r=>r.json())`);
-    await send('Page.navigate',{url:wall+'/?setup=device'});await inside("d.querySelector('.device-setup')!==null");
+    await send('Page.navigate',{url:wall+'/?setup=device&section=cooling'});await inside("d.querySelector('.fan-control')!==null");
     await exercise(theme,1024);
   }
   assert.deepEqual(errors,[]);

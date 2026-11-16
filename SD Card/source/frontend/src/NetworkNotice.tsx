@@ -26,7 +26,7 @@ export function NetworkNotice({demo,theme}:{demo:boolean;theme:Theme}){
   },[demo]);
   const label=networkNotice(status);
   if(!label)return null;
-  return <a className="network-notice" href={`${setupLink(demo,theme,"device")}#network`} aria-label={`${label}. Open Wi-Fi settings.`}>
+  return <a className="network-notice" href={setupLink(demo,theme,"device","wifi")} aria-label={`${label}. Open Wi-Fi settings.`}>
     {status?.state==="offline"?<WifiOff/>:<Wifi/>}<span>{label}</span>
   </a>;
 }

@@ -4,7 +4,7 @@ Implemented in source and included in the r9 development-image candidate. This i
 
 ## Setup
 
-Open **Device setup → Extras → Leave soon** (also inside guided setup). Connect Google in Calendar setup first, or return to this extra after signing in. Choose calendars explicitly and enable reminders. Defaults are five minutes preparation and ten minutes travel; each accepts 0–240 whole minutes. The reminders use your estimates, not GPS, live directions or traffic. There is no extra Google permission or calendar write.
+Open **Settings → Calendar & routines → Leave soon** (also inside guided setup). Connect Google in Calendar setup first, or return to this extra after signing in. Choose calendars explicitly and enable reminders. Defaults are five minutes preparation and ten minutes travel; each accepts 0–240 whole minutes. The reminders use your estimates, not GPS, live directions or traffic. There is no extra Google permission or calendar write.
 
 Calendar loading failure preserves saved selections. You can disable reminders without reconnecting Google. Settings save and provider sync have separate outcomes: a failed sync does not undo a successful preference save. The onboarding review reports enabled status and calendar count, not a live-connection or hardware-test pass. Unsaved edits and in-progress operations use the existing setup navigation guards, including touch-keyboard edits.
 

@@ -82,9 +82,10 @@ export function GoogleSetup({demo,embedded=false,onSaved}:{demo:boolean;embedded
       <button onClick={()=>isRemoteSetup()?location.reload():location.replace(dashboardRefreshUrl(new URL(setupLink(demo,theme,"google"),location.href).href))}>Reload Google setup</button>
     </>}
     <a href={setupLink(demo,theme,"onboarding")}>Return to guided setup</a>
+    {!embedded&&<p><a href={setupLink(demo,theme,"device","calendar")}>Calendar &amp; routines settings</a></p>}
   </Panel></div>;
   return <TouchInputProvider><div className={embedded?"setup-embedded":`app theme-${theme} setup-page`}>{!embedded && <a className="setup-back" href={setupLink(demo,theme,"onboarding")}><ArrowLeft/> Continue guided setup</a>}<Panel className={embedded?"device-setup":"setup-content device-setup"}>
-    {!embedded && <><CalendarDays size={40}/><h1>Google Calendar</h1><p>Your calendars. Your colors.</p></>}
+    {!embedded && <><CalendarDays size={40}/><h1>Google Calendar</h1><a href={setupLink(demo,theme,"device","calendar")}>Calendar &amp; routines settings</a></>}
     {demo && <p className="setup-note">Preview calendars — no Google account connected.</p>}
     {callbackMessage && <p role="alert" className="setup-message">{callbackMessage}</p>}
     {!isRemoteSetup()&&<SystemKeyboardControl demo={demo}/>}

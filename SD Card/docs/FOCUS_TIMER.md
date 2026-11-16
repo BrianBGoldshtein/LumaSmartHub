@@ -4,7 +4,7 @@ September 29, 2026. Available in source, preview and the r9 development image ca
 
 ## Use
 
-Open dashboard controls → **Focus timer**. Focus defaults to 25 minutes and Break to five. Customize their defaults in guided setup → **Choose your extras → Daily rhythm**, or Device setup → **New: daily rhythm & extras**. Each accepts whole minutes from 1 to 240 and does not change a timer already running.
+Open dashboard controls → **Focus timer**. Focus defaults to 25 minutes and Break to five. Customize their defaults in guided setup → **Choose your extras → Daily rhythm**, or **Settings → Calendar & routines → Focus & break**. Each accepts whole minutes from 1 to 240 and does not change a timer already running.
 
 The timer panel provides pause/resume/cancel and an optional custom duration/label. Starting another active timer requires explicit replacement confirmation tied to that exact timer ID. If another command changed the timer while the confirmation was open, it will not overwrite the new run. Custom labels are redacted from private snapshots and the private display.
 

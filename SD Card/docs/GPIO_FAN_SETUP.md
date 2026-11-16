@@ -30,7 +30,7 @@ Pi USB ── Wi-Fi adapter                  (stays powered)
 
 ## Guided settings on the hub or primary remote
 
-In **All hub settings → Device → Fan cooling → Move fan to a GPIO switch**, follow the wiring reminders, choose **BCM12 · inline USB switch**, acknowledge the wiring and choose **Use this fan connection**. No pin number, polarity, path or shell command can be entered. The protected broker only supports fixed BCM12 on a verified Pi 4 GPIO controller and refuses a busy line. Changing connection clears the old physical test and starts in **Keep fan on** mode.
+In **Settings → System & updates → Temperature & cooling → Move fan to a GPIO switch**, follow the wiring reminders, choose **BCM12 · inline USB switch**, acknowledge the wiring and choose **Use this fan connection**. No pin number, polarity, path or shell command can be entered. The protected broker only supports fixed BCM12 on a verified Pi 4 GPIO controller and refuses a busy line. Changing connection clears the old physical test and starts in **Keep fan on** mode.
 
 Open **Verify physical fan switching**, acknowledge, and run the five-second fan-only interruption. The independent broker restores the fan even if the browser closes. Actually observe the fan stop and restart, then acknowledge that observation and confirm. Only then enable **Automatic cooling**. Confirm the Wi-Fi link, mouse and any drive remain powered through both the test and later thermal cycling. Reported GPIO/USB bits are not an RPM/voltage sensor.
 

@@ -20,7 +20,7 @@ Shortcut protocol (after private connection setup):
 
 1. Create a named Shortcut with an explicit supported command. Free-form dictated text is not accepted by this endpoint.
 2. Get Contents of the exact private HTTPS address Luma displays after setup (it ends in `/command`) using POST and JSON `{ "name": "…", "value": … }`. Do not substitute the main API or a shared-campus HTTP address. Omit `value` for commands that take no argument. Do not send `source`.
-3. In the action's separate **Headers** dictionary, add key `X-Luma-Token` and set its text value to the token displayed in Device setup → Connections → Show Shortcut token. For the brightness-slider test, the JSON body's **Key** is `name` and its **Text** value is `show_brightness`; the token belongs only in the header.
+3. In the action's separate **Headers** dictionary, add key `X-Luma-Token` and set its text value to the token displayed in Settings → Network & remote → Siri Shortcuts → Show Shortcut token. For the brightness-slider test, the JSON body's **Key** is `name` and its **Text** value is `show_brightness`; the token belongs only in the header.
 4. For brightness/volume without a number, send `show_brightness` or `show_volume`; Luma opens the large touch slider.
 
 Recommended phrases include “Change hub brightness,” “Change hub volume,” “Good night,” “Good morning,” “Show my agenda,” and “Change Luma theme to Hearth.”
@@ -46,7 +46,7 @@ A selected, bonded/trusted BlueZ connection plus successful subscription to the 
 ### Touch pairing
 
 1. Open **Settings → Bluetooth** on your iPhone and keep that screen open nearby.
-2. On Luma, open **Device setup → Your iPhone → Find my iPhone**. This explicitly turns on the Pi Bluetooth radio and starts a discovery window of up to 45 seconds. Select your phone by name; names/addresses alone are not identity proof.
+2. On Luma, open **Settings → People & privacy → Bluetooth phones → Find my iPhone**. This explicitly turns on the Pi Bluetooth radio and starts a discovery window of up to 45 seconds. Select your phone by name; names/addresses alone are not identity proof.
 3. Compare the six-digit code on both screens. Select **Codes match — pair** only if they match, and confirm the iPhone's own prompt. Use **Doesn't match — reject** or **Cancel pairing** otherwise. Confirmation expires after 45 seconds; the whole setup session is bounded to three minutes.
 4. On iPhone, enable **Share System Notifications** for Luma if offered. The selected phone address is saved automatically only after successful bonding and trust. Private content remains hidden until an authorized ANCS connection is established.
 
@@ -58,7 +58,7 @@ This touch flow is implemented and tested with simulated BlueZ devices, includin
 
 Use `bluetoothctl` only if touch pairing cannot complete. Run `devices` to identify the exact phone. For an unfinished bond, verify that address and explicitly `remove AA:BB:CC:DD:EE:FF` for **that phone only**; also choose **Forget This Device** for Luma on the iPhone, then restart touch pairing. Removing a bond requires pairing again and cannot be undone without doing so. Do not remove unrelated devices.
 
-For manual pairing, enable an agent, scan, pair the iPhone address, compare/confirm the code on both devices, trust only that phone, and stop scanning. Enter its address under **Device setup → Connections → Advanced phone selection**. That advanced field selects an existing bond; it never pairs or trusts one. Clear it to disable phone-based presence. Pairing consent is always an on-device action.
+For manual pairing, enable an agent, scan, pair the iPhone address, compare/confirm the code on both devices, trust only that phone, and stop scanning. Enter its address under **Settings → People & privacy → Bluetooth phones → Advanced phone selection**. That advanced field selects an existing bond; it never pairs or trusts one. Clear it to disable phone-based presence. Pairing consent is always an on-device action.
 
 The monitor reconnects only the selected already-bonded phone. On a disconnected link it periodically opens a three-second LE discovery window and attempts BlueZ `Device1.Connect`; the direct attempt repeats after a ten-second retry delay, and discovery is limited to once per 45 seconds. This is Luma-initiated, with no manual phone request required after pairing. Discovery is a reachability hint, never a privacy key: only the bonded/trusted connection plus authorized ANCS subscription unlocks private information. iOS may not advertise or publish ANCS at every instant, so reconnect time is best-effort and requires physical iPhone qualification. The Bluetooth setup page shows the latest direct attempt. [BlueZ's adapter API](https://bluez.readthedocs.io/en/latest/adapter-api/) specifies per-caller discovery sessions; [Apple's ANCS specification](https://developer.apple.com/library/archive/documentation/CoreBluetooth/Reference/AppleNotificationCenterServiceSpecification/Specification/Specification.html) says ANCS may be unpublished at times and requires authorization.
 

@@ -61,9 +61,13 @@ Use the primary phone's **Keep USB on** control before connecting USB storage or
 needing an unpowered mouse while a phone is connected. It retains shared
 primary-phone settings and guided setup, including
 secondary-user enrollment, optional temperature-controlled USB fan power and
-twenty-second idle wall cursor hiding. The primary remote's **All hub settings**
-uses the wall's setup screens; sensitive changes require a fresh primary PIN
-and explicit review. Secondary remotes remain personal-only.
+twenty-second idle wall cursor hiding.
+
+**Settings** uses the same categories on the wall and primary iPhone remote.
+Find Wi-Fi and the hotspot under **Network & remote**, pairing under **People &
+privacy**, and the fan, backups and software updates under **System & updates**.
+**Guided setup** remains available from the Settings home. Sensitive changes
+require a fresh primary PIN and explicit review. Secondary remotes remain personal-only.
 It retains the soft local notification bell and live built-in Pi
 CPU temperature in wall Settings and authorized iPhone Hub previews,
 cohesive layouts, wall update progress and a

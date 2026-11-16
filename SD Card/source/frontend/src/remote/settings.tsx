@@ -8,7 +8,8 @@ import '@fontsource/space-grotesk/latin-700.css';
 import '../styles.css';
 import './settings.css';
 import {configureSetupTransport,type SetupResult} from '../setupTransport';
-import {DeviceSetup} from '../DeviceSetup';
+import {SettingsHub} from '../SettingsHub';
+import {setupTheme} from '../setupTheme';
 import {GoogleSetup} from '../GoogleSetup';
 import {Onboarding} from '../Onboarding';
 import {ExtrasSetup} from '../ExtrasSetup';
@@ -32,9 +33,13 @@ window.addEventListener('pagehide',()=>{for(const item of pending.values()){clea
 function SettingsApp(){
   const [route,setRoute]=useState(()=>location.hash.slice(1));
   useEffect(()=>{const update=()=>setRoute(location.hash.slice(1));window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);
-  const step=route.split('/')[0];
+  const [step,theme,section]=route.split('/');
+  useEffect(()=>{
+    window.scrollTo(0,0);
+    document.querySelector<HTMLElement>('#settings-page-title')?.focus({preventScroll:true});
+  },[route]);
   useEffect(()=>{if(step==='close')parent.postMessage({kind:'luma-settings-close'},location.origin);},[step]);
-  const screen=step==='google'?<GoogleSetup demo={false}/>:step==='onboarding'?<Onboarding demo={false}/>:step==='extras'?<ExtrasSetup demo={false}/>:step==='users'?<UsersSetup demo={false}/>:step==='personal'?<PersonalSetup demo={false}/>:<DeviceSetup demo={false}/>;
-  return <div className="remote-shared-settings" key={step}>{screen}</div>;
+  const screen=step==='google'?<GoogleSetup demo={false}/>:step==='onboarding'?<Onboarding demo={false}/>:step==='extras'?<ExtrasSetup demo={false}/>:step==='users'?<UsersSetup demo={false}/>:step==='personal'?<PersonalSetup demo={false}/>:<SettingsHub demo={false} theme={setupTheme(theme)} section={section}/>;
+  return <div className="remote-shared-settings" key={route}>{step==='close'?null:screen}</div>;
 }
 createRoot(document.getElementById('root')!).render(<SettingsApp/>);

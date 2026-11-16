@@ -53,6 +53,6 @@ export function SettingsFrame({request,theme,onError,onClose}:{request:Request;t
     window.addEventListener('message',listener);
     return()=>{live=false;reads=[];ids.clear();clearInterval(timer);window.removeEventListener('message',listener);};
   },[]);
-  return <section className="all-settings"><h2>All hub settings</h2><p>The same guided setup and controls as your wall screen. Changes apply to the Pi, not this phone.</p>
+  return <section className="all-settings" aria-label="All hub settings">
     <iframe ref={frame} src={`/remote/settings.html#device/${theme}`} title="Luma hub settings"/></section>;
 }

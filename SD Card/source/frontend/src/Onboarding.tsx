@@ -96,7 +96,7 @@ export function Onboarding({demo,locked=false}:{demo:boolean;locked?:boolean}){
             {step==="calendar" && <GoogleSetup demo={demo} embedded onSaved={saved}/>}
             {step==="phone" && <BluetoothSetup demo={demo} pinConfigured={summary?.pin ?? false}/>}
             {step==="voice" && <VoiceSetup demo={demo}/>}
-            {step==="remote" && <><PiConnectSetup demo={demo}/><TailscaleSetup demo={demo}/><p className="setup-note">The Shortcut token is under Connections in <a href={setupLink(demo,theme,"device")}>All settings</a>. Your place here is saved.</p></>}
+            {step==="remote" && <><PiConnectSetup demo={demo}/><TailscaleSetup demo={demo}/><p className="setup-note">Open <a href={setupLink(demo,theme,"device","shortcuts")}>Siri Shortcuts</a> to find your token. Your place here is saved.</p></>}
             {step==="review" && <>
               <div className="onboarding-review">{([["weather","Weather","Location saved","Add a location"],["pin","Privacy PIN","PIN saved","Not configured"],["google","Google Calendar","Account connected","Connect later"],["phone_selected","Nearby iPhone","Phone selected · presence still required","Pair later"],["voice_enabled","Hey Luma","Enabled · room check still required","Microphone off"]] as const).map(([key,label,yes,no])=><div key={key}><strong>{label}</strong><span>{demo?"Sample preview only":summary?.[key]?yes:no}</span></div>)}
                 <div><strong>Focus / break</strong><span>{demo?'Sample preview only':`${summary?.timer_focus_minutes ?? 25} / ${summary?.timer_break_minutes ?? 5} min · Local timers`}</span></div>

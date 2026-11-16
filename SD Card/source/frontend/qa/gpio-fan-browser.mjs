@@ -67,7 +67,7 @@ try{
   await value("fetch('/qa/approve').then(r=>r.json())");await until("document.querySelector('.hero')!==null");
   await outer('Settings');await until("document.querySelector('input[type=password]')!==null");
   await value("(()=>{const n=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(n,'123456');n.dispatchEvent(new Event('input',{bubbles:true}));})()");
-  await outer('Unlock primary settings');await inside("d.querySelector('.device-setup')!==null");
+  await outer('Unlock primary settings');await inside("d.querySelector('.settings-groups')!==null");
   for(const theme of ['luma-glass','hearth','neon-grid']){
     await post('/qa/theme',{theme});
     await until(`document.querySelector('.theme-${theme}')!==null`);

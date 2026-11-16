@@ -20,6 +20,7 @@ CLI = ("/opt/luma/tailscale/tailscale", "--socket=/run/luma-tailscale/tailscaled
 SYSTEMCTL = "/usr/bin/systemctl"
 DAEMON = "luma-tailscaled.service"
 GATEWAY = "luma-shortcut-gateway.service"
+FIREWALL = "luma-tailscale-firewall.service"
 AUTH_URL = re.compile(r"https://login\.tailscale\.com/a/[a-zA-Z0-9_-]{6,128}\Z")
 DNS_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.[a-z0-9-]{1,63}\.ts\.net\Z")
 PNG_DATA = re.compile(r"data:image/png;base64,[A-Za-z0-9+/=]{1,32000}\Z")
@@ -135,7 +136,13 @@ class TailscaleSetup:
                 raise TailscaleSetupError("Could not stop every private connection service. Refresh status and try again.")
             return {"state": "off", "command_url": None}
         if action == "connect":
-            await self.system("enable", "--now", DAEMON)
+            try:
+                await self.system("enable", "--now", DAEMON)
+            except TailscaleSetupError:
+                firewall, _ = await self.system("is-failed", "--quiet", FIREWALL, checked=False)
+                if firewall == 0:
+                    raise TailscaleSetupError("Luma’s private firewall could not load. Open Luma software to check for an update.") from None
+                raise
             # No --reset, auth key, route, operator, exit node or enrollment tag.
             code, raw = await self.cli("up", "--json", "--timeout=12s", "--hostname=luma",
                                        "--accept-dns=false", "--accept-routes=false", "--ssh=false", checked=False)

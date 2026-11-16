@@ -68,7 +68,9 @@ export function BluetoothSetup({demo,pinConfigured}:{demo:boolean;pinConfigured:
         {forgetError&&<p className="setup-message" role="alert">{forgetError}</p>}<button type="button" disabled={busy} onClick={()=>{setForgetPin("");setForgetError("");setForgetMode(false);}}>Cancel</button>
       </form>}
     </>}
-    {!forgetMode && !active(state.phase) && <button disabled={busy} onClick={()=>void action("start")}><Smartphone/>{state.phone_address?"Choose another phone":"Find my iPhone"}</button>}
+    {!forgetMode && !active(state.phase) && <><button disabled={busy} onClick={()=>void action("start",{transport:"le"})}><Smartphone/>{state.phone_address?"Choose another phone":"Find my iPhone"}</button>
+      <p className="setup-note">Luma looks for Low Energy pairing first so your iPhone can reconnect automatically.</p>
+      <details><summary>More pairing options</summary><button type="button" disabled={busy} onClick={()=>void action("start",{transport:"auto"})}>Search all Bluetooth devices</button></details></>}
     {state.phase==="scanning" && <><p role="status">Looking for nearby devices…</p><PhonePicker key={state.session} devices={state.devices} busy={busy} onSelect={phone=>void action("select",{session:state.session,device:phone.path})}/></>}
     {state.phase==="confirming" && <div className="pairing-confirmation"><p>{state.selected?.name}</p><output aria-label="Pairing code">{state.passkey}</output><p>Does this code match your iPhone?</p><button disabled={busy} onClick={()=>void action("confirm",{session:state.session,challenge:state.challenge,accepted:true})}><Check/>Codes match — pair</button><button disabled={busy} onClick={()=>void action("confirm",{session:state.session,challenge:state.challenge,accepted:false})}>Doesn’t match — reject</button></div>}
     {active(state.phase) && <button disabled={busy} onClick={()=>void action("cancel",{session:state.session})}>Cancel pairing</button>}

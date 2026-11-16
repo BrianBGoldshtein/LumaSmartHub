@@ -43,7 +43,8 @@ class NearbyDriver:
             'Adapter':self.adapter,'Address':address,'Alias':alias,'Name':name,'RSSI':rssi,
             'Paired':False,'Bonded':False,'Trusted':False}}
     async def open(self):pass
-    async def start_scan(self):pass
+    async def start_scan(self, *, transport='auto'):
+        assert transport in {'auto', 'le'}
     async def stop_scan(self):pass
     async def close(self):self.closed=True
     async def cancel_pair(self,path):pass

@@ -142,7 +142,10 @@ def main():
     verified = {}
     for installed, source in files.items():
         content = inspect("cat " + installed)
-        if content != (args.staging / source).read_bytes():
+        expected = (args.staging / source).read_bytes()
+        if installed == "/etc/luma/tailscale.nft":
+            expected = expected.replace(b"\r\n", b"\n")
+        if content != expected:
             raise ValueError("Installed file differs from staged source: " + installed)
         verified[installed] = hashlib.sha256(content).hexdigest()
     permissions("/etc/systemd/system/luma-shortcut-gateway.service", "644")

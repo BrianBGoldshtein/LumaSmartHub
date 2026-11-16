@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import socket
@@ -14,6 +15,8 @@ import struct
 from contextlib import suppress
 from pathlib import Path
 from uuid import uuid4
+
+from dbus_next.errors import DBusError
 
 from . import eduroam
 
@@ -27,6 +30,23 @@ HOTSPOT_UUID = "92a6cc9f-98d5-4dc4-a499-1c85e87da2b8"
 WIFI_CAP_AP = 0x40
 WIFI_CAP_FREQ_VALID = 0x100
 WIFI_CAP_FREQ_2GHZ = 0x200
+log = logging.getLogger(__name__)
+
+
+class HotspotError(ValueError):
+    """A fixed, credential-free hotspot error suitable for the dashboard."""
+
+
+HOTSPOT_DEVICE_ERRORS = {
+    5: "The hotspot could not assign an IP address for room devices.",
+    8: "The Wi-Fi adapter's control service disconnected during hotspot setup.",
+    9: "The Wi-Fi adapter rejected the access-point configuration.",
+    10: "The Wi-Fi adapter's control service could not start the access point.",
+    11: "The Wi-Fi adapter timed out starting the access point.",
+    18: "NetworkManager could not start DHCP and DNS for the hotspot.",
+    19: "NetworkManager's DHCP and DNS service stopped during hotspot setup.",
+    35: "The hotspot adapter needs its Linux firmware before it can start.",
+}
 
 
 def validate_request(data: object) -> dict:
@@ -242,6 +262,8 @@ class NetworkManager:
                 "path": path,
                 "name": interface_name,
                 "phy": wifi_phy(interface_name),
+                "state": device.get("State"),
+                "driver": device.get("Driver"),
                 "can_ap": bool(capabilities & WIFI_CAP_AP) and has_2ghz,
                 "station": device.get("State") == 100 and wireless.get("Mode") == 2 and wireless.get("ActiveAccessPoint") not in (None, "/"),
             })
@@ -272,7 +294,7 @@ class NetworkManager:
         stations = [radio for radio in radios if radio["station"]]
         ap_candidates = [
             radio for radio in radios
-            if radio["can_ap"] and radio["phy"] and not radio["station"]
+            if radio["can_ap"] and radio["phy"] and radio["state"] == 30
             and all(radio["phy"] != station["phy"] for station in stations)
         ]
         profile = await self.hotspot_profile()
@@ -289,7 +311,10 @@ class NetworkManager:
         if not stations:
             reason = "Connect Luma to eduroam or another Wi-Fi network first."
         elif not ap_candidates:
-            reason = "A second, Linux-supported USB Wi-Fi adapter is needed; keep the Pi's built-in radio on eduroam."
+            if any(radio.get("driver") == "rt2800usb" and radio["state"] == 20 for radio in radios):
+                reason = "The Ralink USB adapter is unavailable. Install the latest Luma update and reconnect the adapter."
+            else:
+                reason = "Connect a second, idle Wi-Fi adapter with 2.4 GHz access-point support."
         else:
             reason = "Ready to share the current internet connection over 2.4 GHz Wi-Fi."
         return {
@@ -322,30 +347,46 @@ class NetworkManager:
         from dbus_next import Variant
 
         status = await self.hotspot_status()
+        if status["active"]:
+            return status
         if not status["can_enable"]:
-            raise ValueError(status["reason"])
+            raise HotspotError(status["reason"])
         radios = await self.wifi_radios()
         stations = [radio for radio in radios if radio["station"]]
         candidates = [
             radio for radio in radios
-            if radio["can_ap"] and radio["phy"] and not radio["station"]
+            if radio["can_ap"] and radio["phy"] and radio["state"] == 30
             and all(radio["phy"] != station["phy"] for station in stations)
         ]
         if not candidates:
-            raise ValueError("A separate 2.4 GHz Wi-Fi adapter is required")
+            raise HotspotError("The separate 2.4 GHz adapter is no longer ready. Check hotspot status again.")
 
         # Replace only Luma's own saved AP profile so changing the Luma PIN
         # also rotates the network key. Never touch the eduroam profile.
         await self.stop_hotspot()
         manager = await self.interface(ROOT, NM)
         settings = hotspot_connection_settings(password, candidates[0]["name"], same_as_pin)
-        profile, active, _ = await manager.call_add_and_activate_connection2(
-            settings, candidates[0]["path"], "/", {"persist": Variant("s", "memory")}
-        )
+        device = candidates[0]["path"]
+        try:
+            profile, active, _ = await asyncio.wait_for(manager.call_add_and_activate_connection2(
+                settings, device, "/", {"persist": Variant("s", "memory")}
+            ), 10)
+        except DBusError as error:
+            # Error text may contain profile fields. Record only a fixed category.
+            reason = {
+                "org.freedesktop.NetworkManager.PermissionDenied": "NetworkManager denied permission to start the hotspot.",
+                "org.freedesktop.NetworkManager.UnknownDevice": "The hotspot adapter disconnected. Reconnect it and check status.",
+                "org.freedesktop.NetworkManager.ConnectionNotAvailable": "The second Wi-Fi adapter cannot start this access point. Check its driver and channel support.",
+            }.get(error.type, "NetworkManager rejected the hotspot profile before activation.")
+            log.warning("Hotspot activation request rejected: %s", reason)
+            raise HotspotError(reason) from None
         saved = False
         try:
-            for _ in range(45):
-                state = await self.properties(active, NM + ".Connection.Active")
+            for _ in range(30):
+                try:
+                    state = await self.properties(active, NM + ".Connection.Active")
+                except DBusError:
+                    break  # NetworkManager can remove a failed active connection immediately.
                 if state.get("State") == 2:
                     connection = await self.interface(profile, NM + ".Settings.Connection")
                     await connection.call_save()
@@ -354,7 +395,14 @@ class NetworkManager:
                 if state.get("State") == 4:
                     break
                 await asyncio.sleep(1)
-            raise ValueError("Could not start the hotspot. Check the USB Wi-Fi adapter and its 2.4 GHz AP support")
+            reason_code = None
+            with suppress(DBusError, TimeoutError):
+                device_props = await self.properties(device, NM + ".Device")
+                state_reason = device_props.get("StateReason")
+                if isinstance(state_reason, (tuple, list)) and len(state_reason) == 2 and type(state_reason[1]) is int:
+                    reason_code = state_reason[1]
+            log.warning("Hotspot activation did not finish, device reason %s", reason_code)
+            raise HotspotError(HOTSPOT_DEVICE_ERRORS.get(reason_code, "The hotspot did not start. Check the USB Wi-Fi adapter and its 2.4 GHz access-point support."))
         finally:
             if not saved:
                 with suppress(Exception):
@@ -456,6 +504,8 @@ async def serve():
             else:
                 async with lock:
                     result = await asyncio.wait_for(manager.execute(data), 70)
+        except HotspotError as error:
+            result = {"error": str(error)}
         except ValueError:
             # Never forward third-party exception text or credential fragments.
             result = {"error": "Invalid network selection or password. Scan again and check the entered details"}

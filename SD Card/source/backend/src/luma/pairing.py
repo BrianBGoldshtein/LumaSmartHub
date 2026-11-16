@@ -65,15 +65,19 @@ class PairingFlow:
         self.message = ""
         self.choice = None
         self.confirmation = None
+        self.transport = "auto"
 
     def snapshot(self):
         return {"session": self.session, "phase": self.phase, "devices": self.devices,
                 "selected": self.selected, "challenge": self.challenge,
                 "passkey": self.passkey, "message": self.message}
 
-    def start(self):
+    def start(self, transport="auto"):
         if self.task and not self.task.done():
             raise ValueError("A pairing session is already open")
+        if transport not in {"auto", "le"}:
+            raise ValueError("Choose an available Bluetooth scan mode")
+        self.transport = transport
         self.session = str(uuid4())
         self.phase = "scanning"
         self.devices = []
@@ -181,10 +185,17 @@ class PairingFlow:
         try:
             async with asyncio.timeout(180):
                 await driver.open()
-                await driver.start_scan()
+                if self.transport == "le":
+                    await driver.start_scan(transport="le")
+                else:
+                    await driver.start_scan()
                 deadline = monotonic() + 45
                 while not self.choice.done():
                     self.devices = device_choices(await driver.objects(), driver.adapter)
+                    if self.transport == "le":
+                        # Saved BR/EDR-only objects can still appear in the
+                        # managed object list during an LE discovery session.
+                        self.devices = [item for item in self.devices if item["rssi"] is not None]
                     remaining = deadline - monotonic()
                     if remaining <= 0:
                         raise TimeoutError()
@@ -197,6 +208,7 @@ class PairingFlow:
                 if props.get("Address", "").casefold() != self.selected["address"].casefold():
                     raise ValueError("Device changed")
                 self.validate_phone(props['Address'])
+                private_le_address = self.transport == 'le' and props.get('AddressType') == 'random'
                 already_bonded = props.get("Paired") is True and props.get("Bonded") is True
                 if already_bonded and props.get("Trusted") is not True:
                     self.phase = "error"
@@ -206,13 +218,18 @@ class PairingFlow:
                     self.message = "Waiting for your iPhone’s pairing request…"
                     await asyncio.wait_for(driver.pair(path, self.request_confirmation), 90)
                 props = await driver.properties(path)
-                if (props.get('Address', '').casefold() != self.selected['address'].casefold()
+                paired_address = props.get('Address', '')
+                # BlueZ can replace the random address with the identity
+                # address of the same object once the approved LE pairing ends.
+                if (not isinstance(paired_address, str) or not ADDRESS.fullmatch(paired_address)
+                        or (paired_address.casefold() != self.selected['address'].casefold()
+                            and not (private_le_address and not already_bonded))
                         or not (props.get("Paired") is True and props.get("Bonded") is True)):
                     raise ValueError("Pairing did not create a bond")
                 self.validate_phone(props['Address'])
                 await driver.trust(path)
                 props = await driver.properties(path)
-                if (props.get('Address', '').casefold() != self.selected['address'].casefold()
+                if (props.get('Address', '').casefold() != paired_address.casefold()
                         or not all(props.get(key) is True for key in ('Paired','Bonded','Trusted'))):
                     raise ValueError("Trust was not saved")
                 self.validate_phone(props['Address'])
@@ -248,6 +265,7 @@ class BlueZPairing:
         self.agent = None
         self.registered = False
         self.agent_path = "/org/luma/PairingAgent"
+        self.transport = "auto"
 
     async def interface(self, path, name):
         intro = await asyncio.wait_for(self.bus.introspect("org.bluez", path), 5)
@@ -274,12 +292,13 @@ class BlueZPairing:
         proxy = await self.interface(path, "org.freedesktop.DBus.Properties")
         return {key: value.value for key, value in (await asyncio.wait_for(proxy.call_get_all("org.bluez.Device1"), 5)).items()}
 
-    async def start_scan(self):
+    async def start_scan(self, *, transport="auto"):
         from dbus_next import Variant
         props = await self.interface(self.adapter, "org.freedesktop.DBus.Properties")
         await asyncio.wait_for(props.call_set("org.bluez.Adapter1", "Powered", Variant("b", True)), 5)
         adapter = await self.interface(self.adapter, "org.bluez.Adapter1")
-        await asyncio.wait_for(adapter.call_set_discovery_filter({"Transport": Variant("s", "auto"), "DuplicateData": Variant("b", False)}), 5)
+        self.transport = transport
+        await asyncio.wait_for(adapter.call_set_discovery_filter({"Transport": Variant("s", transport), "DuplicateData": Variant("b", False)}), 5)
         await asyncio.wait_for(adapter.call_start_discovery(), 5)
         self.discovering = True
 
@@ -296,6 +315,11 @@ class BlueZPairing:
         manager = await self.interface("/org/bluez", "org.bluez.AgentManager1")
         await asyncio.wait_for(manager.call_register_agent(self.agent_path, "DisplayYesNo"), 5)
         self.registered = True
+        if self.transport == "le":
+            from .bluetooth_runtime import prefer_le_bearer
+            props = await self.properties(path)
+            device_props = await self.interface(path, "org.freedesktop.DBus.Properties")
+            await prefer_le_bearer(device_props, props)
         device = await self.interface(path, "org.bluez.Device1")
         await device.call_pair()
         # Refuse silent/Just Works pairing even if a backend reports success.

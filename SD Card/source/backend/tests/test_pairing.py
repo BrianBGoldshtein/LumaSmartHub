@@ -123,6 +123,31 @@ async def test_phone_identity_change_after_pairing_is_never_trusted_or_saved():
 
 
 @pytest.mark.asyncio
+async def test_explicit_le_scan_accepts_same_confirmed_object_resolving_its_random_address():
+    driver, save = FakeDriver(), Mock()
+    driver.props.update(AddressType='random', RSSI=-50)
+    original_pair = driver.pair
+    identity = 'AA:BB:CC:DD:EE:01'
+
+    async def resolve(path, confirm):
+        await original_pair(path, confirm)
+        driver.props['Address'] = identity
+
+    driver.pair = resolve
+    flow = PairingFlow(save, lambda: driver)
+    flow.start('le')
+    await until(lambda: bool(flow.devices))
+    driver.start_scan.assert_awaited_once_with(transport='le')
+    flow.select(flow.session, DEVICE)
+    await until(lambda: flow.phase == 'confirming')
+    save.assert_not_called()
+    flow.confirm(flow.session, flow.challenge, True)
+    await flow.task
+    assert flow.phase == 'complete' and driver.trust_calls == 1
+    save.assert_called_once_with(identity)
+
+
+@pytest.mark.asyncio
 async def test_rejection_never_changes_phone_or_trust():
     driver, save = FakeDriver(), Mock()
     flow = PairingFlow(save, lambda: driver)

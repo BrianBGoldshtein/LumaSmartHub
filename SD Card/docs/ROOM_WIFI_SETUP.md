@@ -39,14 +39,14 @@ The useful alternative is to leave USB networking powered and move **fan switchi
 1. Obtain network-owner approval, or use the approved campus IoT network instead.
 2. Install 0.3.13 or newer through Luma's signed GitHub updater. Confirm the running version after reboot and refresh the phone remote. No SD reflash is needed.
 3. From the primary remote, unlock All hub settings → Device → Fan cooling (called USB cooling before 0.4.0) and select Keep USB on in the original connection mode. GPIO mode already keeps the hub on. Insert the USB adapter. The built-in radio should remain on the existing upstream Wi-Fi.
-4. A stock existing image explicitly installed Realtek firmware, not all MediaTek firmware. In Pi Connect's shell, install the official Debian packages once if missing:
+4. Update to 0.4.3 to get the RT5370 firmware on an existing card. The signed updater adds the pinned `rt2870.bin` when it is missing and preserves installed firmware. The usual post-update reboot loads it. For administrators maintaining other MediaTek adapters or earlier images, the official Debian package is available through Pi Connect:
 
    ```sh
    sudo apt-get update
    sudo apt-get install firmware-mediatek dnsmasq-base iw usbutils
    ```
 
-   [Debian Trixie's firmware-mediatek file list](https://packages.debian.org/trixie/all/firmware-mediatek/filelist) contains `rt2870.bin`, used by the rt2800usb family. This is a one-time OS prerequisite, not something the signed application updater silently installs. Do not install arbitrary vendor scripts or DKMS packages. If your configured signed repositories do not provide it, report that before modifying repository/security settings. Reinsert only the new dongle after installation if firmware was missing; keep the existing upstream radio connected.
+   [Debian Trixie's firmware-mediatek file list](https://packages.debian.org/trixie/all/firmware-mediatek/filelist) contains `rt2870.bin`, used by the rt2800usb family. The update ships the unchanged 8 KiB image from Linux firmware tag `20250211` with its Ralink distribution license. Reinsert only the USB Wi-Fi adapter after a manual package install and keep the existing upstream radio connected. [Linux firmware source](https://kernel.googlesource.com/pub/scm/linux/kernel/git/firmware/linux-firmware.git/+/refs/tags/20250211/rt2870.bin)
 5. Read-only checks, if needed:
 
    ```sh

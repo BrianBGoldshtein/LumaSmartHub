@@ -107,7 +107,9 @@ def main():
     for installed, source in mappings.items():
         content = inspect("cat " + installed)
         digest = hashlib.sha256(content).hexdigest()
-        if digest != sha_file(source):
+        expected = (hashlib.sha256(source.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+                    if installed == "/etc/luma/tailscale.nft" else sha_file(source))
+        if digest != expected:
             raise ValueError("Installed bytes differ: " + installed)
         verified[installed] = digest
 

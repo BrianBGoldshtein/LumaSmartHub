@@ -143,6 +143,7 @@ async def connect_paired_phone(manager, device, phone_path: str, *,
     try:
         await asyncio.wait_for(device.call_connect(), timeout)
     except (Exception, asyncio.CancelledError) as exc:
+        from dbus_next.errors import DBusError
         # A terminal BlueZ error (especially InProgress) does not establish
         # ownership of its pending radio operation. Disconnecting then can
         # cancel an incoming/manual connection or another caller's request.
@@ -159,6 +160,10 @@ async def connect_paired_phone(manager, device, phone_path: str, *,
                     await asyncio.wait_for(device.call_disconnect(), 5)
         if isinstance(exc, asyncio.CancelledError):
             raise
+        if (isinstance(exc, DBusError) and exc.text == 'br-connection-profile-unavailable'
+                and 'PreferredBearer' not in before):
+            raise BluetoothStatusError(
+                'Classic Bluetooth reconnect was rejected. If it persists, forget Luma on both devices and pair using the Low Energy scan.') from exc
         raise BluetoothStatusError(
             'iPhone reconnect did not finish; Luma will retry automatically') from exc
 

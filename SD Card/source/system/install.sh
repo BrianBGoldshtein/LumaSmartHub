@@ -92,6 +92,7 @@ install -m 0644 "${SOURCE_ROOT}/system/30-luma-connectivity.conf" /etc/NetworkMa
 printf '%s  %s\n' 'e659812ac49e4400e189115c507cf7d7d8f586adca642f8205d4815e939770e8' \
   "${SOURCE_ROOT}/backend/src/luma/assets/stanford-eduroam-ca.pem" | sha256sum --check --status
 install -m 0644 -o root -g root "${SOURCE_ROOT}/system/luma-tailscale.nft" /etc/luma/tailscale.nft
+sed -i 's/\r$//' /etc/luma/tailscale.nft
 install -m 0644 -o root -g root "${SOURCE_ROOT}/backend/src/luma/assets/stanford-eduroam-ca.pem" /etc/luma/stanford-eduroam-ca.pem
 install -d -m 0755 /etc/wireplumber/wireplumber.conf.d
 install -m 0644 "${SOURCE_ROOT}/system/80-luma-no-bluetooth-audio.conf" /etc/wireplumber/wireplumber.conf.d/

@@ -277,6 +277,11 @@ def reboot_after_verified_upgrade(*,status_path:Path=STATUS_PATH,app_root:Path=A
                 # The healthy app has already committed. Keep the backup and
                 # report the platform step separately from app installation.
                 log.exception('Could not configure BlueZ reconnect after update')
+        if tuple(map(int, version.split('.'))) >= (0, 4, 3):
+            try:
+                apply_network_repairs(current, runner=runner)
+            except (OSError, subprocess.SubprocessError):
+                log.exception('Could not finish the appliance network repairs after update')
         descriptor=os.open(marker,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0),0o600)
         with os.fdopen(descriptor,'wb') as stream:
             stream.write(b'Verified update completed; one graceful reboot requested.\n')
@@ -306,6 +311,17 @@ def apply_bluez_reconnect(release: Path, *, runner=subprocess.run) -> None:
         '--property=ReadWritePaths=/etc/bluetooth', '--property=PrivateNetwork=yes',
         '--property=NoNewPrivileges=yes', '--property=RuntimeMaxSec=15s',
         str(release / 'venv/bin/python'), '-I', '-B', '-m', 'luma.bluez_config',
+    ], check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def apply_network_repairs(release: Path, *, runner=subprocess.run) -> None:
+    runner([
+        '/usr/bin/systemd-run', '--quiet', '--wait', '--collect',
+        '--unit=luma-network-repair', '--service-type=exec',
+        '--property=ProtectSystem=strict', '--property=ProtectHome=yes',
+        '--property=ReadWritePaths=/etc/luma /usr/lib/firmware', '--property=PrivateNetwork=yes',
+        '--property=NoNewPrivileges=yes', '--property=RuntimeMaxSec=15s',
+        str(release / 'venv/bin/python'), '-I', '-B', '-m', 'luma.network_repair',
     ], check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 

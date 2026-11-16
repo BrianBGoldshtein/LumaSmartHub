@@ -134,7 +134,7 @@ def test_hotspot_broker_accepts_only_a_fixed_owner_selected_profile():
 async def test_hotspot_status_requires_an_independent_radio_and_active_wifi_uplink():
     manager = NetworkManager(None)
     manager.wifi_radios = AsyncMock(return_value=[
-        {"path": DEVICE, "name": "wlan0", "phy": "phy0", "can_ap": True, "station": True},
+        {"path": DEVICE, "name": "wlan0", "phy": "phy0", "can_ap": True, "station": True, "state": 100},
     ])
     manager.hotspot_profile = AsyncMock(return_value=None)
     status = await manager.hotspot_status()
@@ -143,8 +143,13 @@ async def test_hotspot_status_requires_an_independent_radio_and_active_wifi_upli
     assert "second" in status["reason"]
 
     manager.wifi_radios.return_value.append(
-        {"path": ROOT + "/Devices/3", "name": "wlan1", "phy": "phy1", "can_ap": True, "station": False},
+        {"path": ROOT + "/Devices/3", "name": "wlan1", "phy": "phy1", "can_ap": True, "station": False, "state": 20, "driver": "rt2800usb"},
     )
+    status = await manager.hotspot_status()
+    assert status["can_enable"] is False
+    assert "Ralink USB adapter is unavailable" in status["reason"]
+
+    manager.wifi_radios.return_value[-1]["state"] = 30
     status = await manager.hotspot_status()
     assert status["can_enable"] is True
     assert status["ssid"] == HOTSPOT_SSID
@@ -175,8 +180,8 @@ async def test_wifi_radio_capability_detection_requires_2_4ghz_when_reported(mon
 async def test_hotspot_status_detects_only_our_active_networkmanager_profile():
     manager = NetworkManager(None)
     manager.wifi_radios = AsyncMock(return_value=[
-        {"path": DEVICE, "name": "wlan0", "phy": "phy0", "can_ap": True, "station": True},
-        {"path": ROOT + "/Devices/3", "name": "wlan1", "phy": "phy1", "can_ap": True, "station": False},
+        {"path": DEVICE, "name": "wlan0", "phy": "phy0", "can_ap": True, "station": True, "state": 100},
+        {"path": ROOT + "/Devices/3", "name": "wlan1", "phy": "phy1", "can_ap": True, "station": False, "state": 100},
     ])
     manager.hotspot_profile = AsyncMock(return_value=ROOT + "/Settings/3")
     manager.hotspot_uses_pin = AsyncMock(return_value=False)

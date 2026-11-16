@@ -97,6 +97,11 @@ class HotspotRequest(BaseModel):
     stanford_permission_confirmed: bool = Field(default=False, strict=True)
 
 
+class PairingStartRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    transport: Literal['auto', 'le'] = 'auto'
+
+
 class PairingSessionRequest(BaseModel):
     model_config = {"extra": "forbid"}
     session: str = Field(min_length=36, max_length=36)
@@ -725,11 +730,11 @@ def create_app(
                 "service_recovery_attempts": bluetooth.service_recovery_attempts}
 
     @app.post("/api/v1/bluetooth/pairing/start", dependencies=[Depends(local_only)])
-    async def pairing_start() -> dict:
+    async def pairing_start(payload: PairingStartRequest | None = None) -> dict:
         try:
             if app.state.user_setup.pairing_active():
                 raise ValueError('Finish or cancel the personal setup pairing first.')
-            return pairing.start()
+            return pairing.start(payload.transport if payload else 'auto')
         except ValueError as error:
             raise HTTPException(409, str(error)) from None
 

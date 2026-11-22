@@ -120,7 +120,7 @@ class CompanionGoogle:
                 raise ValueError('Offline access and requested permissions are required.')
             saved=json.loads(credentials.to_json());saved['scopes']=list(granted or [])
             # Provider tokens never go to the browser. Serialize against token
-            # refresh/Desktop consent; revoke/disconnect before commit wins.
+            # refresh/Desktop consent; revocation before commit wins.
             with self.auth.lock:
                 self.auth.still_authorized(row['device'],origin,identity,row['initial'])
                 if (row['consent_epoch']!=self.consent_epoch or self.clock()>=row['expires']

@@ -105,6 +105,8 @@ try{
       if(width===390){await value("document.querySelector('.all-settings').scrollIntoView({block:'start'})");const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`${process.env.REMOTE_QA_OUTPUT}/shared-${theme}-${section||step}.png`,Buffer.from(shot.data,'base64'));}
     }
   }
-  await value("fetch('/qa/disconnect').then(r=>r.json())");await until("document.querySelector('.all-settings iframe')===null");
-  assert.deepEqual(errors,[]);console.log(JSON.stringify({scope:'Synthetic primary phone and real signed browser transport, not Safari/Pi acceptance',reports,disconnectClearsFrame:true,errors},null,2));
+  await value("fetch('/qa/disconnect').then(r=>r.json())");await until("document.querySelectorAll('.connected-users li').length===0");
+  assert.ok(await value("document.querySelector('.all-settings iframe')!==null"));
+  await value("fetch('/qa/revoke').then(r=>r.json())");await until("document.querySelector('.all-settings iframe')===null");
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({scope:'Synthetic primary phone and real signed browser transport, not Safari/Pi acceptance',reports,awaySettingsAvailable:true,revocationClearsFrame:true,errors},null,2));
 }finally{socket.close();await fetch(debug+'/json/close/'+target.id);}

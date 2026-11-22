@@ -1,6 +1,6 @@
 # Private iPhone remote
 
-[0.4.0 Beta is published](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.4.0). Install through **Settings → Luma software → Check for updates → review 0.4.0 → Install** and keep power connected through the verified reboot. Confirm the installed version and refresh the enrolled remote. The primary remote's **All hub settings → Device → Fan cooling** now includes guided migration to an optional BCM12 inline USB fan switch. USB Wi-Fi, mouse and drives stay powered; a new wiring acknowledgment and observed fan-only test are required. Keep the existing connection until the board is wired. See [ordering/wiring](GPIO_FAN_SETUP.md) and [0.4.0 evidence](V040_WORKING_NOTES.md).
+[0.4.5 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.4.5) adds access for enrolled remotes while their registered iPhone is away. Keep Tailscale connected and open the same private URL. Install through the primary remote’s **Software → Check for updates → review 0.4.5 → Install**, or **Settings → System & updates → Software updates** on Luma. Keep power connected through the verified reboot, then refresh the enrolled remote.
 
 The themed **Connected now** list remains on every authenticated page for both primary and secondary users, including those without calendars. It shares only names/roles/You markers and clears when hidden, offline or unauthorized. Normal preview polling refreshes it about every five seconds, ten in Settings; no presence history is saved. Other accounts' contents remain private.
 
@@ -8,17 +8,17 @@ If an unpowered mouse prevents access, use the [0.4.0 Pi Connect signed-update p
 
 ## What you need
 
-Your existing Luma Pi, the selected paired iPhone, and private Tailscale transport to Luma. The primary phone requires **Share System Notifications**. From 0.3.7, secondary phones need only their registered live trusted Bluetooth connection, not notification permission; Luma never accesses their notifications. No Mac, App Store account, developer mode or native companion app is needed. The remote follows the hub theme and has no games or animation loop.
+Your existing Luma Pi, an enrolled browser, and private Tailscale transport to Luma. Bluetooth is required when initially enrolling a browser. From 0.4.5 onward, an approved remote works while its registered phone is away. The primary phone requires **Share System Notifications**. From 0.3.7, secondary phones need only their registered live trusted Bluetooth connection, not notification permission; Luma never accesses their notifications. No Mac, App Store account, developer mode or native companion app is needed. The remote follows the hub theme and has no games or animation loop.
 
 On Luma, enable its existing **private Tailscale HTTPS connection** in Settings. If HTTPS setup is missing, follow [private connection setup](TAILSCALE.md). Do not enable public Funnel. The remote uses the same opt-in, restricted gateway; it does not open a public port.
 
 ## Enroll Safari or a Home Screen window
 
 1. Connect the registered iPhone to Luma and verify its nickname appears. A pending connection is not enough: the primary needs live notification authorization; a secondary needs its live trusted bond with Bluetooth services resolved. A user without configured/shared calendars may still leave the wall in public standby.
-2. Open **Settings → iPhone remote** on the hub. Enter the hub PIN and tap **Create enrollment QR**. Scan it privately with the phone. It expires in five minutes and can be used once.
+2. Open **Settings → Network & remote → iPhone remote & Tailscale** on the hub. Enter the hub PIN and tap **Create enrollment QR**. Scan it privately with the phone. It expires in five minutes and can be used once.
 3. If you want a Home Screen app, first open the private `/remote/` address in Safari, use **Share → Add to Home Screen**, then open that Home Screen window. Open the enrollment link in that window, or paste it under **First time here? → Enrollment link**. Install before enrolling: Safari and Home Screen have separate keys.
 4. Tap **Enroll this browser**. Compare the six-digit approval code on both screens. On the hub, confirm the match and tap **Approve matching browser**. Enrollment approval uses the hub PIN on the hub, not on the phone. After enrollment, the official primary remote separately requires that PIN for global settings and software updates; secondary remotes cannot unlock those controls.
-5. The primary phone shows **Hub**, **Settings** and **Software**; secondary controls remain personal-only. Calendar/task data is available only while that user's role-specific Bluetooth session remains authorized.
+5. The primary phone shows **Hub**, **Settings** and **Software**; secondary controls remain personal-only. After approval, calendar/task data and personal timers are available over Tailscale even when the registered phone is away. The shared wall still hides that user's private data when their Bluetooth presence is lost.
 
 If a QR expires, request another. If the phone or hub code differs, do not approve; generate a fresh QR. Clearing browser storage or changing the selected phone requires new enrollment. Keep the enrollment link private; don't send it to a chat or put it in a screenshot.
 
@@ -46,13 +46,13 @@ Already-linked Google accounts work without a new client: change calendar select
 4. Tap **Sign in with Google** or **Reconnect Google**, complete Google's normal consent, then return to the remote. Use **Enable task updates** only if you want Luma to recolor tasks; Google grants event-edit permission, while Luma limits edits to the selected task calendar.
 5. On a Home Screen app, Google may open Safari. After consent, return to the enrolled Home Screen window and refresh. That window keeps its own key; approval in one window does not enroll another.
 
-The pending sign-in expires after fifteen minutes. Stay near the hub with Bluetooth authorized throughout consent. Disconnect, revocation, restart, mismatched state or failed consent retains the existing Google grant rather than reporting a false success. Google's [Web-server OAuth requirements](https://developers.google.com/identity/protocols/oauth2/web-server) explain the Web-client redirect contract.
+The pending sign-in expires after fifteen minutes. The enrolled browser can finish Google consent over Tailscale while away. Browser revocation, profile changes, restart, mismatched state or failed consent retains the existing Google grant. Google's [Web-server OAuth requirements](https://developers.google.com/identity/protocols/oauth2/web-server) explain the Web-client redirect contract.
 
 ## Revoke or troubleshoot
 
-On the hub, **Settings → iPhone remote → Manage enrolled browsers** requires the PIN. Revoke the browser you no longer use; its next private request is denied. Normal application updates retain grants, but restoring a backup removes them so an old backup cannot silently restore access.
+On the hub, **Settings → Network & remote → iPhone remote & Tailscale → Manage enrolled browsers** requires the PIN. Revoke the browser you no longer use; its next private request is denied. Normal application updates retain grants, but restoring a backup removes them so an old backup cannot silently restore access.
 
-If locked, first verify Tailscale is connected, the correct private URL is open, and the registered iPhone has a live connection (plus notification authorization for the primary). If the key was cleared, enroll again. Do not repeatedly replay an uncertain task change or update: check the hub/Google state first. Pi Connect remains the recovery tool.
+If locked, first verify Tailscale is connected and the correct private URL is open. The browser must have an approved enrollment for the current profile and Tailscale identity. If its key was cleared or revoked, connect the registered iPhone and enroll again on Luma. Do not repeatedly replay an uncertain task change or update: check the hub/Google state first. Pi Connect remains the recovery tool.
 
 ## Owner acceptance
 

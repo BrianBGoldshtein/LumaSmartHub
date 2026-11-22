@@ -1,7 +1,7 @@
 """Primary-only shared settings transport. Never a caller-selected HTTP proxy.
 
 Both screens use the same local validators. Each operation carries a live
-browser/presence/PIN check in ASGI scope; personal setup cookies stay server-side.
+browser-grant/PIN check in ASGI scope; personal setup cookies stay server-side.
 """
 from __future__ import annotations
 

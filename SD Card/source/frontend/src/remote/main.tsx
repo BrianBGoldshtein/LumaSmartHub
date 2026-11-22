@@ -39,7 +39,7 @@ function RemoteApp(){
   const [updateTarget,setUpdateTarget]=useState<string|null>(null);
   const [updateResult,setUpdateResult]=useState<string|null>(null);
   const [appearance,setAppearance]=useState<Theme>('luma-glass');
-  const [callbackNote,setCallbackNote]=useState(googleReturn==='ok'?'Google connected. Refresh calendar choices.':googleReturn==='failed'?'Google sign-in did not finish. Reconnect your phone to Luma and try again. Existing sign-in is retained.':'');
+  const [callbackNote,setCallbackNote]=useState(googleReturn==='ok'?'Google connected. Refresh calendar choices.':googleReturn==='failed'?'Google sign-in did not finish. Check your private connection and try again. Existing sign-in is retained.':'');
   const generation=useRef(0),pollBusy=useRef(false),installed=useRef(false);
   const clientRef=useRef<RemoteClient|null>(null);clientRef.current=client;
   const clear=()=>{setPreview(null);setSettings(null);setPersonal(null);setAdminUnlocked(false);setConfirmPrimary(false);setPin('');setStatus(null);setCandidate(null);};
@@ -49,7 +49,7 @@ function RemoteApp(){
     let live=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
     Promise.all([bootstrapRemote(location.origin,fetch,controller.signal),loadCredential()]).then(([connection,key])=>{
       if(!live)return;setContext(connection);setCredential(key);setReady(true);
-      setNotice(key?'Connect your selected iPhone to Luma.':'Enroll this browser from Luma’s Settings.');
+      setNotice(key?'Opening your enrolled remote…':'Enroll this browser from Luma’s Settings.');
     }).catch(()=>{if(live){setReady(true);setNotice('Open Luma’s private HTTPS address with Tailscale connected.');}});
     return()=>{live=false;clearTimeout(timeout);controller.abort();};
   },[]);
@@ -67,7 +67,7 @@ function RemoteApp(){
   useEffect(()=>{
     const suspend=()=>{generation.current++;clientRef.current?.suspend();clear();setBusy(false);pollBusy.current=false;};
     const visibility=()=>{if(document.visibilityState!=='visible'){suspend();setNotice('Private preview paused.');}
-      else{setEpoch(value=>value+1);setNotice('Checking your iPhone connection…');}};
+      else{setEpoch(value=>value+1);setNotice('Checking your private connection…');}};
     const offline=()=>{suspend();setNotice('Offline. Private preview cleared.');};
     const online=()=>{setEpoch(value=>value+1);};
     document.addEventListener('visibilitychange',visibility);window.addEventListener('pagehide',suspend);
@@ -153,11 +153,11 @@ function RemoteApp(){
         {code&&notice&&<p role="status">{notice}</p>}
         {ready&&context&&initialTicket&&!code&&<button className="primary" disabled={busy} onClick={()=>void enroll()}>Enroll this browser</button>}
         {credential&&<button disabled={busy} onClick={()=>setEpoch(value=>value+1)}>Check connection</button>}
-        <details><summary>First time here?</summary><ol><li>Keep Tailscale connected on your iPhone. Pair it with Luma and enable Share System Notifications.</li><li>Want a Home Screen app? Use Safari → Share → Add to Home Screen, open it, then enroll that window. Safari and Home Screen enroll separately.</li><li>On the hub, open Settings → iPhone remote, enter your PIN and create a QR. Open its private link in this window, or paste that link below.</li><li>Enroll and compare the approval code on both screens. Approve on Luma.</li></ol>
+        <details><summary>First time here?</summary><ol><li>Keep Tailscale connected on your iPhone. Connect your registered phone to Luma for initial enrollment.</li><li>Want a Home Screen app? Use Safari → Share → Add to Home Screen, open it, then enroll that window. Safari and Home Screen enroll separately.</li><li>On the hub, open Settings → iPhone remote, enter your PIN and create a QR. Open its private link in this window, or paste that link below.</li><li>Enroll and compare the approval code on both screens. Approve on Luma.</li></ol>
           <form onSubmit={event=>{event.preventDefault();const input=event.currentTarget.elements.namedItem('link') as HTMLInputElement;
             const ticket=enrollTicket(input.value,location.origin);input.value='';if(ticket){initialTicket=ticket;setNotice('Ready to enroll.');setEpoch(value=>value+1);}else setNotice('Use the fresh enrollment link from this Luma hub.');}}>
             <label>Enrollment link<input name="link" type="url" autoComplete="off" autoCapitalize="none" spellCheck={false} required maxLength={500}/></label><button>Use link</button>
-          </form><p>Your browser key is saved locally. Hub data is not saved offline. Access requires this selected iPhone’s authorized Bluetooth session.</p></details>
+          </form><p>Your browser key is saved locally. Hub data is not saved offline. After enrollment, your remote works over Tailscale wherever you are. The wall uses Bluetooth to decide whose information to show.</p></details>
       </section>:<>
         {notice&&<p role="status" className="notice">{notice}</p>}
         {tab==='hub'&&<Hub preview={preview} busy={busy} command={command} task={(event)=>run(async()=>{
@@ -241,7 +241,7 @@ function PersonalGuide({busy,request,run}:Pick<SettingsProps,'busy'|'request'|'r
   return <section aria-label="Your personal setup">
     <small>Personal setup · {step+1} of {personalSteps.length} · Saved on Luma</small>
     <h2>{['Your private phone link','Connect your Google account','Choose your calendars','Ready when you are'][step]}</h2>
-    <p>{['Your browser is enrolled and your iPhone is authorized. Pairing and primary approval are already complete.',
+    <p>{['Your browser is enrolled. You can continue setup over your private Tailscale connection.',
       'Use Google sign-in below. This links only your account. Google is optional; your timer works without it.',
       'Select every calendar you want, your all-day task calendar and a completed color. Save the choices below.',
       'Your preferences are saved. Choose whether your calendar and tasks can appear on the shared wall when your phone is connected.'][step]}</p>

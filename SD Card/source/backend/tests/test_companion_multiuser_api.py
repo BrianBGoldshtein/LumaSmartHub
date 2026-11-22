@@ -45,7 +45,8 @@ async def test_cpu_sensor_available_to_authorized_own_remote_only(app_rig,index,
     app_rig[0].state.bluetooth.runtime(app_rig[1][index].id).remote_authorized.clear()
     async with client(rig[0]) as caller:
         response=await caller.post('/api/v1/companion/dispatch',json=pending)
-    assert response.status_code==403 and 'device_temperature' not in response.text
+    assert response.status_code==200 and 'device_temperature' in response.json()
+    assert not response.json()['state']['phone_connected']
 
 
 @pytest.mark.asyncio
@@ -130,7 +131,7 @@ async def test_personal_timers_for_primary_and_secondary_do_not_replace_room_or_
 
 
 @pytest.mark.asyncio
-async def test_guest_provider_reads_own_client_and_disconnect_discards_private_response(app_rig):
+async def test_guest_provider_reads_own_client_and_revocation_discards_private_response(app_rig):
     app, users, _, _ = app_rig
     rig = browser(app_rig)
     account = app.state.profile_calendars.account(users[1].id)
@@ -139,10 +140,10 @@ async def test_guest_provider_reads_own_client_and_disconnect_discards_private_r
     result = await dispatch(rig, 'GET', '/remote/api/google/calendars')
     assert result.status_code == 200 and result.json() == [{'id': 'GUEST_PRIVATE'}]
     primary.assert_not_called()
-    def disconnect():
-        app.state.bluetooth.runtime(users[1].id).remote_authorized.clear()
+    def revoke():
+        app.state.companion.revoke('123456', rig[2])
         return [{'id': 'DISCONNECTED_PRIVATE'}]
-    account.google.list_calendars = disconnect
+    account.google.list_calendars = revoke
     result = await dispatch(rig, 'GET', '/remote/api/google/calendars')
     assert result.status_code == 403 and 'DISCONNECTED_PRIVATE' not in result.text
 

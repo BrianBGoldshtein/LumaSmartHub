@@ -17,11 +17,10 @@ from fastapi.responses import JSONResponse
 
 from .companion_auth import CompanionAuth, CompanionDenied, MAX_BODY, _identity_digest, private_origin
 from .serde import to_primitive
-from . import thermal
 from .tailscale_setup import tailscale_request
 from .pi_connect_setup import qr_data
 from .companion_google import CompanionGoogle
-from .companion_profiles import own_operation, connected_people
+from .companion_profiles import own_operation, own_preview
 from .profiles import PRIMARY_ID, ProfileError
 from .focus_timer import TIMER_COMMANDS
 from .admin_authority import AdminDenied, LEASE_SECONDS, FRESH_PATHS, needs_admin
@@ -55,8 +54,6 @@ UPSTREAMS = {
     ("POST", "/remote/api/updates/check"): "/api/v1/updates/check",
     ("POST", "/remote/api/updates/install"): "/api/v1/updates/install",
 }
-EVENT_KEYS = {"id", "calendar_id", "summary", "start", "end", "all_day", "location",
-    "calendar_name", "calendar_color", "event_color", "event_color_id", "etag", "completed", "due_date"}
 
 
 def remote_guard(request: Request):
@@ -72,17 +69,6 @@ def remote_guard(request: Request):
 def settings_view(service):
     values = to_primitive(service.settings)
     return {key: values[key] for key in SETTINGS_KEYS}
-
-
-def preview_view(service):
-    view = service.snapshot()
-    result = {key: view[key] for key in ("server_time", "privacy_redacted", "weather", "timer", "departure", "todo_controls")}
-    result["settings"] = {key: view["settings"][key] for key in ("theme", "timezone", "weather_location_label")}
-    result["state"] = {key: view["state"][key] for key in ("active_page", "display_power", "phone_connected")}
-    result['device_temperature'] = thermal.read_temperature()
-    for key in ("calendar", "ongoing", "todos"):
-        result[key] = [{field: row[field] for field in EVENT_KEYS if field in row} for row in view[key]]
-    return result  # Never notifications, phone address, game state or future settings.
 
 
 def _pairs(items):
@@ -139,11 +125,7 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
         return web_accounts[uid]
 
     def primary_preview():
-        result = preview_view(service)
-        result.update(profile_id=PRIMARY_ID, nickname=profiles.get(PRIMARY_ID).nickname, role='primary')
-        result['timer'] = service.personal_timers.for_user(PRIMARY_ID).snapshot()
-        result['connected_users'] = connected_people(service, PRIMARY_ID)
-        return result
+        return own_preview(service, PRIMARY_ID)
 
     def denied(error):
         return HTTPException(403, str(error))
@@ -404,6 +386,6 @@ def install_companion_api(app, service, storage, bluetooth, local_only, google_c
         except HTTPException:
             raise
         except PermissionError:
-            raise HTTPException(403, 'Connect this user’s authorized phone and Google account first.') from None
+            raise HTTPException(403, 'Connect this user’s Google account first.') from None
         except (ValueError, TypeError, KeyError, TimeoutError, httpx.HTTPError):
             raise HTTPException(503, "Hub operation unavailable. Refresh before trying again.") from None

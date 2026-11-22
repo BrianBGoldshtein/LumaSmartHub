@@ -42,6 +42,7 @@ def sign(key, message):
 def rig(tmp_path):
     storage = Storage(tmp_path / "luma.db")
     SecurityManager(storage).set_pin("123456")
+    storage.save_settings(replace(storage.load_settings(), phone_address=PHONE.address))
     state = {"phone": PHONE, "time": 100.0}
     auth = CompanionAuth(storage, lambda: state["phone"], clock=lambda: state["time"])
     return auth, storage, state
@@ -78,7 +79,7 @@ def test_enrollment_requires_matching_local_pin_approval(rig):
         auth.approve("123456", claim["device_id"], "incorrect")
     assert auth.pending_status("123456") == claim
     auth.approve("123456", claim["device_id"], claim["comparison_code"])
-    assert auth.verify(*proof(auth, key, claim["device_id"])) == PHONE
+    assert auth.verify(*proof(auth, key, claim["device_id"])).address == PHONE.address
     assert auth.pending_status("123456") is None
     with pytest.raises(CompanionDenied):
         auth.claim(ticket, ORIGIN, IDENTITY, public,
@@ -98,18 +99,17 @@ def test_ticket_not_persisted_and_new_ticket_invalidates_old(rig):
     assert old not in content
 
 
-def test_unavailable_presence_clears_ephemeral_authority_with_fixed_error(rig):
+def test_approved_remote_works_when_bluetooth_status_is_unavailable(rig):
     auth, _, _ = rig
     key, device_id = enroll(auth)
     args = proof(auth, key, device_id)
     def unavailable():
         raise RuntimeError('private provider data must not escape')
     auth.presence = unavailable
-    with pytest.raises(CompanionDenied, match='Connect the selected iPhone') as error:
-        auth.verify(*args)
-    assert 'provider' not in str(error.value)
+    principal = auth.verify(*args)
+    assert principal.address == PHONE.address and principal.authorized
+    auth.still_authorized(device_id, ORIGIN, IDENTITY, principal)
     assert auth.challenges == {}
-    assert auth.ticket is auth.pending is None
 
 
 @pytest.mark.parametrize("change", ["expired", "disconnect", "generation", "phone"])
@@ -133,7 +133,21 @@ def test_grant_survives_api_restart_but_challenge_does_not(rig):
     old = proof(auth, key, device_id)
     restarted = CompanionAuth(storage, lambda: state["phone"], clock=lambda: state["time"])
     with pytest.raises(CompanionDenied): restarted.verify(*old)
-    assert restarted.verify(*proof(restarted, key, device_id)) == PHONE
+    assert restarted.verify(*proof(restarted, key, device_id)).address == PHONE.address
+
+
+@pytest.mark.parametrize("change", ["disconnect", "reconnect"])
+def test_approved_proof_survives_bluetooth_change_and_api_restart(rig, change):
+    auth, storage, state = rig
+    key, device_id = enroll(auth)
+    principal = auth.verify(*proof(auth, key, device_id))
+    pending = proof(auth, key, device_id)
+    state["phone"] = replace(PHONE, authorized=change == "reconnect",
+                            generation="new-session" if change == "reconnect" else "")
+    assert auth.verify(*pending) == principal
+    auth.still_authorized(device_id, ORIGIN, IDENTITY, principal)
+    restarted = CompanionAuth(storage, lambda: state["phone"], clock=lambda: state["time"])
+    assert restarted.verify(*proof(restarted, key, device_id)) == principal
 
 
 @pytest.mark.parametrize("changed", ["body", "path", "method", "identity", "origin", "key", "signature"])
@@ -155,19 +169,18 @@ def test_tampering_fails_and_consumes_nonce(rig, changed):
     with pytest.raises(CompanionDenied): auth.verify(*good)
 
 
-@pytest.mark.parametrize("change", ["expired", "disconnect", "generation", "phone", "revoked"])
+@pytest.mark.parametrize("change", ["expired", "phone", "revoked"])
 def test_proofs_and_slow_results_fail_when_authority_changes(rig, change):
     auth, _, state = rig
     key, device_id = enroll(auth)
+    initial = auth.verify(*proof(auth, key, device_id))
     args = proof(auth, key, device_id)
     if change == "expired": state["time"] += 30
-    elif change == "disconnect": state["phone"] = replace(PHONE, authorized=False)
-    elif change == "generation": state["phone"] = replace(PHONE, generation="session-2")
-    elif change == "phone": state["phone"] = replace(PHONE, address="11:22:33:44:55:66")
+    elif change == "phone": auth.storage.save_settings(replace(auth.storage.load_settings(), phone_address="11:22:33:44:55:66"))
     else: auth.revoke("123456", device_id)
     with pytest.raises(CompanionDenied): auth.verify(*args)
     if change != "expired":
-        with pytest.raises(CompanionDenied): auth.still_authorized(device_id, ORIGIN, IDENTITY, PHONE)
+        with pytest.raises(CompanionDenied): auth.still_authorized(device_id, ORIGIN, IDENTITY, initial)
 
 
 def test_replay_and_revocation_preserve_unrelated_settings(rig):

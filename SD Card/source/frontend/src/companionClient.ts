@@ -8,7 +8,7 @@ export class RemoteError extends Error {
 }
 type Fetcher = typeof fetch;
 function failure(status:number): RemoteError {
-  if(status===403)return new RemoteError('connection','Connect your selected iPhone to Luma and check enrollment.');
+  if(status===403)return new RemoteError('connection','Check your Tailscale connection and browser enrollment on Luma.');
   if(status===409)return new RemoteError('conflict','Hub state changed. Refresh before trying again.');
   if(status===410)return new RemoteError('expired','The review expired. Check again.');
   if(status===422||status===413||status===415)return new RemoteError('invalid','Luma could not accept this change. Check the values.');

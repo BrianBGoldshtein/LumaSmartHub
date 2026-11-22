@@ -22,7 +22,7 @@ The hub supports five profiles total. **Open personal setup** resumes an existin
 
 Progress and settings save on the Pi. After a disconnect, reconnect your registered authorized phone and resume. You do not need the primary PIN for personal calendars or timers. If first approval expired before pairing, ask the primary to reopen your personal setup. The primary PIN is never needed to enroll a secondary browser.
 
-On your enrolled phone, **My calendars** resumes the saved private-link → Google → calendars → ready guide. Google can be skipped; your timer still works. Safari and a Home Screen window enroll separately. Hidden/offline/disconnected windows clear private content and stop polling.
+On your enrolled phone, **My calendars** resumes the saved private-link → Google → calendars → ready guide. Google can be skipped; your timer still works. Safari and a Home Screen window enroll separately. Hidden or offline browser windows clear private content and stop polling. An enrolled browser stays usable over Tailscale when its phone disconnects from Bluetooth.
 
 ## Optional secondary phone access, or primary-only fallback
 
@@ -43,7 +43,7 @@ The primary remote may unlock primary settings using the hub PIN. This permissio
 
 ## Everyday use and testing
 
-Secondary reconnect scans and connection attempts continue automatically, without requesting Apple's notification service. iOS controls background availability, so automatic return is not guaranteed; if necessary, tap Luma in the iPhone's Bluetooth settings. Turning secondary notification sharing on or off must not affect an otherwise live registered connection. Disconnecting that phone hides its own data and locks its remote; other users remain unaffected.
+Secondary reconnect scans and connection attempts continue automatically, without requesting Apple's notification service. iOS controls background availability, so automatic return is not guaranteed; if necessary, tap Luma in the iPhone's Bluetooth settings. Turning secondary notification sharing on or off must not affect an otherwise live registered connection. Disconnecting that phone hides its private information on the wall. Its enrolled remote remains available over Tailscale and continues showing only its own account.
 
 Arrivals play three quick strikes of the existing local bell. Ordinary primary notifications, time-to-leave reminders and departure announcements use one strike. Simultaneous arrivals share one three-strike cue. Existing mute, volume, sleep and higher-priority alarm/update rules still apply; suppressed or failed cues are not replayed.
 

@@ -49,7 +49,7 @@ async def test_remote_setup_rejects_extra_authority_or_invalid_progress(app_rig,
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('loss', ['disconnect', 'policy', 'remove'])
+@pytest.mark.parametrize('loss', ['revoke', 'policy', 'remove'])
 async def test_lost_authority_waiting_for_setup_lock_never_commits(app_rig, loss):
     app, users, _, _ = app_rig
     rig = browser(app_rig)
@@ -60,8 +60,8 @@ async def test_lost_authority_waiting_for_setup_lock_never_commits(app_rig, loss
         pending = asyncio.create_task(dispatch(rig, 'POST', '/remote/api/setup',
             {'stage': 'ready', 'wall_share_approved': True}))
         await asyncio.sleep(.05)
-        if loss == 'disconnect':
-            app.state.bluetooth.runtime(uid).remote_authorized.clear()
+        if loss == 'revoke':
+            app.state.companion.revoke('123456', rig[2])
         elif loss == 'policy':
             app.state.profiles.set_remote_policy('primary_only')
         else:

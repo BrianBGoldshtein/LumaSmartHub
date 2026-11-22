@@ -43,7 +43,7 @@ def rig(tmp_path):
     ticket = auth.issue_ticket('123456',ORIGIN)
     claim = auth.claim(ticket,ORIGIN,IDENTITY,public,sign(key,enrollment_message(ticket,ORIGIN,IDENTITY,public)))
     auth.approve('123456',claim['device_id'],claim['comparison_code'])
-    app.state.admin.unlock_remote('123456', claim['device_id'], auth._phone('primary'))
+    app.state.admin.unlock_remote('123456', claim['device_id'], auth._grant(claim['device_id'], ORIGIN, IDENTITY)[1])
     return app, key, claim['device_id']
 
 
@@ -163,7 +163,7 @@ async def test_replay_body_tampering_and_revocation_block_mutation(rig):
 
 
 @pytest.mark.asyncio
-async def test_disconnect_while_waiting_for_calendar_lock_prevents_settings_write(rig):
+async def test_revocation_while_waiting_for_calendar_lock_prevents_settings_write(rig):
     app, _, _ = rig
     before = app.state.luma.settings.timezone
     payload = envelope(rig,'PATCH','/remote/api/settings',{'timezone':'UTC'})
@@ -174,7 +174,7 @@ async def test_disconnect_while_waiting_for_calendar_lock_prevents_settings_writ
             task = asyncio.create_task(c.post('/api/v1/companion/dispatch',json=payload))
             await asyncio.sleep(.05)
             assert not task.done()
-            app.state.bluetooth.remote_authorized.properties_changed('org.bluez.Device1',{'Connected':False},[])
+            app.state.companion.revoke('123456', rig[2])
             lock.release()
             response = await task
         assert response.status_code==403
@@ -184,10 +184,10 @@ async def test_disconnect_while_waiting_for_calendar_lock_prevents_settings_writ
 
 
 @pytest.mark.asyncio
-async def test_slow_provider_result_is_not_returned_after_disconnect(rig,monkeypatch):
+async def test_slow_provider_result_is_not_returned_after_revocation(rig,monkeypatch):
     app, _, _ = rig
     def provider():
-        app.state.bluetooth.remote_authorized.clear()
+        app.state.companion.revoke('123456', rig[2])
         return [{'id':'PRIVATE_CALENDAR','summary':'Private calendar'}]
     monkeypatch.setattr(app.state.google,'list_calendars',provider)
     response = await dispatch(rig,'GET','/remote/api/google/calendars')

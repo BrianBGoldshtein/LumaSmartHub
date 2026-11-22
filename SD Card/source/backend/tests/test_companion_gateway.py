@@ -149,7 +149,7 @@ def test_identity_origin_and_action_cannot_be_supplied_in_protocol_json(gateway)
         assert response.status_code==422
 
 
-def test_disconnect_and_revocation_fail_closed_through_gateway(gateway,rig):
+def test_gateway_allows_away_access_but_blocks_revoked_browser(gateway,rig):
     rig[0].state.bluetooth.remote_authorized.clear()
     assert not rig[0].state.luma.state.phone_connected
     # Build a previously valid request without requesting a new challenge.
@@ -159,6 +159,11 @@ def test_disconnect_and_revocation_fail_closed_through_gateway(gateway,rig):
     proof=envelope(rig,'GET','/remote/api/preview')
     rig[0].state.bluetooth.remote_authorized.clear()
     assert not rig[0].state.luma.state.phone_connected
+    response=gateway.get('/remote/api/preview',headers={**HEADERS,'X-Luma-Device':proof['device_id'],
+        'X-Luma-Nonce':proof['nonce'],'X-Luma-Proof':proof['signature']})
+    assert response.status_code==200 and response.json()['state']['phone_connected'] is False
+    proof=envelope(rig,'GET','/remote/api/preview')
+    rig[0].state.companion.revoke('123456',rig[2])
     response=gateway.get('/remote/api/preview',headers={**HEADERS,'X-Luma-Device':proof['device_id'],
         'X-Luma-Nonce':proof['nonce'],'X-Luma-Proof':proof['signature']})
     assert response.status_code==403 and 'calendar' not in response.text

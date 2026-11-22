@@ -45,9 +45,9 @@ def own_preview(service, uid):
     # The room snapshot supplies only explicitly public clock/weather/style.
     # All private fields come from this user's projection, never flat primary.
     room = service.snapshot()
-    account = service.profile_calendars.projection(uid)
+    account = service.profile_calendars.projection(uid, remote=True)
     if account is None:
-        raise HTTPException(403, 'Connect this user’s authorized iPhone first.')
+        raise HTTPException(403, 'This user’s calendar is unavailable.')
     user = service.profiles.get(uid)
     return {'server_time': room['server_time'], 'privacy_redacted': False,
             'connected_users': connected_people(service, uid),
@@ -56,7 +56,8 @@ def own_preview(service, uid):
             'weather': room['weather'], 'settings': {key: own_settings(service, uid)[key]
                 for key in ('theme', 'timezone', 'weather_location_label')},
             'state': {'active_page': room['state']['active_page'],
-                      'display_power': room['state']['display_power'], 'phone_connected': True},
+                      'display_power': room['state']['display_power'],
+                      'phone_connected': service.profile_calendars.present(uid)},
             'timer': service.personal_timers.for_user(uid).snapshot(),
             **{key: account[key] for key in ('calendar', 'ongoing', 'todos', 'todo_controls', 'departure')}}
 
@@ -134,7 +135,7 @@ async def own_operation(service, principal, method, path, value, recheck):
                 or type(value['completed']) is not bool):
             raise HTTPException(422, 'Remote request is invalid.')
         try:
-            await service.profile_calendars.complete_task(uid, recheck=recheck, **value)
+            await service.profile_calendars.complete_task(uid, recheck=recheck, remote=True, **value)
         except TaskConflict:
             raise HTTPException(409, 'This task changed. Refresh before trying again.') from None
         except ValueError:

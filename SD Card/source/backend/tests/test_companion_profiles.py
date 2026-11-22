@@ -59,7 +59,7 @@ def test_all_five_sessions_derive_role_from_registry_not_presence_or_caller(rig)
     assert all('profile_id' not in row for row in legacy.values())
 
 
-@pytest.mark.parametrize('change', ['disconnect', 'generation', 'binding', 'removed', 'disabled', 'policy'])
+@pytest.mark.parametrize('change', ['binding', 'removed', 'disabled', 'policy'])
 def test_guest_authority_revokes_without_interrupting_primary_or_other_guest(rig, change):
     auth, profiles, state = rig
     primary, first, other = profiles.list()[:3]
@@ -70,9 +70,7 @@ def test_guest_authority_revokes_without_interrupting_primary_or_other_guest(rig
     old = proof(auth, key, device)
     primary_proof = proof(auth, primary_key, primary_device)
     other_proof = proof(auth, other_key, other_device)
-    if change == 'disconnect': state[first.id] = replace(state[first.id], authorized=False)
-    elif change == 'generation': state[first.id] = replace(state[first.id], generation='new-session')
-    elif change == 'binding': profiles.bind_phone(first.id, '11:22:33:44:55:66')
+    if change == 'binding': profiles.bind_phone(first.id, '11:22:33:44:55:66')
     elif change == 'removed': profiles.remove(first.id)
     elif change == 'disabled': profiles.set_remote_enabled(first.id, False)
     else: profiles.set_remote_policy('primary_only')
@@ -93,6 +91,16 @@ def test_primary_absence_does_not_prevent_approved_guest_from_using_own_browser(
     key, device = enroll_user(auth, guest.id)
     state[PRIMARY_ID] = replace(state[PRIMARY_ID], authorized=False)
     assert auth.verify(*proof(auth, key, device)).profile_id == guest.id
+
+
+def test_all_enrolled_users_can_access_own_remote_when_every_phone_is_away(rig):
+    auth, profiles, state = rig
+    browsers = [(user, *enroll_user(auth, user.id)) for user in profiles.list()]
+    for uid, phone in state.items():
+        state[uid] = replace(phone, authorized=False, generation='')
+    for user, key, device in browsers:
+        result = auth.verify(*proof(auth, key, device))
+        assert result.profile_id == user.id and result.role == user.role
 
 
 @pytest.mark.parametrize('change', ['disconnect', 'generation', 'binding', 'removed', 'disabled', 'policy'])

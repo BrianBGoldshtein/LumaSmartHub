@@ -47,7 +47,7 @@ export function CompanionSetup({demo,pinConfigured}:{demo:boolean;pinConfigured:
     });
   }
   return <section className="companion-setup"><h2><Smartphone/> iPhone remote</h2>
-    <p>Control Luma privately in Safari or from your Home Screen. No games on the phone. Private sync requires your selected iPhone’s authorized Bluetooth connection.</p>
+    <p>Control Luma privately in Safari or from your Home Screen. After enrollment, your remote works over Tailscale even when your phone is away. Connect your registered phone to Luma when enrolling a new browser.</p>
     <p className="setup-note">First enable the private Tailscale HTTPS connection above. Install Tailscale on your iPhone and connect it to the same private account. If you want a Home Screen app, install it before enrolling that window.</p>
     <p className="setup-note">Secondary remotes use their own Tailscale identity and node sharing—not your primary login. If that is impractical, choose primary-only remote below. Secondary phones, wall calendars and timers still work.</p>
     {!pinConfigured?<p>Set your hub privacy PIN first.</p>:<>

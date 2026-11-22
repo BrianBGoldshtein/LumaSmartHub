@@ -45,7 +45,7 @@ try{
     await roster(1);await until("document.querySelectorAll('.connected-users li').length===2");
     assert.equal(await value("document.querySelector('.connected-users').innerText.includes('Renée')"),false);
     if(role==='primary'){
-      await value("fetch('/qa/disconnect').then(r=>r.json())");await until("document.querySelector('.connected-users')===null");
+      await value("fetch('/qa/disconnect').then(r=>r.json())");await until("document.querySelectorAll('.connected-users li').length===0");
       await value("fetch('/qa/reconnect').then(r=>r.json())");await until("document.querySelector('.hero')!==null");
     }else{
       await value("fetch('/qa/disconnect').then(r=>r.json())");await until("document.querySelectorAll('.connected-users li').length===1");

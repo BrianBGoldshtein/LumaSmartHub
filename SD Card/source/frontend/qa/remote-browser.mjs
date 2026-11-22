@@ -133,10 +133,15 @@ try{
   await value(`fetch('/qa/update-complete').then(r=>r.json())`);
   await until(`document.querySelector('.software')?.textContent.includes('Current version 0.3.0')`);
   await click('Hub');await until(`document.querySelector('.hero')!==null`);
-  await value(`fetch('/qa/disconnect').then(r=>r.json())`);await until(`document.querySelector('.locked')!==null`);
-  assert.ok(!(await value('document.body.innerText')).includes('A very long lecture title'));
-  await value(`fetch('/qa/reconnect').then(r=>r.json())`);await click('Check connection');await until(`document.querySelector('.hero')!==null`);
+  await value(`fetch('/qa/disconnect').then(r=>r.json())`);
+  await until(`document.querySelector('.hero')!==null&&document.querySelectorAll('.connected-users li').length===0`);
+  assert.ok((await value('document.body.innerText')).includes('A very long lecture title'));
+  await wallUntil(`!document.body.innerText.includes('A very long lecture title')`);
   await send('Page.navigate',{url:base+'/remote/'});await until(`document.querySelector('.hero')!==null`);
+  assert.ok((await value('document.body.innerText')).includes('A very long lecture title'));
+  await click('Settings');await until(`!!document.querySelector('.all-settings iframe')`);
+  await click('Hub');await until(`!!document.querySelector('.hero')`);
+  await value(`fetch('/qa/reconnect').then(r=>r.json())`);
   const other=await(await fetch(debug+'/json/new?about:blank',{method:'PUT'})).json();
   try{
     await send('Target.activateTarget',{targetId:other.id});
@@ -212,5 +217,5 @@ try{
   assert.ok(!(await value('document.body.innerText')).includes('Alex PRIVATE seminar'));
   assert.equal(await value(`document.querySelector('.temperature-readout')===null`),true,'Revocation clears the sensor with the authorized preview');
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,remoteThemesAppliedToWall:true,remoteUpdateVisibleOnWall:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,disconnectCleared:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,guestOwnCalendars:true,guestOwnTimer:true,guestNoAdminControls:true,guestNoOverflow:true,guestSetupResume:true,guestOwnSharingConsent:true,guestRevocationCleared:true,errors},null,2));
+  console.log(JSON.stringify({scope:'Disposable Chromium; synthetic ANCS/provider/update broker, no Safari/Pi/live acceptance',layouts,credentialFields,enrollment:true,calendarSave:true,taskCompletion:true,timerLifecycle:true,remoteThemesAppliedToWall:true,remoteUpdateVisibleOnWall:true,updateReviewAcceptedOnce:true,updateStatusComplete:true,awayRemoteRetained:true,wallPrivacyOnDisconnect:true,awayReload:true,awayPrimarySettings:true,newSession:true,keyReload:true,backgroundCleared:true,backgroundPollingStopped:true,offlineCleared:true,revocationCleared:true,guestOwnCalendars:true,guestOwnTimer:true,guestNoAdminControls:true,guestNoOverflow:true,guestSetupResume:true,guestOwnSharingConsent:true,guestRevocationCleared:true,errors},null,2));
 }finally{wallSocket?.close();if(wallTarget)await fetch(debug+'/json/close/'+wallTarget.id);socket.close();await fetch(debug+'/json/close/'+target.id);}

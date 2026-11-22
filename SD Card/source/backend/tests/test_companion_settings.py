@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from luma.companion_settings import validate_operations, READS, POSTS
 from luma.game_handoff import GameHandoff
-from test_companion_api import rig, dispatch, client, envelope
+from test_companion_api import rig, dispatch, client, envelope, ORIGIN, IDENTITY
 from test_companion_multiuser_api import app_rig, browser
 from test_companion_profiles import enroll_user
 
@@ -90,7 +90,7 @@ async def test_personal_wizard_grant_isolated_between_primary_browsers(rig):
     app = rig[0]
     assert (await settings(rig, operation('users/manage', 'POST', {'action': 'create', 'nickname': 'Alex'}, True))).status_code == 200
     key, device = enroll_user(app.state.companion, 'primary')
-    app.state.admin.unlock_remote('123456', device, app.state.companion._phone('primary'))
+    app.state.admin.unlock_remote('123456', device, app.state.companion._grant(device, ORIGIN, IDENTITY)[1])
     other = await settings((app, key, device), operation('user-self/status'))
     assert other.json()['results'][0]['status'] == 403
     own = await settings(rig, operation('user-self/status'))
@@ -108,7 +108,7 @@ async def test_sensitive_changes_require_fresh_pin_not_just_confirmation(rig):
 
 
 @pytest.mark.asyncio
-async def test_disconnect_while_shared_settings_waits_prevents_commit(rig):
+async def test_revocation_while_shared_settings_waits_prevents_commit(rig):
     app = rig[0];before = app.state.luma.settings.timezone
     payload = envelope(rig, 'POST', PATH, {'operations': [operation('settings', 'PATCH', {'timezone': 'UTC'})]})
     lock = app.state.google_sync_lock
@@ -118,7 +118,7 @@ async def test_disconnect_while_shared_settings_waits_prevents_commit(rig):
             task = asyncio.create_task(c.post('/api/v1/companion/dispatch', json=payload))
             await asyncio.sleep(.05)
             assert not task.done()
-            app.state.bluetooth.remote_authorized.clear()
+            app.state.companion.revoke('123456', rig[2])
             lock.release()
             result = await task
         assert result.status_code == 403 and app.state.luma.settings.timezone == before

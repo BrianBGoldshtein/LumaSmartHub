@@ -1,7 +1,7 @@
-"""Signed browser grants bound to a registered user's live phone session.
+"""Signed browser grants bound to a registered user and private connection.
 
-Primary presence requires ANCS consent; secondary presence requires the
-selected live trusted bond, without notification access.
+Enrollment checks the registered phone's live connection. Approved browser
+grants remain usable over private HTTPS while that phone is away.
 
 Local PIN-approved callers alone may issue/approve/revoke. The gateway enforces
 its fixed private HTTPS origin and trustworthy Serve identity independently.
@@ -396,10 +396,20 @@ class CompanionAuth:
         if not isinstance(device_id, str) or not TOKEN.fullmatch(device_id):
             raise CompanionDenied("Remote enrollment is invalid.")
         row = self._grants().get(device_id)
-        phone = self._phone(row.get("profile_id", PRIMARY_ID) if row else PRIMARY_ID)
-        if (not row or row["phone"] != phone.address or row["origin"] != private_origin(origin)
+        if not row:
+            raise CompanionDenied("This browser is not enrolled. Request a new QR on Luma.")
+        uid = row.get("profile_id", PRIMARY_ID)
+        user = self._profile(uid)
+        binding = user.phone_address if user else phone_address(self.storage.load_settings().phone_address)
+        if (row["phone"] != binding or row["origin"] != private_origin(origin)
                 or row["identity"] != _identity_digest(identity)):
-            raise CompanionDenied("This browser is not enrolled for the connected phone.")
+            raise CompanionDenied("This browser’s remote access has changed. Enroll it again on Luma.")
+        # Bind in-flight requests and PIN leases to this exact stored grant.
+        # Bluetooth disconnect/reconnect must not interrupt an approved remote.
+        generation = hashlib.sha256(json.dumps(
+            {**row, "device_id": device_id}, sort_keys=True, separators=(",", ":")
+        ).encode()).hexdigest()
+        phone = PhonePresence(binding, True, generation, uid, user.role if user else "primary")
         return row, phone
 
     def challenge(self, device_id: str, origin: str, identity: str,
@@ -438,13 +448,13 @@ class CompanionAuth:
                     or challenge["origin"] != origin or challenge["identity"] != row["identity"]
                     or challenge["method"] != method or challenge["path"] != path
                     or challenge["digest"] != hashlib.sha256(body).hexdigest()):
-                raise CompanionDenied("Remote request expired. Try again while connected.")
+                raise CompanionDenied("Remote request expired. Try again.")
             _verify(row["public_key"], signature, message)
-            return phone  # Slow operations must recheck this generation before response/commit.
+            return phone  # Slow operations recheck the grant before response/commit.
 
     def still_authorized(self, device_id: str, origin: str, identity: str,
                          initial: PhonePresence) -> None:
         with self.lock:
             _, current = self._grant(device_id, origin, identity)
             if current != initial:
-                raise CompanionDenied("Phone connection changed. Try again while connected.")
+                raise CompanionDenied("Remote access changed. Refresh and try again.")

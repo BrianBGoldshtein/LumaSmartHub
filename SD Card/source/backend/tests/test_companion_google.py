@@ -32,7 +32,7 @@ def remote_google(rig):
     flow.authorization_url.side_effect=lambda **_:(AUTH_URI+'?'+urlencode({'state':factory.call_args.kwargs['state']}),'unused')
     clock=[100.0]
     remote=CompanionGoogle(app.state.companion,app.state.google,clock=lambda:clock[0],flow_factory=factory)
-    initial=app.state.bluetooth.companion_presence()
+    initial=app.state.companion._grant(device,ORIGIN,IDENTITY)[1]
     recheck=lambda:app.state.companion.still_authorized(device,ORIGIN,IDENTITY,initial)
     remote.set_client(web_client(),ORIGIN,recheck)
     return remote,flow,factory,clock,initial
@@ -63,14 +63,13 @@ def test_remote_consent_pkce_fixed_target_offline_and_one_use_commit(rig,remote_
     assert flow.fetch_token.call_count==1
 
 
-@pytest.mark.parametrize('change',['disconnect','revoke','session','expired','denied','duplicate','exchange_failure','missing_refresh','missing_scope','configuration'])
+@pytest.mark.parametrize('change',['revoke','binding','expired','denied','duplicate','exchange_failure','missing_refresh','missing_scope','configuration'])
 def test_failed_remote_consent_keeps_existing_tokens(rig,remote_google,change):
     remote,flow,_,clock,_=remote_google
     query=begin(rig,remote_google,task_updates=change=='missing_scope')
     app=rig[0]
-    if change=='disconnect':app.state.bluetooth.remote_authorized.clear()
     if change=='revoke':app.state.companion.revoke('123456',rig[2])
-    if change=='session':app.state.bluetooth.remote_authorized.begin('AA:BB:CC:DD:EE:FF','/new','/new/source');app.state.bluetooth.remote_authorized.heartbeat('AA:BB:CC:DD:EE:FF')
+    if change=='binding':app.state.luma.update_settings({'phone_address':'11:22:33:44:55:66'})
     if change=='expired':clock[0]+=901
     if change=='denied':query+='&error=access_denied'
     if change=='duplicate':query+='&code=other'
@@ -82,11 +81,19 @@ def test_failed_remote_consent_keeps_existing_tokens(rig,remote_google,change):
     with pytest.raises(ValueError):remote.finish(ORIGIN,IDENTITY,query)
 
 
-def test_disconnect_during_provider_exchange_prevents_token_commit(rig,remote_google):
+def test_revocation_during_provider_exchange_prevents_token_commit(rig,remote_google):
     remote,flow,_,_,_=remote_google;query=begin(rig,remote_google)
-    flow.fetch_token.side_effect=lambda **_:rig[0].state.bluetooth.remote_authorized.clear()
+    flow.fetch_token.side_effect=lambda **_:rig[0].state.companion.revoke('123456',rig[2])
     with pytest.raises(CompanionDenied):remote.finish(ORIGIN,IDENTITY,query)
     assert remote.storage.get_secret(TOKEN_KEY)=='OLD_TOKENS'
+
+
+def test_google_sign_in_can_complete_while_registered_phone_is_away(rig,remote_google):
+    remote,flow,_,_,_=remote_google
+    query=begin(rig,remote_google)
+    rig[0].state.bluetooth.remote_authorized.clear()
+    remote.finish(ORIGIN,IDENTITY,query)
+    assert json.loads(remote.storage.get_secret(TOKEN_KEY))['refresh_token']=='fake-refresh'
 
 
 def test_cancelling_pending_also_prevents_inflight_primary_consent_commit(rig,remote_google):

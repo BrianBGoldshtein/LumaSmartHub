@@ -120,9 +120,10 @@ class ProfileCalendars:
             self.publish('user.calendar.updated', {'profile_id': uid})
             return {'count': len(events)}
 
-    def projection(self, uid: str, *, wall=False, now=None):
+    def projection(self, uid: str, *, wall=False, now=None, remote=False):
         user = self.profiles.get(uid)
-        if not self.present(uid) or (wall and not user.wall_share_approved):
+        require_presence = wall or not remote
+        if (require_presence and not self.present(uid)) or (wall and not user.wall_share_approved):
             return None
         account, settings, now = self.account(uid), self.settings(uid), now or self.clock()
         current = visible_events(account.events, now=now, calendar_ids=set(settings.visible_calendar_ids),
@@ -141,19 +142,24 @@ class ProfileCalendars:
                 'stale': not self.fresh(uid, now)},
             'google': {'authorized': account.google.authorized(), **account.status},
             'departure': account.departures.snapshot(account.events, settings, now, fresh=self.fresh(uid, now))}
-        # Revocation/removal or disconnect wins over a slow projection build.
-        return result if self.present(uid) and (not wall or self.profiles.get(uid).wall_share_approved) else None
+        # Remote callers recheck their signed grant before returning the result.
+        # Wall/public callers always retain live presence and sharing checks.
+        current_user = self.profiles.get(uid)
+        return result if (not require_presence or self.present(uid)) and (not wall or current_user.wall_share_approved) else None
 
     def wall_panels(self, now=None):
         now = now or self.clock()
         return [view for user in self.profiles.list() if (view := self.projection(user.id, wall=True, now=now)) is not None]
 
     async def complete_task(self, uid: str, *, calendar_id: str, event_id: str, etag: str,
-                            completed: bool, recheck=lambda: None):
+                            completed: bool, recheck=lambda: None, remote=False):
         account = self.account(uid)
-        async with account.lock:
+        def check():
             recheck()
-            self._require_present(uid)
+            if not remote:
+                self._require_present(uid)
+        async with account.lock:
+            check()
             settings = self.settings(uid)
             if (type(completed) is not bool or calendar_id != settings.todo_calendar_id or
                     not settings.todo_completed_color_id):
@@ -163,13 +169,11 @@ class ProfileCalendars:
             if current is None or current.etag != etag:
                 raise TaskConflict('This task changed. Refresh your calendar before trying again.')
             async with self.provider_slots:
-                recheck()
-                self._require_present(uid)
+                check()
                 updated = await asyncio.to_thread(account.google.recolor_task, calendar_id=calendar_id,
                     event_id=current.id, expected_etag=etag, color_id=settings.todo_completed_color_id if completed else None,
                     timezone=settings.timezone, now=self.clock())
-            recheck()
-            self._require_present(uid)
+            check()
             if self.settings(uid) != settings:
                 raise ProfileError('Calendar selections changed. Refresh before retrying.')
             updated.calendar_name, updated.calendar_color = current.calendar_name, current.calendar_color
@@ -180,7 +184,7 @@ class ProfileCalendars:
             if uid == PRIMARY_ID and self.primary_changed:
                 self.primary_changed(events, self.clock())
             self.publish('user.calendar.updated', {'profile_id': uid})
-            return self.projection(uid)
+            return self.projection(uid, remote=remote)
 
     async def worker(self, *, pause=asyncio.sleep):
         while True:

@@ -13,9 +13,12 @@ sleep-aware display behavior and room automations.
 > phone and appliance paths still require physical acceptance. A beta release
 > does not imply that hardware tests passed or that v1 is ready.
 
-Latest: [Luma 0.4.0 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.4.0).
-Use **Settings → Luma software → Check for updates**;
-review **0.4.0**, install and keep power connected through the verified reboot.
+Latest: [Luma 0.4.5 Beta](https://github.com/BrianBGoldshtein/LumaSmartHub/releases/tag/v0.4.5).
+An enrolled remote now works over Tailscale even when the registered iPhone is
+away or Bluetooth is turned off. Each user sees their own account. The shared
+wall continues following Bluetooth presence and sharing preferences.
+Use **Settings → System & updates → Software updates → Check for updates**;
+review **0.4.5**, install and keep power connected through the verified reboot.
 Confirm the installed version, then refresh the phone remote. Do not reflash its SD card.
 Optional **BCM12 inline fan switching** controls only the fan while USB Wi-Fi,
 mouse and drives stay powered. The shared wall/primary-phone settings include
@@ -82,7 +85,9 @@ Primary settings, user administration and updates require the primary PIN;
 everyone may set timers.
 
 Each user's optional private **Safari/Home Screen remote** accesses only their
-own account through Tailscale and a live authorized Bluetooth connection.
+own account through its approved browser key and private Tailscale connection.
+After initial enrollment, remote access works while the phone is away from Luma.
+The wall continues using Bluetooth presence to select whose information to show.
 The primary requires notification permission; from 0.3.7, secondary users need
 only their registered live trusted bond and Luma never accesses their phone
 notifications. No Mac, native companion app, public port or private offline cache

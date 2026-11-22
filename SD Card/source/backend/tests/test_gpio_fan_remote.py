@@ -58,11 +58,11 @@ async def test_gpio_fault_disarms_persisted_approval_and_connection_switch_clear
 
 
 @pytest.mark.asyncio
-async def test_lost_primary_cannot_select_gpio_even_with_wiring_ack(rig,wiring):
+async def test_revoked_primary_cannot_select_gpio_even_with_wiring_ack(rig,wiring):
     c,u,g,s=attach(rig,wiring)
     pending=envelope(rig,'POST',PATH,{'operations':[
         operation('device/fan','POST',{'action':'select_gpio','acknowledged':True})]})
-    rig[0].state.bluetooth.remote_authorized.clear()
+    rig[0].state.companion.revoke('123456',rig[2])
     async with client(rig[0]) as browser:
         result=await browser.post('/api/v1/companion/dispatch',json=pending)
     assert result.status_code==403 and c.backend=='usb' and not g.calls

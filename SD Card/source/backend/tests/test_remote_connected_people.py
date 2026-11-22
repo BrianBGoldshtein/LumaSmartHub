@@ -41,7 +41,8 @@ async def test_guest_no_calendars_or_wall_sharing_still_appears_but_lost_link_di
     pending=envelope(rig,'GET','/remote/api/preview')
     app.state.bluetooth.runtime('primary').remote_authorized.clear()
     async with client(app) as caller:result=await caller.post('/api/v1/companion/dispatch',json=pending)
-    assert result.status_code==403 and 'connected_users' not in result.text
+    assert result.status_code==200 and result.json()['connected_users']==[]
+    assert result.json()['state']['phone_connected'] is False
 
 
 @pytest.mark.asyncio

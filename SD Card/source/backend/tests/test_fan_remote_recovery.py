@@ -53,11 +53,11 @@ async def test_signed_recovery_cannot_bypass_drive_or_update_guard(rig,guard):
 
 
 @pytest.mark.asyncio
-async def test_lost_primary_cannot_submit_even_an_acknowledged_recovery(rig):
+async def test_revoked_primary_cannot_submit_even_an_acknowledged_recovery(rig):
     app=rig[0];c,p,s=failed_controller(app);before=list(p.calls)
     pending=envelope(rig,'POST',PATH,{'operations':[
         operation('device/fan','POST',{'action':'probe','acknowledged':True})]})
-    app.state.bluetooth.remote_authorized.clear()
+    app.state.companion.revoke('123456',rig[2])
     async with client(app) as browser:
         result=await browser.post('/api/v1/companion/dispatch',json=pending)
     assert result.status_code==403 and p.calls==before
